@@ -6,15 +6,17 @@ from setuptools import setup, find_packages
 
 setup(
     name="tracklistify",
-    version="0.5.6",
+    version="0.5.7",
     packages=find_packages(),
     install_requires=[
         "aiohttp>=3.8.0",
-        "python-dotenv>=0.19.0",
-        "yt-dlp>=2023.11.16",
+        "python-dotenv>=1.0.0",
+        "yt-dlp>=2023.12.30",
         "mutagen>=1.45.1",
         "shazamio>=0.4.0.1",
         "pydub>=0.25.1",
+        "requests>=2.31.0",
+        "acrcloud>=1.4.0"
     ],
     extras_require={
         "dev": [
@@ -35,7 +37,7 @@ setup(
     },
     author="Your Name",
     author_email="your.email@example.com",
-    description="Audio track identification and tracklist generation tool",
+    description="Automatic tracklist generator for DJ mixes and audio streams",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/tracklistify",

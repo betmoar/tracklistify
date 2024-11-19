@@ -22,7 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - XML export
   - Rekordbox compatible format
 
-## [0.5.6] - 2024-01-07
+## [0.5.7] - 2024-11-19
+
+### Changed
+- Refactored downloader modules into dedicated factory folder structure
+- Improved code organization with proper separation of concerns
+- Enhanced maintainability and extensibility for future downloaders
+
+### Removed
+- Deprecated `downloader.py` module in favor of new `downloaders` package
+
+## [0.5.6] - 2024-11-19
 
 ### Added
 - New download configuration options in `.env` file:

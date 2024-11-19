@@ -1,5 +1,5 @@
 """
-Tracklistify - Audio track identification and tracklist generation tool.
+Tracklistify - Automatic tracklist generator for DJ mixes and audio streams.
 """
 
-__version__ = '0.5.6'
+__version__ = '0.5.7'

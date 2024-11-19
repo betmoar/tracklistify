@@ -10,7 +10,7 @@ from typing import List, Optional
 from .config import get_config
 from .logger import logger
 from .track import Track
-from .downloader import DownloaderFactory
+from .downloaders import DownloaderFactory
 from .output import TracklistOutput
 from .validation import validate_and_clean_url, is_youtube_url
 from .identification import IdentificationManager
