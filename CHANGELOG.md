@@ -8,7 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Support for additional platforms (Mixcloud, SoundCloud)
-- Provider fallback mechanism
 - Advanced error recovery strategies
 - Batch processing for multiple files
 - Progress bar for long operations
@@ -23,14 +22,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - XML export
   - Rekordbox compatible format
 
-## [0.5.2] - 2024-03-22
+## [0.5.4] - 2024-11-19
+### Added
+- Exponential backoff retry logic for Shazam provider
+- Rate limiting with configurable intervals
+- Improved session management with automatic recovery
+- Better audio format handling with consistent WAV output
+
+### Changed
+- Shazam provider completely refactored for better reliability
+- Output format handling now properly respects environment variables
+- Session management now uses exponential backoff with jitter
+- Audio processing standardized to stereo 44.1kHz WAV
+
+### Fixed
+- URL validation errors in Shazam provider
+- Session expiration handling
+- Output format not respecting environment variables
+- Audio format inconsistencies causing recognition failures
+
+### Security
+- Added rate limiting to prevent API abuse
+- Improved session handling to prevent resource leaks
+
+## [0.5.3] - 2024-11-19
+### Added
+- Configurable provider fallback system
+- Enhanced logging for provider selection and usage
+- Output configuration with customizable directory and format
+- Improved cache error handling with graceful degradation
+
+### Changed
+- Provider fallback now respects PROVIDER_FALLBACK_ENABLED setting
+- Rate limiter now has configurable timeout (30s default)
+- Cache operations now handle errors gracefully
+- Improved logging for provider selection and track identification
+- Better error messages for provider failures
+
+### Fixed
+- Cache enabled check now uses config object correctly
+- Rate limiter synchronization issues
+- Provider fallback logic to skip duplicate providers
+- Cache key now includes provider name for better isolation
+
+## [0.5.2] - 2024-11-17
 ### Changed
 - Migrated ACRCloud to provider interface
 - Enhanced provider factory with better configuration
 - Improved error handling for providers
 - Standardized provider timeouts
 
-## [0.5.1] - 2024-03-22
+## [0.5.1] - 2024-11-17
 ### Added
 - Comprehensive contributing guidelines (CONTRIBUTING.md)
 - Detailed development environment setup instructions
@@ -42,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanded documentation for API keys and settings
 - Improved project structure documentation
 
-## [0.5.0] - 2024-03-22
+## [0.5.0] - 2024-11-17
 ### Added
 - Enhanced Shazam integration:
   - Advanced audio fingerprinting with MFCCs
@@ -55,7 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced audio processing with librosa
 - Shazam integration using shazamio package
 
-## [0.4.0] - 2024-03-21
+## [0.4.0] - 2024-11-16
 ### Added
 - Multiple provider support through provider interface
 - Spotify integration for metadata enrichment
@@ -105,7 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Memory leaks in audio processing
 - API rate limiting issues
 
-## [0.3.6] - 2024-03-19
+## [0.3.6] - 2024-11-16
 
 ### Fixed
 - Fixed track timing calculation using MP3 metadata for accurate timestamps
@@ -121,7 +163,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced logging with proper time formatting (HH:MM:SS)
 - Updated requirements.txt for better dependency management
 
-## [0.3.5] - 2024-01-15
+## [0.3.5] - 2024-11-15
 
 ### Fixed
 - YouTube download functionality
@@ -135,7 +177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - More robust downloader initialization
 - Cleaner error handling flow
 
-## [0.3.4] - 2024-01-15
+## [0.3.4] - 2024-11-15
 
 ### Added
 - URL validation and cleaning functionality
@@ -155,7 +197,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inconsistent YouTube URL formats
 - Invalid URL handling
 
-## [0.3.3] - 2024-01-15
+## [0.3.3] - 2024-11-15
 
 ### Added
 - Comprehensive error handling system with specific exception types
@@ -170,7 +212,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated error messages with more context
 - Added detailed error documentation
 
-## [0.3.2] - 2024-01-15
+## [0.3.2] - 2024-11-15
 
 ### Added
 - Enhanced logging system with colored console output
@@ -184,7 +226,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added color-coding for different log levels
 - Enhanced logging verbosity control
 
-## [0.3.1] - 2024-01-15
+## [0.3.1] - 2024-11-15
 
 ### Added
 - Enhanced track identification verbosity with detailed progress and status logging
@@ -201,7 +243,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Filename sanitization to preserve spaces and valid punctuation
 - Date format handling in filenames for consistency
 
-## [0.3.0] - 2024-02-21
+## [0.3.0] - 2024-11-15
 
 ### Added
 - Modular package structure with dedicated modules:
@@ -227,7 +269,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Package dependencies and versions
 - Installation process
 
-## [0.2.0] - 2024-02-21
+## [0.2.0] - 2024-11-15
 
 ### Added
 - Enhanced track identification algorithm with confidence-based filtering
@@ -252,7 +294,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Timestamp accuracy in track listing
 - File naming sanitization
 
-## [0.1.0] - 2024-02-20
+## [0.1.0] - 2024-11-15
 ### Added
 - Core track identification functionality
 - Support for YouTube and Mixcloud platforms

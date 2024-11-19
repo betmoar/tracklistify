@@ -10,7 +10,7 @@ from typing import Dict, Optional
 from urllib.parse import urlencode
 
 import aiohttp
-from aiohttp import ClientTimeout
+from aiohttp import ClientTimeout, FormData
 
 from tracklistify.providers.base import (
     TrackIdentificationProvider,
@@ -45,114 +45,148 @@ class ACRCloudProvider(TrackIdentificationProvider):
         self.host = host
         self.endpoint = f"https://{host}/v1/identify"
         self.timeout = ClientTimeout(total=timeout)
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session."""
+        if self._session is None:
+            self._session = aiohttp.ClientSession(timeout=self.timeout)
+        return self._session
+
+    async def close(self) -> None:
+        """Close the provider's resources."""
+        if self._session:
+            await self._session.close()
+            self._session = None
 
     def _sign_string(self, string_to_sign: str) -> str:
-        """Sign a string using HMAC-SHA1.
-
-        Args:
-            string_to_sign: String to be signed
-
-        Returns:
-            Base64 encoded signature
-        """
+        """Sign a string using HMAC-SHA1."""
         hmac_obj = hmac.new(self.access_secret, string_to_sign.encode(), hashlib.sha1)
-        return base64.b64encode(hmac_obj.digest()).decode()
+        return base64.b64encode(hmac_obj.digest()).decode('ascii')
 
-    def _prepare_request_data(self, audio_data: bytes) -> Dict:
-        """Prepare request data for ACRCloud API.
+    def _prepare_request_data(self, audio_data: bytes, start_time: float) -> Dict:
+        """Prepare request data for ACRCloud API."""
+        current_time = time.time()
+        string_to_sign = '\n'.join([
+            "POST",
+            "/v1/identify",
+            self.access_key,
+            "audio",
+            "1",
+            str(int(current_time))
+        ])
 
-        Args:
-            audio_data: Raw audio data bytes
-
-        Returns:
-            Dict containing request parameters
-        """
-        timestamp = time.time()
-        string_to_sign = f"POST\n/v1/identify\n{self.access_key}\n" \
-                        f"audio\n1\n{int(timestamp)}"
-
+        signature = self._sign_string(string_to_sign)
+        
         data = {
-            "access_key": self.access_key,
-            "sample_bytes": len(audio_data),
-            "timestamp": str(int(timestamp)),
-            "signature": self._sign_string(string_to_sign),
-            "data_type": "audio",
-            "signature_version": "1",
+            'access_key': self.access_key,
+            'sample_bytes': len(audio_data),
+            'timestamp': str(int(current_time)),
+            'signature': signature,
+            'data_type': 'audio',
+            'signature_version': '1'
         }
 
-        files = {"sample": ("sample.wav", audio_data)}
-        return {"data": data, "files": files}
+        return {'data': data}
 
     async def identify_track(self, audio_data: bytes, start_time: float = 0) -> Dict:
-        """Identify a track from audio data using ACRCloud.
-
+        """
+        Identify a track from audio data.
+        
         Args:
             audio_data: Raw audio data bytes
             start_time: Start time in seconds for the audio segment
-
+            
         Returns:
             Dict containing track information
-
+            
         Raises:
-            AuthenticationError: If ACRCloud authentication fails
-            RateLimitError: If ACRCloud rate limit is exceeded
-            IdentificationError: If track identification fails
+            AuthenticationError: If authentication fails
+            RateLimitError: If rate limit is exceeded
+            IdentificationError: If identification fails
             ProviderError: For other provider-related errors
         """
         try:
-            request_data = self._prepare_request_data(audio_data)
+            session = await self._get_session()
+            request_data = self._prepare_request_data(audio_data, start_time)
             
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.post(
-                    self.endpoint,
-                    data=request_data["data"],
-                    data=request_data["files"]
-                ) as response:
-                    if response.status == 401:
-                        raise AuthenticationError("Invalid ACRCloud credentials")
-                    elif response.status == 429:
-                        raise RateLimitError("ACRCloud rate limit exceeded")
-                    elif response.status != 200:
-                        raise ProviderError(f"ACRCloud API error: {response.status}")
-
-                    result = await response.json()
-
-                    if result.get("status", {}).get("code") != 0:
-                        error_msg = result.get("status", {}).get("msg", "Unknown error")
-                        raise IdentificationError(f"ACRCloud identification failed: {error_msg}")
-
-                    if not result.get("metadata", {}).get("music"):
-                        return {}
-
-                    track = result["metadata"]["music"][0]
+            form = FormData()
+            # Add the regular form fields
+            for key, value in request_data['data'].items():
+                form.add_field(key, str(value))
+            # Add the audio file
+            form.add_field('sample', audio_data, filename='sample.wav')
+            
+            async with session.post(self.endpoint, data=form) as response:
+                if response.status == 401:
+                    raise AuthenticationError("Invalid ACRCloud credentials")
+                elif response.status == 429:
+                    raise RateLimitError("ACRCloud rate limit exceeded")
+                elif response.status != 200:
+                    raise ProviderError(f"ACRCloud API error: {response.status}")
+                
+                try:
+                    text_response = await response.text()
+                    try:
+                        result = json.loads(text_response)
+                    except json.JSONDecodeError:
+                        raise ProviderError(f"Failed to parse ACRCloud response. Response text: {text_response[:200]}")
+                except Exception as e:
+                    raise ProviderError(f"Failed to read ACRCloud response: {str(e)}")
+                
+                if result['status']['code'] != 0:
+                    if result['status']['code'] == 2000:
+                        raise AuthenticationError(result['status']['msg'])
+                    elif result['status']['code'] == 3001:
+                        raise RateLimitError(result['status']['msg'])
+                    elif result['status']['code'] == 1001:  # No result found
+                        return {
+                            'status': {'code': 1, 'msg': 'No music detected'},
+                            'metadata': {'music': []}
+                        }
+                    else:
+                        raise IdentificationError(f"ACRCloud error: {result['status']['msg']}")
+                
+                # Standardize response format
+                if not result.get('metadata', {}).get('music'):
                     return {
-                        "title": track.get("title", ""),
-                        "artist": track.get("artists", [{}])[0].get("name", ""),
-                        "album": track.get("album", {}).get("name", ""),
-                        "year": track.get("release_date", ""),
-                        "duration": track.get("duration_ms", 0) / 1000,
-                        "confidence": track.get("score", 0),
-                        "start_time": start_time,
-                        "provider": "acrcloud",
-                        "external_ids": {
-                            "acrcloud": track.get("acrid", ""),
-                            "isrc": track.get("external_ids", {}).get("isrc", ""),
+                        'status': {'code': 1, 'msg': 'No music detected'},
+                        'metadata': {'music': []}
+                    }
+                
+                music_list = []
+                for music in result['metadata']['music']:
+                    track = {
+                        'title': music.get('title', ''),
+                        'artists': music.get('artists', [{'name': 'Unknown'}]),
+                        'album': music.get('album', {}).get('name', ''),
+                        'release_date': music.get('release_date', ''),
+                        'score': float(music.get('score', 0)),
+                        'genres': music.get('genres', []),
+                        'external_ids': {
+                            'isrc': music.get('external_ids', {}).get('isrc'),
+                            'upc': music.get('external_ids', {}).get('upc')
                         }
                     }
-
-        except aiohttp.ClientError as e:
-            raise ProviderError(f"ACRCloud request failed: {str(e)}")
-        except json.JSONDecodeError as e:
-            raise ProviderError(f"Invalid JSON response from ACRCloud: {str(e)}")
+                    music_list.append(track)
+                
+                return {
+                    'status': {'code': 0, 'msg': 'Success'},
+                    'metadata': {'music': music_list}
+                }
+                
+        except (AuthenticationError, RateLimitError, IdentificationError) as e:
+            raise
         except Exception as e:
-            raise ProviderError(f"Unexpected error in ACRCloud provider: {str(e)}")
+            raise ProviderError(f"ACRCloud provider error: {str(e)}")
 
     async def enrich_metadata(self, track_info: Dict) -> Dict:
-        """Enrich track metadata with additional information.
-
+        """
+        Enrich track metadata with additional information.
+        
         Args:
             track_info: Basic track information
-
+            
         Returns:
             Dict containing enriched track information
         """

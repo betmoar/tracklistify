@@ -50,14 +50,91 @@ class SpotifyProvider(MetadataProvider):
         ) as response:
             if response.status == 401:
                 raise AuthenticationError("Invalid Spotify credentials")
+            elif response.status == 429:
+                raise RateLimitError("Spotify rate limit exceeded")
             elif response.status != 200:
-                raise ProviderError(f"Failed to get Spotify token: {response.status}")
+                raise ProviderError(f"Spotify authentication failed: {response.status}")
                 
             data = await response.json()
             self._access_token = data["access_token"]
             self._token_expiry = asyncio.get_event_loop().time() + data["expires_in"]
             return self._access_token
-    
+
+    async def search_track(
+        self,
+        title: str,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        duration: Optional[float] = None,
+    ) -> Dict:
+        """Search for a track using available metadata."""
+        query = f"track:{title}"
+        if artist:
+            query += f" artist:{artist}"
+        if album:
+            query += f" album:{album}"
+            
+        token = await self._get_access_token()
+        await self._ensure_session()
+        
+        async with self._session.get(
+            f"{self.API_BASE}/search",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"q": query, "type": "track", "limit": 1}
+        ) as response:
+            if response.status == 401:
+                raise AuthenticationError("Invalid Spotify access token")
+            elif response.status == 429:
+                raise RateLimitError("Spotify rate limit exceeded")
+            elif response.status != 200:
+                raise ProviderError(f"Spotify search failed: {response.status}")
+                
+            data = await response.json()
+            if not data["tracks"]["items"]:
+                return {}
+                
+            track = data["tracks"]["items"][0]
+            return {
+                "title": track["name"],
+                "artist": track["artists"][0]["name"],
+                "album": track["album"]["name"],
+                "duration": track["duration_ms"] / 1000,
+                "spotify_id": track["id"],
+                "spotify_url": track["external_urls"]["spotify"],
+                "preview_url": track.get("preview_url"),
+                "album_art": track["album"]["images"][0]["url"] if track["album"]["images"] else None
+            }
+
+    async def enrich_metadata(self, track_info: Dict) -> Dict:
+        """Enrich track metadata with additional information."""
+        # If we already have Spotify metadata, return as is
+        if "spotify_id" in track_info:
+            return track_info
+            
+        # Search for the track using available metadata
+        title = track_info.get("title")
+        artist = track_info.get("artist")
+        album = track_info.get("album")
+        duration = track_info.get("duration")
+        
+        if not title:
+            return track_info
+            
+        try:
+            spotify_info = await self.search_track(title, artist, album, duration)
+            if spotify_info:
+                track_info.update(spotify_info)
+        except Exception as e:
+            logger.warning(f"Failed to enrich metadata: {str(e)}")
+            
+        return track_info
+
+    async def close(self) -> None:
+        """Close the provider's resources."""
+        if self._session:
+            await self._session.close()
+            self._session = None
+
     async def _api_request(self, method: str, endpoint: str, **kwargs) -> Dict:
         """Make authenticated request to Spotify API."""
         await self._ensure_session()
@@ -160,9 +237,3 @@ class SpotifyProvider(MetadataProvider):
         except Exception as e:
             logger.error(f"Spotify track details error: {e}")
             raise
-    
-    async def close(self):
-        """Close the aiohttp session."""
-        if self._session:
-            await self._session.close()
-            self._session = None

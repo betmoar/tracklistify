@@ -1,5 +1,5 @@
 """
-Tracklistify - A tool for identifying tracks in DJ mixes and audio files.
+Tracklistify - Audio track identification and tracklist generation tool.
 """
 
-__version__ = '0.2.0'
+__version__ = '0.5.4'

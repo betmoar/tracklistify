@@ -3,130 +3,119 @@ Configuration management for Tracklistify.
 """
 
 import os
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, List
 from dotenv import load_dotenv
 
-class ConfigError(Exception):
-    """Raised when configuration is invalid."""
-    pass
-
 @dataclass
-class ACRCloudConfig:
-    """ACRCloud API configuration."""
-    access_key: str
-    access_secret: str
-    host: str
-    timeout: int = 10
+class ProviderConfig:
+    """Provider configuration."""
+    primary_provider: str = field(default="acrcloud")
+    fallback_enabled: bool = field(default=True)
+    fallback_providers: List[str] = field(default_factory=lambda: ["shazam"])
+    acrcloud_host: str = field(default="identify-eu-west-1.acrcloud.com")
+    acrcloud_timeout: int = field(default=10)
+    shazam_enabled: bool = field(default=True)
+    shazam_timeout: int = field(default=10)
+    spotify_timeout: int = field(default=10)
 
 @dataclass
 class TrackConfig:
-    """Track identification settings."""
-    segment_length: int = 60
-    min_confidence: int = 0
-    time_threshold: int = 60
-    max_duplicates: int = 2
-
-@dataclass
-class OutputConfig:
-    """Output configuration."""
-    format: str = 'json'
-    directory: str = 'tracklists'
-
-@dataclass
-class AppConfig:
-    """Application-wide settings."""
-    verbose: bool = False
-    max_requests_per_minute: int = 60
-    rate_limit_enabled: bool = True
+    """Track identification configuration."""
+    segment_length: int = field(default=60)
+    min_confidence: float = field(default=0.0)
+    time_threshold: int = field(default=60)
+    max_duplicates: int = field(default=2)
 
 @dataclass
 class CacheConfig:
     """Cache configuration."""
-    enabled: bool = True
-    directory: str = '.cache'
-    duration: int = 86400  # 24 hours in seconds
+    enabled: bool = field(default=True)
+    ttl: int = field(default=3600)
+    max_size: int = field(default=1000)
 
+@dataclass
+class OutputConfig:
+    """Output configuration."""
+    directory: str = field(default="output")
+    format: str = field(default="json")
+
+@dataclass
+class AppConfig:
+    """Application configuration."""
+    rate_limit_enabled: bool = field(default=True)
+    max_requests_per_minute: int = field(default=60)  # Used by RateLimiter
+    debug: bool = field(default=False)
+    verbose: bool = field(default=False)
+
+@dataclass
 class Config:
-    """Global configuration handler."""
-    
-    VALID_OUTPUT_FORMATS = ['json', 'text', 'csv']
-    
-    def __init__(self):
-        """Initialize configuration from environment variables."""
+    """Global configuration."""
+    providers: ProviderConfig = field(default_factory=ProviderConfig)
+    track: TrackConfig = field(default_factory=TrackConfig)
+    cache: CacheConfig = field(default_factory=CacheConfig)
+    app: AppConfig = field(default_factory=AppConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
+
+    def __post_init__(self):
+        """Load configuration from environment."""
         load_dotenv()
-        
-        # Track configuration first
-        self.track = self._load_track_config()
-        
-        # ACRCloud configuration
-        self.acrcloud = self._load_acrcloud_config()
-        
-        # Output configuration
-        self.output = self._load_output_config()
-        
-        # App configuration
-        self.app = self._load_app_config()
-        
-        # Cache configuration
-        self.cache = self._load_cache_config()
-    
-    def _load_track_config(self) -> TrackConfig:
-        """Load track identification configuration."""
-        return TrackConfig(
-            segment_length=int(os.getenv('SEGMENT_LENGTH', '60')),
-            min_confidence=int(os.getenv('MIN_CONFIDENCE', '0')),
-            time_threshold=int(os.getenv('TIME_THRESHOLD', '60')),
-            max_duplicates=int(os.getenv('MAX_DUPLICATES', '2'))
-        )
-    
-    def _load_acrcloud_config(self) -> ACRCloudConfig:
-        """Load ACRCloud API configuration."""
-        access_key = os.getenv('ACR_ACCESS_KEY')
-        access_secret = os.getenv('ACR_ACCESS_SECRET')
-        
-        if not access_key or not access_secret:
-            raise ConfigError("ACRCloud credentials not found in environment")
-        
-        return ACRCloudConfig(
-            access_key=access_key,
-            access_secret=access_secret,
-            host=os.getenv('ACR_HOST', 'identify-eu-west-1.acrcloud.com'),
-            timeout=int(os.getenv('ACR_TIMEOUT', '10'))
-        )
-    
-    def _load_output_config(self) -> OutputConfig:
-        """Load output configuration."""
-        format = os.getenv('OUTPUT_FORMAT', 'json').lower()
-        if format not in self.VALID_OUTPUT_FORMATS:
-            raise ConfigError(f"Invalid output format: {format}")
-        
-        return OutputConfig(
-            format=format,
-            directory=os.getenv('OUTPUT_DIR', 'tracklists')
-        )
-        
-    def _load_app_config(self) -> AppConfig:
-        """Load application-wide settings."""
-        return AppConfig(
-            verbose=os.getenv('VERBOSE', 'false').lower() == 'true',
-            max_requests_per_minute=int(os.getenv('MAX_REQUESTS_PER_MINUTE', '60')),
-            rate_limit_enabled=os.getenv('RATE_LIMIT_ENABLED', 'true').lower() == 'true'
-        )
-        
-    def _load_cache_config(self) -> CacheConfig:
-        """Load cache configuration."""
-        return CacheConfig(
-            enabled=os.getenv('CACHE_ENABLED', 'true').lower() == 'true',
-            directory=os.getenv('CACHE_DIR', '.cache'),
-            duration=int(os.getenv('CACHE_DURATION', '86400'))
+        self._load_provider_config()
+        self._load_track_config()
+        self._load_cache_config()
+        self._load_app_config()
+        self._load_output_config()
+
+    def _load_provider_config(self) -> None:
+        """Load provider configuration."""
+        self.providers = ProviderConfig(
+            primary_provider=os.getenv('PRIMARY_PROVIDER', self.providers.primary_provider),
+            fallback_enabled=os.getenv('PROVIDER_FALLBACK_ENABLED', 'true').lower() == 'true',
+            fallback_providers=os.getenv('PROVIDER_FALLBACK_ORDER', 'shazam').split(','),
+            acrcloud_host=os.getenv('ACR_HOST', self.providers.acrcloud_host),
+            acrcloud_timeout=int(os.getenv('ACR_TIMEOUT', self.providers.acrcloud_timeout)),
+            shazam_enabled=os.getenv('SHAZAM_ENABLED', 'true').lower() == 'true',
+            shazam_timeout=int(os.getenv('SHAZAM_TIMEOUT', self.providers.shazam_timeout)),
+            spotify_timeout=int(os.getenv('SPOTIFY_TIMEOUT', self.providers.spotify_timeout))
         )
 
-# Global configuration instance - lazy loaded
+    def _load_track_config(self) -> None:
+        """Load track identification configuration."""
+        self.track = TrackConfig(
+            segment_length=int(os.getenv('SEGMENT_LENGTH', self.track.segment_length)),
+            min_confidence=float(os.getenv('MIN_CONFIDENCE', self.track.min_confidence)),
+            time_threshold=int(os.getenv('TIME_THRESHOLD', self.track.time_threshold)),
+            max_duplicates=int(os.getenv('MAX_DUPLICATES', self.track.max_duplicates))
+        )
+
+    def _load_cache_config(self) -> None:
+        """Load cache configuration."""
+        self.cache = CacheConfig(
+            enabled=os.getenv('CACHE_ENABLED', 'true').lower() == 'true',
+            ttl=int(os.getenv('CACHE_TTL', self.cache.ttl)),
+            max_size=int(os.getenv('CACHE_MAX_SIZE', self.cache.max_size))
+        )
+
+    def _load_app_config(self) -> None:
+        """Load application configuration."""
+        self.app = AppConfig(
+            rate_limit_enabled=os.getenv('RATE_LIMIT_ENABLED', 'true').lower() == 'true',
+            max_requests_per_minute=int(os.getenv('MAX_REQUESTS_PER_MINUTE', self.app.max_requests_per_minute)),
+            debug=os.getenv('DEBUG', 'false').lower() == 'true',
+            verbose=os.getenv('VERBOSE', 'false').lower() == 'true'
+        )
+
+    def _load_output_config(self) -> None:
+        """Load output configuration."""
+        self.output = OutputConfig(
+            directory=os.getenv('OUTPUT_DIRECTORY', self.output.directory),
+            format=os.getenv('OUTPUT_FORMAT', self.output.format)
+        )
+
 _config_instance = None
 
 def get_config() -> Config:
-    """Get the global configuration instance."""
+    """Get global configuration instance."""
     global _config_instance
     if _config_instance is None:
         _config_instance = Config()

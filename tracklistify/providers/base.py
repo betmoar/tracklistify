@@ -1,18 +1,35 @@
-"""Base classes for track identification and metadata providers."""
+"""Base interfaces and error types for track identification providers."""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
-import logging
+from typing import Dict, Optional
 
-logger = logging.getLogger(__name__)
+
+class ProviderError(Exception):
+    """Base class for provider-related errors."""
+    pass
+
+
+class AuthenticationError(ProviderError):
+    """Raised when provider authentication fails."""
+    pass
+
+
+class RateLimitError(ProviderError):
+    """Raised when provider rate limit is exceeded."""
+    pass
+
+
+class IdentificationError(ProviderError):
+    """Raised when track identification fails."""
+    pass
+
 
 class TrackIdentificationProvider(ABC):
-    """Base class for track identification providers."""
-    
+    """Base interface for track identification providers."""
+
     @abstractmethod
     async def identify_track(self, audio_data: bytes, start_time: float = 0) -> Dict:
-        """
-        Identify a track from audio data.
+        """Identify a track from audio data.
         
         Args:
             audio_data: Raw audio data bytes
@@ -20,13 +37,18 @@ class TrackIdentificationProvider(ABC):
             
         Returns:
             Dict containing track information
+            
+        Raises:
+            AuthenticationError: If authentication fails
+            RateLimitError: If rate limit is exceeded
+            IdentificationError: If identification fails
+            ProviderError: For other provider-related errors
         """
         pass
-    
+
     @abstractmethod
     async def enrich_metadata(self, track_info: Dict) -> Dict:
-        """
-        Enrich track metadata with additional information.
+        """Enrich track metadata with additional information.
         
         Args:
             track_info: Basic track information
@@ -36,47 +58,57 @@ class TrackIdentificationProvider(ABC):
         """
         pass
 
+    async def close(self) -> None:
+        """Close the provider's resources."""
+        pass
+
+
 class MetadataProvider(ABC):
-    """Base class for metadata-only providers."""
-    
+    """Base interface for metadata providers."""
+
     @abstractmethod
-    async def search_track(self, query: str) -> List[Dict]:
-        """
-        Search for track metadata.
+    async def enrich_metadata(self, track_info: Dict) -> Dict:
+        """Enrich track metadata with additional information.
         
         Args:
-            query: Search query string
+            track_info: Basic track information
             
         Returns:
-            List of matching tracks with metadata
-        """
-        pass
-    
-    @abstractmethod
-    async def get_track_details(self, track_id: str) -> Dict:
-        """
-        Get detailed track information.
-        
-        Args:
-            track_id: Provider-specific track ID
+            Dict containing enriched track information
             
-        Returns:
-            Dict containing detailed track information
+        Raises:
+            AuthenticationError: If authentication fails
+            RateLimitError: If rate limit is exceeded
+            ProviderError: For other provider-related errors
         """
         pass
 
-class ProviderError(Exception):
-    """Base exception for provider errors."""
-    pass
+    @abstractmethod
+    async def search_track(
+        self,
+        title: str,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        duration: Optional[float] = None,
+    ) -> Dict:
+        """Search for a track using available metadata.
+        
+        Args:
+            title: Track title
+            artist: Artist name
+            album: Album name
+            duration: Track duration in seconds
+            
+        Returns:
+            Dict containing track information
+            
+        Raises:
+            AuthenticationError: If authentication fails
+            RateLimitError: If rate limit is exceeded
+            ProviderError: For other provider-related errors
+        """
+        pass
 
-class AuthenticationError(ProviderError):
-    """Raised when provider authentication fails."""
-    pass
-
-class RateLimitError(ProviderError):
-    """Raised when provider rate limit is exceeded."""
-    pass
-
-class IdentificationError(ProviderError):
-    """Raised when track identification fails."""
-    pass
+    async def close(self) -> None:
+        """Close the provider's resources."""
+        pass

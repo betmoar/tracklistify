@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="tracklistify",
-    version="0.5.2",
+    version="0.5.4",
     packages=find_packages(),
     install_requires=[
         "pydub>=0.25.1",
