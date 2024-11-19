@@ -3,15 +3,14 @@ Factory for creating appropriate downloader instances.
 """
 
 from typing import Dict, Optional
-
-from ..config import get_config
 from ..logger import logger
-from ..validation import is_youtube_url
+from ..validation import is_youtube_url, is_mixcloud_url
 from .base import Downloader
+from .mixcloud import MixcloudDownloader
 from .youtube import YouTubeDownloader
 
 class DownloaderFactory:
-    """Factory for creating appropriate downloader instances."""
+    """Factory class for creating appropriate downloader instances."""
     
     def __init__(self, config=None):
         """Initialize factory with configuration.
@@ -22,24 +21,29 @@ class DownloaderFactory:
         self._config = config or get_config()
         self._downloaders: Dict[str, Downloader] = {}
     
-    def create_downloader(self, url: str) -> Optional[Downloader]:
+    @staticmethod
+    def create_downloader(url: str, **kwargs) -> Downloader:
         """Create appropriate downloader based on URL.
         
         Args:
-            url: Media URL
+            url: URL to download from
+            **kwargs: Additional arguments to pass to downloader
             
         Returns:
-            Downloader: Appropriate downloader instance, or None if unsupported
+            Downloader: Appropriate downloader instance
+            
+        Raises:
+            ValueError: If URL is not supported
         """
-        if is_youtube_url(url):
-            if 'youtube' not in self._downloaders:
-                self._downloaders['youtube'] = YouTubeDownloader(
-                    verbose=getattr(self._config.app, 'verbose', False),
-                    quality=getattr(self._config.download, 'quality', '192'),
-                    format=getattr(self._config.download, 'format', 'mp3')
-                )
-            return self._downloaders['youtube']
+        logger.debug(f"Creating downloader for URL: {url}")
         
-        # Support for other platforms can be added here
-        logger.warning(f"No downloader available for URL: {url}")
-        return None
+        if is_youtube_url(url):
+            logger.debug("URL identified as YouTube")
+            return YouTubeDownloader(**kwargs)
+        elif is_mixcloud_url(url):
+            logger.debug("URL identified as Mixcloud")
+            return MixcloudDownloader(**kwargs)
+        else:
+            error_msg = f"Unsupported URL format: {url}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)

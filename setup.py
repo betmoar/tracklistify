@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="tracklistify",
-    version="0.5.7",
+    version="0.5.8",
     packages=find_packages(),
     install_requires=[
         "aiohttp>=3.8.0",

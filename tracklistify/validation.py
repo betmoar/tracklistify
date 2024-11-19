@@ -57,6 +57,14 @@ def validate_and_clean_url(url: str) -> Optional[str]:
             # Reconstruct clean YouTube URL
             return f'https://www.youtube.com/watch?v={video_id.group(1)}'
             
+        # Validate Mixcloud URLs
+        if 'mixcloud.com' in parsed.netloc:
+            # Remove trailing slash and query parameters
+            path = parsed.path.rstrip('/')
+            if not path or path == '/':
+                return None
+            return f'https://www.mixcloud.com{path}'
+            
         # For other URLs, return cleaned version
         return f'{parsed.scheme}://{parsed.netloc}{parsed.path}'
         
@@ -93,6 +101,24 @@ def is_youtube_url(url: str) -> bool:
         return False
         
     return 'youtube.com/watch?v=' in cleaned_url
+
+def is_mixcloud_url(url: str) -> bool:
+    """Check if a URL is a valid Mixcloud URL.
+    
+    Args:
+        url: URL to check
+        
+    Returns:
+        bool: True if URL is a valid Mixcloud URL, False otherwise
+    """
+    if not url:
+        return False
+        
+    try:
+        parsed = urlparse(url)
+        return parsed.netloc.endswith('mixcloud.com') and len(parsed.path) > 1
+    except:
+        return False
 
 def clean_url(url: str) -> str:
     """

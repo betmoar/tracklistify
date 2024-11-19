@@ -105,32 +105,37 @@ tracklistify --no-fallback input.mp3
 
 ## Configuration
 
-The following settings can be configured through environment variables or a `.env` file:
+The application can be configured using environment variables in a `.env` file:
 
-### Provider Settings
-- `PRIMARY_PROVIDER`: Primary track identification provider (default: "acrcloud")
-- `FALLBACK_ENABLED`: Enable provider fallback (default: true)
-- `FALLBACK_PROVIDERS`: List of fallback providers (default: ["shazam"])
+### Track Identification Settings
+- `SEGMENT_LENGTH`: Length of audio segments for identification (default: 20 seconds)
+- `MIN_CONFIDENCE`: Minimum confidence threshold for track matches (default: 50)
+- `TIME_THRESHOLD`: Time threshold for duplicate detection (default: 60 seconds)
+- `MAX_DUPLICATES`: Maximum number of allowed duplicate tracks (default: 2)
 
-### Track Settings
-- `SEGMENT_LENGTH`: Length of audio segments in seconds (default: 60)
-- `MIN_CONFIDENCE`: Minimum confidence threshold (default: 0.0)
-- `TIME_THRESHOLD`: Time threshold for merging nearby tracks (default: 60)
-
-### Cache Settings
-- `CACHE_ENABLED`: Enable caching (default: true)
-- `CACHE_TTL`: Cache time-to-live in seconds (default: 3600)
-- `CACHE_MAX_SIZE`: Maximum cache size (default: 1000)
-
-### Download Settings
-- `DOWNLOAD_QUALITY`: Audio quality in kbps (default: 192)
-- `DOWNLOAD_FORMAT`: Output audio format (default: mp3)
-- `DOWNLOAD_TEMP_DIR`: Custom temporary directory (default: ~/.tracklistify/temp)
-- `DOWNLOAD_MAX_RETRIES`: Maximum retry attempts (default: 3)
+### Application Settings
+- `VERBOSE`: Enable verbose logging (default: true)
+- `DEBUG`: Enable debug mode (default: true)
+- `MAX_REQUESTS_PER_MINUTE`: Rate limit for API requests (default: 60)
+- `RATE_LIMIT_ENABLED`: Enable rate limiting (default: true)
 
 ### Output Settings
-- `OUTPUT_DIRECTORY`: Output directory for generated files (default: "output")
-- `OUTPUT_FORMAT`: Default output format (default: "json")
+- `OUTPUT_FORMAT`: Output format (options: json, csv, xml, all)
+- `OUTPUT_DIRECTORY`: Directory for saving output files (default: output)
+
+### Cache Settings
+- `CACHE_ENABLED`: Enable result caching (default: false)
+
+### Logging
+
+The application uses different log levels for various types of messages:
+
+- DEBUG: Technical details, initialization info, file paths
+- INFO: Important operations and successful downloads
+- WARNING: Non-critical issues that might need attention
+- ERROR: Critical issues that prevent successful operation
+
+Enable `VERBOSE=true` to see detailed debug messages during operation.
 
 ## Version History
 

@@ -22,6 +22,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - XML export
   - Rekordbox compatible format
 
+## [0.5.8] - 2024-01-09
+
+### Changed
+- Improved logging system across all downloaders
+- Enhanced error handling for unidentified segments
+- Reduced segment length to 20 seconds for better identification
+- Enabled verbose and debug modes by default
+
+### Added
+- Detailed logging for YouTube and Mixcloud downloaders
+- Specific error messages for common download failures
+- Debug logging for download initialization and settings
+- More informative success messages with track details
+
+### Fixed
+- Better handling of unidentified segments in identification process
+- More appropriate log levels for different types of messages
+- Simplified downloader factory implementation
+
 ## [0.5.7] - 2024-11-19
 
 ### Changed

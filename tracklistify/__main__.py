@@ -12,7 +12,7 @@ from .logger import logger
 from .track import Track
 from .downloaders import DownloaderFactory
 from .output import TracklistOutput
-from .validation import validate_and_clean_url, is_youtube_url
+from .validation import validate_and_clean_url, is_youtube_url, is_mixcloud_url, clean_url
 from .identification import IdentificationManager
 from .providers.factory import create_provider_factory
 
@@ -42,7 +42,22 @@ def get_mix_info(input_path: str) -> dict:
         dict: Mix information with default values if extraction fails
     """
     try:
+        # Clean URL if it's a URL
+        if is_youtube_url(input_path) or is_mixcloud_url(input_path):
+            input_path = clean_url(input_path)
+            
         if is_youtube_url(input_path):
+            import yt_dlp
+            with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+                info = ydl.extract_info(input_path, download=False)
+                return {
+                    'title': info.get('title', 'Unknown Mix'),
+                    'uploader': info.get('uploader', 'Unknown Artist'),
+                    'duration': str(timedelta(seconds=info.get('duration', 0))),
+                    'source': input_path
+                }
+                
+        if is_mixcloud_url(input_path):
             import yt_dlp
             with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
                 info = ydl.extract_info(input_path, download=False)
@@ -110,8 +125,8 @@ async def main() -> int:
         logger.debug(f"Cleaned URL: {input_path}")
     
     # Download if URL
-    if is_youtube_url(input_path):
-        logger.info("Downloading YouTube video...")
+    if is_youtube_url(input_path) or is_mixcloud_url(input_path):
+        logger.info(f"Downloading {'YouTube' if is_youtube_url(input_path) else 'Mixcloud'} audio...")
         try:
             import yt_dlp  # Import here to catch import error
             downloader = DownloaderFactory(config).create_downloader(input_path)

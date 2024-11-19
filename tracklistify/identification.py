@@ -110,11 +110,18 @@ class IdentificationManager:
                             raise IdentificationError("All providers failed with critical errors")
                     except ProviderError as e:
                         # Non-critical error - try next provider
-                        logger.warning(f"Provider {provider.__class__.__name__} error: {e}")
+                        if "URL is invalid" in str(e):
+                            # This is a normal case when Shazam can't identify a segment
+                            logger.debug(f"Provider {provider.__class__.__name__} could not identify segment {i+1}")
+                        else:
+                            logger.warning(f"Provider {provider.__class__.__name__} error: {e}")
                         last_error = e
                 
                 if not result and last_error:
-                    logger.error(f"All providers failed for segment {i+1}: {last_error}")
+                    if "URL is invalid" in str(last_error):
+                        logger.debug(f"No providers could identify segment {i+1}")
+                    else:
+                        logger.warning(f"All providers failed for segment {i+1}: {last_error}")
                     continue
                 
                 if result and result.get('metadata', {}).get('music'):
