@@ -114,12 +114,12 @@ async def main() -> int:
         logger.info("Downloading YouTube video...")
         try:
             import yt_dlp  # Import here to catch import error
-            downloader = DownloaderFactory.create_downloader(input_path)
+            downloader = DownloaderFactory(config).create_downloader(input_path)
             if not downloader:
                 logger.error("Failed to create downloader")
                 return 1
             
-            audio_path = downloader.download(input_path)
+            audio_path = await downloader.download(input_path)
             if not audio_path:
                 logger.error("Failed to download audio")
                 return 1

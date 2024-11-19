@@ -105,28 +105,32 @@ tracklistify --no-fallback input.mp3
 
 ## Configuration
 
-The application uses environment variables for configuration. Create a `.env` file:
+The following settings can be configured through environment variables or a `.env` file:
 
-```env
-# Provider Selection
-PRIMARY_PROVIDER=shazam
-PROVIDER_FALLBACK_ENABLED=true
-PROVIDER_FALLBACK_ORDER=acrcloud
+### Provider Settings
+- `PRIMARY_PROVIDER`: Primary track identification provider (default: "acrcloud")
+- `FALLBACK_ENABLED`: Enable provider fallback (default: true)
+- `FALLBACK_PROVIDERS`: List of fallback providers (default: ["shazam"])
 
-# Output Settings
-OUTPUT_FORMAT=json  # Options: json, markdown, m3u, all
-OUTPUT_DIRECTORY=output
+### Track Settings
+- `SEGMENT_LENGTH`: Length of audio segments in seconds (default: 60)
+- `MIN_CONFIDENCE`: Minimum confidence threshold (default: 0.0)
+- `TIME_THRESHOLD`: Time threshold for merging nearby tracks (default: 60)
 
-# Track Identification Settings
-SEGMENT_LENGTH=30
-MIN_CONFIDENCE=70
-TIME_THRESHOLD=60
-MAX_DUPLICATES=2
+### Cache Settings
+- `CACHE_ENABLED`: Enable caching (default: true)
+- `CACHE_TTL`: Cache time-to-live in seconds (default: 3600)
+- `CACHE_MAX_SIZE`: Maximum cache size (default: 1000)
 
-# Application Settings
-VERBOSE=false
-DEBUG=false
-```
+### Download Settings
+- `DOWNLOAD_QUALITY`: Audio quality in kbps (default: 192)
+- `DOWNLOAD_FORMAT`: Output audio format (default: mp3)
+- `DOWNLOAD_TEMP_DIR`: Custom temporary directory (default: ~/.tracklistify/temp)
+- `DOWNLOAD_MAX_RETRIES`: Maximum retry attempts (default: 3)
+
+### Output Settings
+- `OUTPUT_DIRECTORY`: Output directory for generated files (default: "output")
+- `OUTPUT_FORMAT`: Default output format (default: "json")
 
 ## Version History
 

@@ -41,6 +41,14 @@ class OutputConfig:
     format: str = field(default="json")
 
 @dataclass
+class DownloadConfig:
+    """Download configuration."""
+    quality: str = field(default="192")
+    format: str = field(default="mp3")
+    temp_dir: str = field(default_factory=lambda: os.path.join(os.path.expanduser("~"), ".tracklistify", "temp"))
+    max_retries: int = field(default=3)
+
+@dataclass
 class AppConfig:
     """Application configuration."""
     rate_limit_enabled: bool = field(default=True)
@@ -54,8 +62,9 @@ class Config:
     providers: ProviderConfig = field(default_factory=ProviderConfig)
     track: TrackConfig = field(default_factory=TrackConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
-    app: AppConfig = field(default_factory=AppConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    app: AppConfig = field(default_factory=AppConfig)
+    download: DownloadConfig = field(default_factory=DownloadConfig)
 
     def __post_init__(self):
         """Load configuration from environment."""
@@ -65,6 +74,7 @@ class Config:
         self._load_cache_config()
         self._load_app_config()
         self._load_output_config()
+        self._load_download_config()
 
     def _load_provider_config(self) -> None:
         """Load provider configuration."""
@@ -110,6 +120,15 @@ class Config:
         self.output = OutputConfig(
             directory=os.getenv('OUTPUT_DIRECTORY', self.output.directory),
             format=os.getenv('OUTPUT_FORMAT', self.output.format)
+        )
+
+    def _load_download_config(self) -> None:
+        """Load download configuration."""
+        self.download = DownloadConfig(
+            quality=os.getenv('DOWNLOAD_QUALITY', self.download.quality),
+            format=os.getenv('DOWNLOAD_FORMAT', self.download.format),
+            temp_dir=os.getenv('DOWNLOAD_TEMP_DIR', self.download.temp_dir),
+            max_retries=int(os.getenv('DOWNLOAD_MAX_RETRIES', self.download.max_retries))
         )
 
 _config_instance = None

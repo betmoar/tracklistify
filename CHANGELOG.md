@@ -22,6 +22,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - XML export
   - Rekordbox compatible format
 
+## [0.5.6] - 2024-01-07
+
+### Added
+- New download configuration options in `.env` file:
+  - `DOWNLOAD_QUALITY`: Audio quality setting (default: 320kbps)
+  - `DOWNLOAD_FORMAT`: Output audio format (default: mp3)
+  - `DOWNLOAD_TEMP_DIR`: Custom temporary directory
+  - `DOWNLOAD_MAX_RETRIES`: Maximum retry attempts for downloads
+
+### Changed
+- Improved downloader implementation with async support
+- Enhanced YouTube downloader with better error handling
+- Implemented singleton pattern for downloader instances
+- Made download quality and format configurable
+- Improved thread handling for non-blocking downloads
+
+### Removed
+- Redundant download code from main application
+- Unused app.py module
+
 ## [0.5.5] - 2024-11-19
 ### Changed
 - Cache implementation now uses ttl instead of duration
