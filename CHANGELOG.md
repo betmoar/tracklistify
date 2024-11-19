@@ -22,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - XML export
   - Rekordbox compatible format
 
+## [0.5.5] - 2024-11-19
+### Changed
+- Cache implementation now uses ttl instead of duration
+- Improved cache key generation with byte range support
+- Better error handling in cache operations
+- Added cache entry deletion method
+
+### Fixed
+- Cache configuration error with duration attribute
+- Cache expiration handling
+- Cache key generation for better segment isolation
+
 ## [0.5.4] - 2024-11-19
 ### Added
 - Exponential backoff retry logic for Shazam provider

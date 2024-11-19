@@ -196,9 +196,9 @@ class IdentificationManager:
         Returns:
             Optional[Dict]: Provider response if successful, None otherwise
         """
-        # Generate cache key
+        # Generate cache key using both time and byte positions for better granularity
         cache_key = hashlib.md5(
-            f"{audio_path}:{start_time}:{provider.__class__.__name__}".encode()
+            f"{audio_path}:{start_time}:{start_bytes}:{end_bytes}:{provider.__class__.__name__}".encode()
         ).hexdigest()
         
         # Check cache first

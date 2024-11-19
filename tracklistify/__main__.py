@@ -5,7 +5,6 @@ Main entry point for Tracklistify.
 import argparse
 import os
 from datetime import timedelta
-from pathlib import Path
 from typing import List, Optional
 
 from .config import get_config
@@ -32,7 +31,7 @@ def parse_args() -> argparse.Namespace:
                       help='Enable verbose logging')
     return parser.parse_args()
 
-def get_mix_info(input_path: str) -> Optional[dict]:
+def get_mix_info(input_path: str) -> dict:
     """
     Extract mix information from input.
     
@@ -40,7 +39,7 @@ def get_mix_info(input_path: str) -> Optional[dict]:
         input_path: Path to audio file or URL
         
     Returns:
-        dict: Mix information, or None if extraction failed
+        dict: Mix information with default values if extraction fails
     """
     try:
         if is_youtube_url(input_path):
@@ -53,21 +52,26 @@ def get_mix_info(input_path: str) -> Optional[dict]:
                     'duration': str(timedelta(seconds=info.get('duration', 0))),
                     'source': input_path
                 }
-        else:
-            from mutagen import File
-            audio = File(input_path)
-            if audio is None:
-                return None
                 
-            return {
-                'title': str(audio.get('title', ['Unknown Mix'])[0]),
-                'artist': str(audio.get('artist', ['Unknown Artist'])[0]),
-                'duration': str(timedelta(seconds=int(audio.info.length))),
-                'source': input_path
-            }
+        from mutagen import File
+        audio = File(input_path)
+        if audio is None:
+            raise ValueError("Could not read audio file")
+            
+        return {
+            'title': str(audio.get('title', ['Unknown Mix'])[0]),
+            'artist': str(audio.get('artist', ['Unknown Artist'])[0]),
+            'duration': str(timedelta(seconds=int(audio.info.length))),
+            'source': input_path
+        }
     except Exception as e:
-        logger.error(f"Failed to get mix info: {e}")
-        return None
+        logger.warning(f"Failed to get mix info: {e}, using defaults")
+        return {
+            'title': 'Unknown Mix',
+            'artist': 'Unknown Artist',
+            'duration': '00:00:00',
+            'source': input_path
+        }
 
 async def main() -> int:
     """Main entry point."""
@@ -127,9 +131,6 @@ async def main() -> int:
     
     # Get mix information
     mix_info = get_mix_info(input_path)
-    if not mix_info:
-        logger.error("Failed to get mix information")
-        return 1
     
     # Create identification manager with provider factory
     manager = IdentificationManager(config=config, provider_factory=provider_factory)

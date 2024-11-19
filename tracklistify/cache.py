@@ -47,10 +47,10 @@ class Cache:
             with open(cache_path, 'r') as f:
                 data = json.load(f)
                 
-            # Check if cache is expired
-            if time.time() - data['timestamp'] > self._config.cache.duration:
-                logger.debug(f"Cache expired for key: {key}")
-                os.remove(cache_path)
+            # Check if cache is expired using ttl
+            if time.time() - data['timestamp'] > self._config.cache.ttl:
+                logger.debug(f"Cache expired for key {key}")
+                self.delete(key)
                 return None
                 
             logger.debug(f"Cache hit for key: {key}")
@@ -86,10 +86,10 @@ class Cache:
         Clear expired cache entries.
         
         Args:
-            max_age: Maximum age in seconds, defaults to cache duration from config
+            max_age: Maximum age in seconds, defaults to cache ttl from config
         """
         if max_age is None:
-            max_age = self._config.cache.duration
+            max_age = self._config.cache.ttl
             
         now = time.time()
         count = 0
@@ -103,6 +103,19 @@ class Cache:
                 continue
                 
         logger.info(f"Cleared {count} expired cache entries")
+
+    def delete(self, key: str) -> None:
+        """
+        Delete cache entry.
+        
+        Args:
+            key: Cache key
+        """
+        cache_path = self._get_cache_path(key)
+        try:
+            cache_path.unlink()
+        except OSError:
+            pass
 
 # Global cache instance
 _cache_instance = None

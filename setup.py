@@ -6,21 +6,21 @@ from setuptools import setup, find_packages
 
 setup(
     name="tracklistify",
-    version="0.5.4",
+    version="0.5.5",
     packages=find_packages(),
     install_requires=[
         "pydub>=0.25.1",
         "pyacrcloud>=1.0.7",
-        "yt-dlp>=2023.7.6",
+        "yt-dlp>=2024.3.10",
         "requests>=2.31.0",
         "configparser>=5.3.0",
         "python-dotenv>=1.0.0",
         "aiohttp>=3.8.0",
         "shazamio>=0.4.0",
-        "librosa==0.10.1",
-        "numba==0.58.1",
-        "numpy>=1.23.5,<2.0.0",
-        "llvmlite==0.41.1",
+        # "librosa==0.10.1",
+        # "numba==0.58.1",
+        # "numpy>=1.23.5,<2.0.0",
+        # "llvmlite==0.41.1",
     ],
     extras_require={
         "dev": [
