@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tracklistify"
+dynamic = ["version"]
+description = "Automatic tracklist generator for DJ mixes and audio streams"
+readme = "README.md"
+authors = [
+    {name = "betmoar", email = "betmoar@mailsecure.me"}
+]
+license = {text = "MIT"}
+requires-python = ">=3.8"
+keywords = ["dj", "music", "tracklist", "mix", "audio", "recognition", "shazam"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "aiohttp>=3.10.11",
+    "configparser>=5.3.0",
+    "mutagen>=1.47.0",
+    "pydub>=0.25.1",
+    "pyacrcloud>=1.0.2",
+    "python-dotenv>=1.0.1",
+    "requests>=2.31.0",
+    "shazamio==0.7.0",
+    "yt-dlp>=2024.7.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.2",
+    "pytest-asyncio>=0.23.5",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.1",
+    "responses>=0.23.1",
+    "black>=23.7.0",
+    "isort>=5.12.0",
+    "flake8>=6.1.0",
+    "mypy>=1.5.1",
+    "pre-commit>=3.3.3",
+    "types-requests>=2.31.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/betmoar/tracklistify"
+Documentation = "https://github.com/betmoar/tracklistify#readme"
+Repository = "https://github.com/betmoar/tracklistify.git"
+"Bug Tracker" = "https://github.com/betmoar/tracklistify/issues"
+
+[project.scripts]
+tracklistify = "tracklistify.__main__:main"
+
+[tool.setuptools]
+packages = ["tracklistify"]
+
+[tool.setuptools_scm]
+write_to = "tracklistify/_version.py"
+version_scheme = "guess-next-dev"
+local_scheme = "node-and-date"
+
+[tool.black]
+line-length = 88
+target-version = ["py38"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+
+[tool.mypy]
+python_version = "3.8"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=tracklistify"
+testpaths = ["tests"]

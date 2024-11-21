@@ -1,6 +1,6 @@
 # Tracklistify
 
-🎵 Automatically identify and catalog tracks from DJ mixes and audio streams.
+Automatic tracklist generator for DJ mixes and audio streams. Identifies tracks in your mixes using multiple providers (Shazam, ACRCloud) and generates formatted playlists.
 
 ## Features
 
@@ -34,46 +34,34 @@
   - Flexible provider selection
   - Customizable output options
 
+## Requirements
+
+- Python 3.11 or higher
+- ffmpeg
+- git
+
 ## Installation
 
 1. Clone the repository:
-```bash
-git clone https://github.com/betmoar/tracklistify.git
-cd tracklistify
-```
+   ```bash
+   git clone https://github.com/betmoar/tracklistify.git
+   cd tracklistify
+   ```
 
-2. Install FFmpeg (if not already installed):
-```bash
-# macOS with Homebrew
-brew install ffmpeg
+2. Run the setup script:
+   ```bash
+   ./env-setup.sh
+   ```
 
-# Linux
-sudo apt-get install ffmpeg
-```
-
-3. Install the package:
-```bash
-pip install -e .
-```
-
-4. Copy the example environment file and configure your settings:
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your provider credentials and desired settings.
+3. Configure your environment:
+   - Copy `.env.example` to `.env`
+   - Edit `.env` with your settings
 
 ## Usage
 
-### Basic Usage
+   ```bash
+# Basic usage:
 
-Process a local audio file:
-```bash
-tracklistify path/to/audio.mp3
-```
-
-Analyze a YouTube video:
-```bash
 tracklistify https://youtube.com/watch?v=example
 ```
 
@@ -81,13 +69,15 @@ tracklistify https://youtube.com/watch?v=example
 
 By default, Tracklistify uses the format specified in your `.env` file (OUTPUT_FORMAT). You can override this using the command line:
 
-```bash
+   ```bash
 # Use specific format
+
 tracklistify -f json input.mp3    # JSON output
 tracklistify -f markdown input.mp3 # Markdown output
 tracklistify -f m3u input.mp3     # M3U playlist
 
 # Generate all formats
+
 tracklistify -f all input.mp3
 ```
 
@@ -97,54 +87,64 @@ If no format is specified via command line, the OUTPUT_FORMAT from your environm
 
 ```bash
 # Use specific provider
+
 tracklistify -p shazam input.mp3
 
 # Disable provider fallback
+
 tracklistify --no-fallback input.mp3
-```
+   ```
 
 ## Configuration
 
-The application can be configured using environment variables in a `.env` file:
+Key settings in `.env`:
 
-### Track Identification Settings
-- `SEGMENT_LENGTH`: Length of audio segments for identification (default: 20 seconds)
-- `MIN_CONFIDENCE`: Minimum confidence threshold for track matches (default: 50)
-- `TIME_THRESHOLD`: Time threshold for duplicate detection (default: 60 seconds)
-- `MAX_DUPLICATES`: Maximum number of allowed duplicate tracks (default: 2)
+```ini
+# Provider Selection
+PRIMARY_PROVIDER=shazam
+PROVIDER_FALLBACK_ENABLED=false
+PROVIDER_FALLBACK_ORDER=acrcloud
 
-### Application Settings
-- `VERBOSE`: Enable verbose logging (default: true)
-- `DEBUG`: Enable debug mode (default: true)
-- `MAX_REQUESTS_PER_MINUTE`: Rate limit for API requests (default: 60)
-- `RATE_LIMIT_ENABLED`: Enable rate limiting (default: true)
+# Track Identification Settings
+SEGMENT_LENGTH=15
+MIN_CONFIDENCE=50
+TIME_THRESHOLD=60
+MAX_DUPLICATES=1
 
-### Output Settings
-- `OUTPUT_FORMAT`: Output format (options: json, csv, xml, all)
-- `OUTPUT_DIRECTORY`: Directory for saving output files (default: output)
+# Output Settings
+OUTPUT_FORMAT=all
+OUTPUT_DIRECTORY=output
+```
 
-### Cache Settings
-- `CACHE_ENABLED`: Enable result caching (default: false)
+## Development
 
-### Logging
+1. Set up development environment:
+   ```bash
+   ./env-setup.sh --dev
+   ```
 
-The application uses different log levels for various types of messages:
+2. Install pre-commit hooks:
+   ```bash
+   pre-commit install
+   ```
 
-- DEBUG: Technical details, initialization info, file paths
-- INFO: Important operations and successful downloads
-- WARNING: Non-critical issues that might need attention
-- ERROR: Critical issues that prevent successful operation
+3. Run tests:
+   ```bash
+   pytest
+   ```
 
-Enable `VERBOSE=true` to see detailed debug messages during operation.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guidelines.
 
-## Version History
+## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for version history and latest changes.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+See [CHANGELOG.md](CHANGELOG.md) for version history and changes.
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [Shazam](https://www.shazam.com/) for audio recognition
+- [ACRCloud](https://www.acrcloud.com/) for audio recognition
+- [FFmpeg](https://ffmpeg.org/) for audio processing

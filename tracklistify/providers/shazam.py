@@ -111,7 +111,7 @@ class ShazamProvider(TrackIdentificationProvider):
                 
                 # Use retry logic for recognition
                 result = await self._retry_with_backoff(
-                    self.shazam.recognize_song,
+                    self.shazam.recognize,
                     processed_audio
                 )
                 

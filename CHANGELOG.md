@@ -22,6 +22,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - XML export
   - Rekordbox compatible format
 
+## [0.6.0] - 2024-03-21
+### Added
+- Modern Python packaging with pyproject.toml
+- Dynamic version management using setuptools_scm
+- Improved development tooling:
+  - Black for code formatting
+  - isort for import sorting
+  - mypy for type checking
+  - flake8 for linting
+  - pytest for testing
+  - pre-commit hooks
+- Enhanced Shazam provider:
+  - Updated to shazamio 0.7.0
+  - Improved recognition accuracy
+  - Better error handling and retries
+
+### Changed
+- Optimized track identification settings:
+  - Reduced segment length to 15 seconds for faster processing
+  - Set minimum confidence threshold to 50%
+  - Improved duplicate handling with single track limit
+- Simplified provider configuration:
+  - Made Shazam the default provider
+  - Streamlined fallback settings
+- Enhanced environment setup process
+- Updated Python requirement to 3.11+
+
+### Fixed
+- Various bug fixes and performance improvements
+- Enhanced error handling in audio processing
+- More reliable track identification
+
 ## [0.5.8] - 2024-01-09
 
 ### Changed

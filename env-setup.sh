@@ -1,16 +1,17 @@
 #!/bin/bash
 
 # Script name: env-setup.sh
+# Description: Setup script for Tracklistify development environment
 
 # Configuration
 VENV_DIR="venv"
 PYTHON="python3"
-REQUIREMENTS="requirements.txt"
-DEV_REQUIREMENTS="requirements-dev.txt"
+MIN_PYTHON_VERSION="3.11"
 
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # Function to print status messages
@@ -23,11 +24,34 @@ print_warning() {
     echo -e "${YELLOW}Warning:${NC} $1"
 }
 
+# Function to print errors
+print_error() {
+    echo -e "${RED}Error:${NC} $1"
+}
+
+# Check Python version
+check_python_version() {
+    local python_version
+    python_version=$($PYTHON --version 2>&1 | cut -d' ' -f2)
+    
+    # Convert versions to comparable integers (e.g., 3.11.1 -> 3011001)
+    local min_version_int=$(echo $MIN_PYTHON_VERSION | awk -F. '{ printf("%d%03d%03d\n", $1, $2, $3) }')
+    local current_version_int=$(echo $python_version | awk -F. '{ printf("%d%03d%03d\n", $1, $2, $3) }')
+    
+    if [ "$current_version_int" -lt "$min_version_int" ]; then
+        print_error "Python version must be >= $MIN_PYTHON_VERSION (found $python_version)"
+        exit 1
+    fi
+}
+
 # Check if Python is installed
-if ! command -v $PYTHON &> /dev/null; then
-    echo "Error: Python 3 is not installed"
-    exit 1
-fi
+check_python() {
+    if ! command -v $PYTHON &> /dev/null; then
+        print_error "Python 3 is not installed"
+        exit 1
+    fi
+    check_python_version
+}
 
 # Check if system has required system dependencies
 check_system_deps() {
@@ -38,9 +62,14 @@ check_system_deps() {
         missing_deps+=("ffmpeg")
     fi
 
+    # Check for git (needed for setuptools_scm)
+    if ! command -v git &> /dev/null; then
+        missing_deps+=("git")
+    fi
+
     # If there are missing dependencies, print instructions
     if [ ${#missing_deps[@]} -ne 0 ]; then
-        echo "Missing system dependencies: ${missing_deps[*]}"
+        print_error "Missing system dependencies: ${missing_deps[*]}"
         echo "Please install them using your package manager:"
         
         if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -72,25 +101,51 @@ setup_venv() {
     fi
 }
 
-# Install dependencies
-install_deps() {
-    print_status "Installing dependencies..."
+# Install shazamio and its core dependencies
+install_shazamio() {
+    print_status "Installing shazamio and dependencies..."
+    
+    # Create a temporary directory for shazamio-core
+    local temp_dir=$(mktemp -d)
+    
+    # Clone and install shazamio-core
+    git clone https://github.com/shazamio/shazamio-core.git "$temp_dir"
+    cd "$temp_dir"
+    git switch --detach 1.0.7
+    python -m pip install .
+    
+    # Install shazamio itself
+    pip install shazamio==0.7.0
+    
+    # Clean up
+    cd - > /dev/null
+    rm -rf "$temp_dir"
+}
+
+# Install package and dependencies
+install_package() {
+    print_status "Installing package and dependencies..."
     
     # Upgrade pip
     pip install --upgrade pip
 
-    # Install requirements
-    if [ -f "$REQUIREMENTS" ]; then
-        pip install -r "$REQUIREMENTS"
+    # Install shazamio first
+    install_shazamio
+    
+    if [ "$1" == "--dev" ]; then
+        print_status "Installing in development mode with dev dependencies..."
+        pip install -e ".[dev]"
     else
-        echo "Error: $REQUIREMENTS not found"
-        exit 1
+        print_status "Installing in development mode..."
+        pip install -e "."
     fi
+}
 
-    # Install dev requirements if --dev flag is passed
-    if [ "$1" == "--dev" ] && [ -f "$DEV_REQUIREMENTS" ]; then
-        print_status "Installing development dependencies..."
-        pip install -r "$DEV_REQUIREMENTS"
+# Setup pre-commit hooks
+setup_precommit() {
+    if [ "$1" == "--dev" ]; then
+        print_status "Setting up pre-commit hooks..."
+        pre-commit install
     fi
 }
 
@@ -107,21 +162,30 @@ setup_env() {
 main() {
     print_status "Starting Tracklistify setup..."
     
+    # Check Python installation
+    check_python
+    
     # Check system dependencies
     check_system_deps
     
     # Setup virtual environment
     setup_venv
     
-    # Install dependencies
-    install_deps "$1"
+    # Install package and dependencies
+    install_package "$1"
+    
+    # Setup pre-commit hooks for dev installation
+    setup_precommit "$1"
     
     # Setup environment file
     setup_env
     
-    print_status "Setup complete! You can now run Tracklistify using:"
-    echo "source $VENV_DIR/bin/activate  # Activate the virtual environment"
-    echo "python -m tracklistify <command>  # Run Tracklistify"
+    print_status "Setup complete! You can now:"
+    echo "1. Edit .env with your credentials (if you haven't already)"
+    echo "2. Activate the virtual environment:"
+    echo "   source $VENV_DIR/bin/activate"
+    echo "3. Run Tracklistify:"
+    echo "   tracklistify <command>"
 }
 
 # Run main function with all arguments
