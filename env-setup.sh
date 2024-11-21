@@ -146,6 +146,7 @@ setup_precommit() {
     if [ "$1" == "--dev" ]; then
         print_status "Setting up pre-commit hooks..."
         pre-commit install
+        pre-commit install --hook-type commit-msg
     fi
 }
 

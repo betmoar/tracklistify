@@ -102,10 +102,10 @@ async def main() -> int:
     
     # Override provider settings from command line
     if args.provider:
-        config.providers.primary_provider = args.provider
+        config.primary_provider = args.provider
         logger.debug(f"Using primary provider: {args.provider}")
     if args.no_fallback:
-        config.providers.fallback_enabled = False
+        config.fallback_enabled = False
         logger.debug("Provider fallback disabled")
     
     # Create provider factory
@@ -171,8 +171,8 @@ async def main() -> int:
     elif args.formats:
         formats = [args.formats]
     else:
-        # Use format from config, defaulting to json if not set
-        config_format = os.environ.get('OUTPUT_FORMAT', config.output.format.lower())
+        # Get output format from environment or config
+        config_format = os.environ.get('OUTPUT_FORMAT', config.output_format.lower())
         if config_format == 'all':
             formats = ['json', 'markdown', 'm3u']
         elif config_format in ['json', 'markdown', 'm3u']:

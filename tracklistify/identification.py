@@ -10,7 +10,7 @@ from datetime import timedelta
 
 from mutagen import File
 
-from .config import Config, get_config
+from .config import TrackIdentificationConfig, get_config
 from .providers.factory import create_provider_factory, ProviderFactory
 from .providers.base import TrackIdentificationProvider, ProviderError, IdentificationError, AuthenticationError, RateLimitError
 from .track import Track, TrackMatcher
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class IdentificationManager:
     """Manages track identification using configured providers."""
     
-    def __init__(self, config: Config = None, provider_factory: ProviderFactory = None):
+    def __init__(self, config: TrackIdentificationConfig = None, provider_factory: ProviderFactory = None):
         """Initialize identification manager."""
         self.config = config or get_config()
         self.provider_factory = provider_factory or create_provider_factory(self.config)
@@ -56,7 +56,7 @@ class IdentificationManager:
                 raise IdentificationError("Failed to read audio file metadata")
                 
             total_length = audio.info.length
-            segment_length = self.config.track.segment_length
+            segment_length = self.config.segment_length
             total_segments = int(total_length // segment_length)
             
             # Log identification start
@@ -157,7 +157,7 @@ class IdentificationManager:
         providers = []
         
         # Add primary provider first
-        primary_provider_name = self.config.providers.primary_provider
+        primary_provider_name = self.config.primary_provider
         primary = self.provider_factory.get_identification_provider(primary_provider_name)
         if primary:
             providers.append(primary)
@@ -167,9 +167,9 @@ class IdentificationManager:
             return []
         
         # Add fallback providers if enabled
-        if self.config.providers.fallback_enabled:
+        if self.config.fallback_enabled:
             logger.info("Provider fallback is enabled")
-            for provider_name in self.config.providers.fallback_providers:
+            for provider_name in self.config.fallback_providers:
                 if provider_name != primary_provider_name:  # Skip if it's the primary provider
                     provider = self.provider_factory.get_identification_provider(provider_name)
                     if provider:
@@ -209,7 +209,7 @@ class IdentificationManager:
         ).hexdigest()
         
         # Check cache first
-        if self.config.cache.enabled:
+        if self.config.cache_enabled:
             try:
                 cached = self.cache.get(cache_key)
                 if cached:
@@ -219,7 +219,7 @@ class IdentificationManager:
                 logger.warning(f"Cache error: {e}")
         
         # Rate limit check
-        if self.config.app.rate_limit_enabled:
+        if self.config.rate_limit_enabled:
             if not self.rate_limiter.acquire(timeout=30):
                 raise ProviderError("Rate limit exceeded")
         
@@ -236,7 +236,7 @@ class IdentificationManager:
             result = await provider.identify_track(segment_data, start_time)
             
             # Cache result if successful
-            if result and self.config.cache.enabled:
+            if result and self.config.cache_enabled:
                 try:
                     self.cache.set(cache_key, result)
                 except Exception as e:

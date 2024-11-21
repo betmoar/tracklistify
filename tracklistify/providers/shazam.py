@@ -28,7 +28,7 @@ class ShazamProvider(TrackIdentificationProvider):
         self.shazam = None
         self._lock = asyncio.Lock()
         self._last_request_time = 0
-        self._min_request_interval = 1.0  # Minimum time between requests in seconds
+        self._min_request_interval = 3.0  # Minimum time between requests in seconds
         self.max_retries = max_retries
     
     async def _get_session(self) -> aiohttp.ClientSession:

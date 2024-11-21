@@ -3,7 +3,29 @@ Custom exceptions for Tracklistify.
 
 This module defines specific exception types for different error scenarios
 in the Tracklistify application, making error handling more precise and
-informative.
+informative. The exception hierarchy is organized as follows:
+
+Base Exceptions:
+- TracklistifyError: Base exception for all Tracklistify errors
+  - APIError: API request failures
+  - DownloadError: Download operation failures
+  - ConfigError: Configuration issues
+  - AudioProcessingError: Audio processing failures
+  - TrackIdentificationError: Track identification failures
+  - ValidationError: Input validation failures
+  - RetryExceededError: Maximum retry attempts exceeded
+  - TimeoutError: Operation timeouts
+  - ProviderError: Base for provider-specific errors
+  - DownloaderError: Base for downloader-specific errors
+
+Provider-Specific Exceptions:
+- ACRCloudError: ACRCloud API specific errors
+- ShazamError: Shazam API specific errors
+- SpotifyError: Spotify API specific errors
+
+Downloader-Specific Exceptions:
+- YouTubeError: YouTube download specific errors
+- SoundCloudError: SoundCloud download specific errors
 """
 
 class TracklistifyError(Exception):
@@ -59,3 +81,49 @@ class TimeoutError(TracklistifyError):
         self.timeout = timeout
         self.operation = operation
         super().__init__(message)
+
+# Provider-specific exceptions
+class ProviderError(TracklistifyError):
+    """Base exception for provider-specific errors."""
+    def __init__(self, message: str, provider: str = None, cause: Exception = None):
+        self.provider = provider
+        self.cause = cause
+        super().__init__(message)
+
+class ACRCloudError(ProviderError):
+    """Raised when ACRCloud API operations fail."""
+    def __init__(self, message: str, error_code: str = None, cause: Exception = None):
+        self.error_code = error_code
+        super().__init__(message, provider="ACRCloud", cause=cause)
+
+class ShazamError(ProviderError):
+    """Raised when Shazam API operations fail."""
+    def __init__(self, message: str, error_code: str = None, cause: Exception = None):
+        self.error_code = error_code
+        super().__init__(message, provider="Shazam", cause=cause)
+
+class SpotifyError(ProviderError):
+    """Raised when Spotify API operations fail."""
+    def __init__(self, message: str, error_code: str = None, cause: Exception = None):
+        self.error_code = error_code
+        super().__init__(message, provider="Spotify", cause=cause)
+
+# Downloader-specific exceptions
+class DownloaderError(TracklistifyError):
+    """Base exception for downloader-specific errors."""
+    def __init__(self, message: str, service: str = None, cause: Exception = None):
+        self.service = service
+        self.cause = cause
+        super().__init__(message)
+
+class YouTubeError(DownloaderError):
+    """Raised when YouTube download operations fail."""
+    def __init__(self, message: str, video_id: str = None, cause: Exception = None):
+        self.video_id = video_id
+        super().__init__(message, service="YouTube", cause=cause)
+
+class SoundCloudError(DownloaderError):
+    """Raised when SoundCloud download operations fail."""
+    def __init__(self, message: str, track_id: str = None, cause: Exception = None):
+        self.track_id = track_id
+        super().__init__(message, service="SoundCloud", cause=cause)
