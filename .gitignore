@@ -160,6 +160,7 @@ cython_debug/
 #.idea/
 
 # other files and directories
+assets/
 temp_segments/
 .vscode/
 .DS_Store
