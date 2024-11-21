@@ -166,3 +166,4 @@ temp_segments/
 .DS_Store
 dev/
 output/*
+examples/

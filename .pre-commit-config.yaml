@@ -32,3 +32,9 @@ repos:
     hooks:
     -   id: mypy
         additional_dependencies: [types-requests]
+
+-   repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.18.4
+    hooks:
+    -   id: commitizen
+        stages: [commit-msg]

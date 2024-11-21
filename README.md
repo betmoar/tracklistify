@@ -116,22 +116,41 @@ OUTPUT_FORMAT=all
 OUTPUT_DIRECTORY=output
 ```
 
-## Development
+## Development Setup
 
-1. Set up development environment:
-   ```bash
-   ./env-setup.sh --dev
-   ```
+1. Clone the repository:
+```bash
+git clone https://github.com/betmoar/tracklistify.git
+cd tracklistify
+```
 
-2. Install pre-commit hooks:
-   ```bash
-   pre-commit install
-   ```
+2. Run the environment setup script:
+```bash
+./env-setup.sh --dev
+```
 
-3. Run tests:
-   ```bash
-   pytest
-   ```
+This will:
+- Check system requirements
+- Create a virtual environment
+- Install all dependencies
+- Set up pre-commit hooks
+- Create initial configuration
+
+3. Activate the virtual environment:
+```bash
+source venv/bin/activate
+```
+
+4. Configure your environment:
+- Copy `.env.example` to `.env` if not already done
+- Edit `.env` with your API credentials
+
+## Development Guidelines
+
+- Use pre-commit hooks for code quality
+- Follow conventional commits for version control
+- Run tests before submitting changes
+- Update documentation for new features
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guidelines.
 

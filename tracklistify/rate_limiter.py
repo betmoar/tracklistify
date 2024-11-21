@@ -18,6 +18,7 @@ class RateLimiter:
         self._tokens = self._config.app.max_requests_per_minute
         self._last_update = time.time()
         self._lock = Lock()
+        logger.info(f"Rate limiter initialized with {self._tokens} tokens per minute")
         
     def _refill(self) -> None:
         """Refill tokens based on elapsed time."""
@@ -27,11 +28,13 @@ class RateLimiter:
         # Calculate tokens to add (1 token per (60/max_requests) seconds)
         new_tokens = int(elapsed / (60.0 / self._config.app.max_requests_per_minute))
         if new_tokens > 0:
+            old_tokens = self._tokens
             self._tokens = min(
                 self._tokens + new_tokens,
                 self._config.app.max_requests_per_minute
             )
             self._last_update = now
+            logger.debug(f"Refilled {new_tokens} tokens ({old_tokens} -> {self._tokens})")
             
     def acquire(self, timeout: Optional[float] = None) -> bool:
         """
@@ -44,6 +47,7 @@ class RateLimiter:
             bool: True if token acquired, False if timed out
         """
         start_time = time.time()
+        wait_start = None
         
         while True:
             with self._lock:
@@ -51,13 +55,22 @@ class RateLimiter:
                 
                 if self._tokens > 0:
                     self._tokens -= 1
-                    logger.debug(f"Token acquired, {self._tokens} remaining")
+                    if wait_start:
+                        wait_duration = time.time() - wait_start
+                        logger.info(f"Rate limit wait complete after {wait_duration:.2f}s, token acquired ({self._tokens} remaining)")
+                    else:
+                        logger.debug(f"Token acquired immediately ({self._tokens} remaining)")
                     return True
+                
+                if wait_start is None:
+                    wait_start = time.time()
+                    logger.info(f"Rate limit reached, waiting for token (0/{self._config.app.max_requests_per_minute} available)")
                     
             # Check timeout
             if timeout is not None:
-                if time.time() - start_time >= timeout:
-                    logger.warning("Rate limit timeout reached")
+                elapsed = time.time() - start_time
+                if elapsed >= timeout:
+                    logger.warning(f"Rate limit timeout reached after {elapsed:.2f}s")
                     return False
                     
             # Wait before trying again
