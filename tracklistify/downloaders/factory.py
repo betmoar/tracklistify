@@ -5,6 +5,7 @@ Factory for creating appropriate downloader instances.
 from typing import Dict, Optional
 from ..logger import logger
 from ..validation import is_youtube_url, is_mixcloud_url
+from ..config import TrackIdentificationConfig, get_config
 from .base import Downloader
 from .mixcloud import MixcloudDownloader
 from .youtube import YouTubeDownloader
@@ -12,7 +13,7 @@ from .youtube import YouTubeDownloader
 class DownloaderFactory:
     """Factory class for creating appropriate downloader instances."""
     
-    def __init__(self, config=None):
+    def __init__(self, config: Optional[TrackIdentificationConfig] = None):
         """Initialize factory with configuration.
         
         Args:

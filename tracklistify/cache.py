@@ -9,17 +9,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .config import get_config
+from .config import TrackIdentificationConfig, get_config
 from .logger import logger
 
 class Cache:
     """Simple file-based cache for API responses."""
     
-    def __init__(self, cache_dir: str = ".cache"):
+    def __init__(self, cache_dir: Optional[str] = None):
         """Initialize cache with directory."""
-        self.cache_dir = Path(cache_dir)
+        config = get_config()
+        self.cache_dir = Path(cache_dir) if cache_dir else config.cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._config = get_config()
+        self._config = config
         
     def _get_cache_path(self, key: str) -> Path:
         """Get cache file path for key."""
@@ -39,6 +40,9 @@ class Cache:
         Returns:
             Dict containing cached data if valid, None otherwise
         """
+        if not self._config.cache_enabled:
+            return None
+
         cache_path = self._get_cache_path(key)
         if not cache_path.exists():
             return None
@@ -48,7 +52,7 @@ class Cache:
                 data = json.load(f)
                 
             # Check if cache is expired using ttl
-            if time.time() - data['timestamp'] > self._config.cache.ttl:
+            if time.time() - data['timestamp'] > self._config.cache_ttl:
                 logger.debug(f"Cache expired for key {key}")
                 self.delete(key)
                 return None
@@ -68,6 +72,9 @@ class Cache:
             key: Cache key
             value: Data to cache
         """
+        if not self._config.cache_enabled:
+            return
+
         cache_path = self._get_cache_path(key)
         try:
             cache_data = {
@@ -88,8 +95,11 @@ class Cache:
         Args:
             max_age: Maximum age in seconds, defaults to cache ttl from config
         """
+        if not self._config.cache_enabled:
+            return
+
         if max_age is None:
-            max_age = self._config.cache.ttl
+            max_age = self._config.cache_ttl
             
         now = time.time()
         count = 0

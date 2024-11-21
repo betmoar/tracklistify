@@ -13,8 +13,8 @@ except ImportError:
 # Get package metadata
 _metadata = metadata("tracklistify")
 
-__title__ = _metadata["Name"]
-__author__ = _metadata["Author"]
-__license__ = _metadata["License"]
+__title__ = _metadata.get("Name", "")
+__author__ = _metadata.get("Author", "Unknown")
+__license__ = _metadata.get("License", "")
 
 __all__ = ["__version__", "__title__", "__author__", "__license__"]

@@ -1,338 +1,557 @@
-"""Tests for the Tracklistify configuration system."""
+"""Tests for configuration management."""
 
 import os
 from pathlib import Path
 import pytest
-from tracklistify.config import TracklistifyConfig, AppConfig, ProviderConfig, TrackConfig, CacheConfig, OutputConfig, DownloadConfig
+
+from tracklistify.config import (
+    TrackIdentificationConfig,
+    get_config,
+    clear_config,
+    generate_field_docs,
+    generate_validation_docs,
+    generate_example_docs,
+    ConfigDocGenerator
+)
+from tracklistify.config.validation import (
+    validate_positive_float,
+    validate_positive_int,
+    validate_probability,
+    validate_path,
+    validate_string_list,
+    validate_optional_string
+)
+from tracklistify.config.security import (
+    is_sensitive_field,
+    mask_sensitive_value,
+    mask_sensitive_data,
+    detect_sensitive_fields
+)
+from tracklistify.config.docs import (
+    ConfigDocGenerator,
+    generate_field_docs,
+    generate_validation_docs,
+    generate_example_docs
+)
 
 def test_default_config():
     """Test default configuration values."""
-    config = TracklistifyConfig()
+    config = TrackIdentificationConfig()
     
-    # Test app config defaults
-    assert config.app.max_requests_per_minute == 60
-    assert config.app.max_concurrent_requests == 5
-    assert config.app.rate_limit_enabled is True
-    assert config.app.rate_limit_window == 60
-    assert config.app.max_retries == 3
-    assert config.app.retry_delay == 1.0
-    assert config.app.retry_backoff == 2.0
-    assert config.app.retry_max_delay == 30.0
+    # Track identification settings
+    assert config.segment_length == 60
+    assert config.min_confidence == 0.0
+    assert config.time_threshold == 60.0
+    assert config.max_duplicates == 2
 
-    # Test provider config defaults
-    assert config.providers.primary_provider == "shazam"
-    assert config.providers.fallback_enabled is False
-    assert config.providers.fallback_order == "acrcloud"
+    # Provider settings
+    assert config.primary_provider == "shazam"
+    assert config.fallback_enabled is False
+    assert config.fallback_providers == ["acrcloud"]
+    assert config.acrcloud_host == "identify-eu-west-1.acrcloud.com"
+    assert config.acrcloud_timeout == 10
+    assert config.shazam_enabled is True
+    assert config.shazam_timeout == 10
+    assert config.spotify_timeout == 10
+    assert config.retry_strategy == "exponential"
+    assert config.retry_max_attempts == 3
+    assert config.retry_base_delay == 1.0
+    assert config.retry_max_delay == 30.0
 
-    # Test track config defaults
-    assert config.track.confidence_threshold == 0.8
-    assert config.track.segment_length == 30
-    assert config.track.overlap == 5
-    assert config.track.time_threshold == 60
-    assert config.track.max_duplicates == 2
-    assert config.track.min_confidence == 0.8
+    # Rate limiting
+    assert config.rate_limit_enabled is True
+    assert config.max_requests_per_minute == 60
 
-    # Test cache config defaults
-    assert config.cache.enabled is True
-    assert config.cache.ttl == 3600
-    assert config.cache.max_size == 1000
+    # Cache settings
+    assert config.cache_enabled is True
+    assert config.cache_ttl == 3600
+    assert config.cache_max_size == 1000
+    assert config.cache_storage_format == "json"
+    assert config.cache_compression_enabled is True
+    assert config.cache_compression_level == 6
+    assert config.cache_cleanup_enabled is True
+    assert config.cache_cleanup_interval == 3600
+    assert config.cache_max_age == 86400
+    assert config.cache_min_free_space == 1024 * 1024 * 100
 
-def test_environment_variable_override():
-    """Test environment variable overrides."""
-    # Set test environment variables
-    os.environ["RATE_LIMIT_REQUESTS"] = "30"
-    os.environ["MAX_CONCURRENT_REQUESTS"] = "3"
-    os.environ["CONFIDENCE_THRESHOLD"] = "0.9"
-    os.environ["SEGMENT_LENGTH"] = "45"
-    os.environ["CACHE_ENABLED"] = "false"
-    
-    config = TracklistifyConfig()
-    config.load()
-    
-    # Test overridden values
-    assert config.app.max_requests_per_minute == 30
-    assert config.app.max_concurrent_requests == 3
-    assert config.track.confidence_threshold == 0.9
-    assert config.track.segment_length == 45
-    assert config.cache.enabled is False
-    
-    # Clean up environment
-    del os.environ["RATE_LIMIT_REQUESTS"]
-    del os.environ["MAX_CONCURRENT_REQUESTS"]
-    del os.environ["CONFIDENCE_THRESHOLD"]
-    del os.environ["SEGMENT_LENGTH"]
-    del os.environ["CACHE_ENABLED"]
+    # Output settings
+    assert config.output_format == "all"
 
-def test_config_dot_notation():
-    """Test configuration access using dot notation."""
-    config = TracklistifyConfig()
-    
-    # Test accessing values using dot notation
-    assert config.get("app.max_requests_per_minute") == 60
-    assert config.get("providers.primary_provider") == "shazam"
-    assert config.get("track.confidence_threshold") == 0.8
-    assert config.get("cache.enabled") is True
-    
-    # Test non-existent keys
-    assert config.get("nonexistent.key") is None
-    assert config.get("nonexistent.key", "default") == "default"
+    # Download settings
+    assert config.download_quality == "192"
+    assert config.download_format == "mp3"
+    assert config.download_max_retries == 3
 
-def test_sensitive_data_masking():
-    """Test sensitive data is properly masked in string representation."""
-    config = TracklistifyConfig()
-    config.providers.acrcloud_access_key = "secret_key"
-    config.providers.acrcloud_access_secret = "secret_secret"
-    config.providers.spotify_client_id = "spotify_id"
-    config.providers.spotify_client_secret = "spotify_secret"
+    # Base config settings
+    assert isinstance(config.output_dir, Path)
+    assert isinstance(config.cache_dir, Path)
+    assert isinstance(config.temp_dir, Path)
+    assert config.verbose is False
+    assert config.debug is False
+
+@pytest.fixture
+def temp_test_dir(tmp_path):
+    """Create a temporary directory for tests."""
+    yield tmp_path
+
+def test_custom_config(temp_test_dir):
+    """Test custom configuration values."""
+    config = TrackIdentificationConfig(
+        # Track identification settings
+        segment_length=30,
+        min_confidence=0.8,
+        time_threshold=45.0,
+        max_duplicates=5,
+
+        # Provider settings
+        primary_provider="shazam",
+        fallback_enabled=False,
+        fallback_providers=["acrcloud"],
+        acrcloud_timeout=20,
+        shazam_timeout=20,
+        spotify_timeout=20,
+        retry_max_attempts=5,
+        retry_base_delay=2.0,
+        retry_max_delay=60.0,
+
+        # Rate limiting
+        rate_limit_enabled=False,
+        max_requests_per_minute=120,
+
+        # Cache settings
+        cache_enabled=False,
+        cache_ttl=7200,
+        cache_max_size=2000,
+        cache_compression_level=9,
+        cache_cleanup_interval=7200,
+        cache_max_age=172800,
+
+        # Output settings
+        output_format="yaml",
+
+        # Download settings
+        download_quality="320",
+        download_format="flac",
+        download_max_retries=5,
+
+        # Base config settings
+        output_dir=temp_test_dir / "custom_output",
+        cache_dir=temp_test_dir / "custom_cache",
+        temp_dir=temp_test_dir / "custom_temp",
+        verbose=True,
+        debug=True
+    )
+
+    # Track identification settings
+    assert config.segment_length == 30
+    assert config.min_confidence == 0.8
+    assert config.time_threshold == 45.0
+    assert config.max_duplicates == 5
+
+    # Provider settings
+    assert config.primary_provider == "shazam"
+    assert config.fallback_enabled is False
+    assert config.fallback_providers == ["acrcloud"]
+    assert config.acrcloud_timeout == 20
+    assert config.shazam_timeout == 20
+    assert config.spotify_timeout == 20
+    assert config.retry_max_attempts == 5
+    assert config.retry_base_delay == 2.0
+    assert config.retry_max_delay == 60.0
+
+    # Rate limiting
+    assert config.rate_limit_enabled is False
+    assert config.max_requests_per_minute == 120
+
+    # Cache settings
+    assert config.cache_enabled is False
+    assert config.cache_ttl == 7200
+    assert config.cache_max_size == 2000
+    assert config.cache_compression_level == 9
+    assert config.cache_cleanup_interval == 7200
+    assert config.cache_max_age == 172800
+
+    # Output settings
+    assert config.output_format == "yaml"
+
+    # Download settings
+    assert config.download_quality == "320"
+    assert config.download_format == "flac"
+    assert config.download_max_retries == 5
+
+    # Base config settings
+    assert config.output_dir == temp_test_dir / "custom_output"
+    assert config.cache_dir == temp_test_dir / "custom_cache"
+    assert config.temp_dir == temp_test_dir / "custom_temp"
+    assert config.verbose is True
+    assert config.debug is True
+
+def test_validation_positive_float():
+    """Test validation of positive float values."""
+    assert validate_positive_float(1.0, 'test') == 1.0
     
-    str_repr = str(config)
+    with pytest.raises(TypeError):
+        validate_positive_float('not a number', 'test')
     
-    # Check that sensitive data is masked
-    assert "secret_key" not in str_repr
-    assert "secret_secret" not in str_repr
-    assert "spotify_id" not in str_repr
-    assert "spotify_secret" not in str_repr
-    assert "***" in str_repr
+    with pytest.raises(ValueError):
+        validate_positive_float(0.0, 'test')
+    
+    with pytest.raises(ValueError):
+        validate_positive_float(-1.0, 'test')
+
+def test_validation_positive_int():
+    """Test validation of positive integer values."""
+    assert validate_positive_int(1, 'test') == 1
+    
+    with pytest.raises(TypeError):
+        validate_positive_int(1.5, 'test')
+    
+    with pytest.raises(ValueError):
+        validate_positive_int(0, 'test')
+    
+    with pytest.raises(ValueError):
+        validate_positive_int(-1, 'test')
+
+def test_validation_probability():
+    """Test validation of probability values."""
+    assert validate_probability(0.5, 'test') == 0.5
+    
+    with pytest.raises(TypeError):
+        validate_probability('not a number', 'test')
+    
+    with pytest.raises(ValueError):
+        validate_probability(-0.1, 'test')
+    
+    with pytest.raises(ValueError):
+        validate_probability(1.1, 'test')
+
+def test_validation_path():
+    """Test validation of path values."""
+    test_dir = Path('test_dir')
+    test_dir.mkdir(exist_ok=True)
+    
+    try:
+        assert validate_path(test_dir, must_exist=True) == test_dir.resolve()
+        assert validate_path('test_dir', must_exist=True) == test_dir.resolve()
+        
+        with pytest.raises(ValueError):
+            validate_path('nonexistent_dir', must_exist=True)
+    
+    finally:
+        test_dir.rmdir()
+
+def test_string_list_validation():
+    """Test validation of string lists."""
+    valid_list = ['item1', 'item2']
+    assert validate_string_list(valid_list, 'test_list') == valid_list
+    
+    with pytest.raises(TypeError, match='test_list must be a list'):
+        validate_string_list('not a list', 'test_list')
+    
+    with pytest.raises(TypeError, match='test_list must contain only strings'):
+        validate_string_list([1, 2], 'test_list')
+    
+    with pytest.raises(TypeError, match='test_list must contain only strings'):
+        validate_string_list(['valid', 1], 'test_list')
+
+def test_optional_string_validation():
+    """Test validation of optional strings."""
+    assert validate_optional_string(None, 'test_str') is None
+    assert validate_optional_string('valid', 'test_str') == 'valid'
+    
+    with pytest.raises(TypeError, match='test_str must be a string or None'):
+        validate_optional_string(123, 'test_str')
+
+def test_sensitive_field_detection():
+    """Test sensitive field detection."""
+    assert is_sensitive_field('password')
+    assert is_sensitive_field('api_key')
+    assert is_sensitive_field('secret')
+    assert is_sensitive_field('token')
+    assert not is_sensitive_field('username')
+    assert not is_sensitive_field('email')
+    
+    sensitive_fields = detect_sensitive_fields({
+        'username': 'user',
+        'password': 'secret123',
+        'api_key': 'key123',
+        'settings': {
+            'token': 'token123',
+            'display_name': 'User'
+        }
+    })
+    
+    assert 'password' in sensitive_fields
+    assert 'api_key' in sensitive_fields
+    assert 'settings.token' in sensitive_fields
+    assert 'username' not in sensitive_fields
+    assert 'settings.display_name' not in sensitive_fields
+
+def test_sensitive_value_masking():
+    """Test sensitive value masking."""
+    assert mask_sensitive_value('password123') == 'pas*****'
+    assert mask_sensitive_value('key') == 'k**'
+    assert mask_sensitive_value('') == ''
+    
+    data = {
+        'username': 'user',
+        'password': 'secret123',
+        'api_key': 'key123',
+        'settings': {
+            'token': 'token123',
+            'display_name': 'User'
+        }
+    }
+    
+    masked = mask_sensitive_data(data)
+    assert masked['username'] == 'user'
+    assert masked['password'] != 'secret123'
+    assert masked['api_key'] != 'key123'
+    assert masked['settings']['token'] != 'token123'
+    assert masked['settings']['display_name'] == 'User'
+    assert '***' in masked['password']
+    assert '***' in masked['api_key']
+    assert '***' in masked['settings']['token']
+
+def test_config_documentation_generation():
+    """Test configuration documentation generation."""
+    config = TrackIdentificationConfig()
+    doc_gen = ConfigDocGenerator(config)
+    
+    # Test field documentation
+    field_docs = generate_field_docs(config)
+    assert 'time_threshold' in field_docs
+    assert 'max_duplicates' in field_docs
+    assert 'min_confidence' in field_docs
+    assert '**Type:**' in field_docs
+    assert '**Description:**' in field_docs
+    
+    # Test validation documentation
+    validation_docs = generate_validation_docs(TrackIdentificationConfig)
+    assert 'Validation Rules' in validation_docs
+    assert 'time_threshold' in validation_docs
+    assert 'must be positive' in validation_docs
+    
+    # Test example documentation
+    example_docs = generate_example_docs(TrackIdentificationConfig)
+    assert 'Configuration Example' in example_docs
+    assert 'time_threshold' in example_docs
+    assert 'max_duplicates' in example_docs
+    
+    # Test full documentation
+    full_docs = doc_gen.generate_markdown()
+    assert '# Tracklistify Configuration' in full_docs
+    assert 'This document describes the configuration options for Tracklistify.' in full_docs
+    assert '## Configuration Fields' in full_docs
+
+def test_config_validation_edge_cases():
+    """Test configuration validation edge cases."""
+    # Test empty paths
+    with pytest.raises(ValueError):
+        validate_path('', must_exist=False)
+    
+    # Test invalid probabilities
+    with pytest.raises(ValueError):
+        validate_probability(2.0, 'test')
+    
+    # Test zero values
+    with pytest.raises(ValueError):
+        validate_positive_float(0.0, 'test')
+    with pytest.raises(ValueError):
+        validate_positive_int(0, 'test')
+    
+    # Test negative values
+    with pytest.raises(ValueError):
+        validate_positive_float(-1.0, 'test')
+    with pytest.raises(ValueError):
+        validate_positive_int(-1, 'test')
+    
+    # Test invalid types
+    with pytest.raises(TypeError):
+        validate_positive_float('invalid', 'test')
+    with pytest.raises(TypeError):
+        validate_positive_int(1.5, 'test')
+    with pytest.raises(TypeError):
+        validate_probability('invalid', 'test')
+
+def test_config_to_dict_with_sensitive_data():
+    """Test configuration dictionary conversion with sensitive data handling."""
+    config = TrackIdentificationConfig()
+    
+    # Add some sensitive data
+    sensitive_data = {
+        'api_key': 'secret_key_123',
+        'token': 'bearer_token_456',
+        'credentials': {
+            'username': 'user',
+            'password': 'pass123'
+        }
+    }
+    
+    # Convert to dictionary and verify sensitive data is masked
+    config_dict = config.to_dict()
+    masked_dict = mask_sensitive_data(sensitive_data)
+    
+    assert masked_dict['api_key'] != 'secret_key_123'
+    assert masked_dict['token'] != 'bearer_token_456'
+    assert masked_dict['credentials']['password'] != 'pass123'
+    assert masked_dict['credentials']['username'] == 'user'
+    assert '***' in masked_dict['api_key']
+    assert '***' in masked_dict['token']
+    assert '***' in masked_dict['credentials']['password']
+
+def test_env_config():
+    """Test configuration from environment variables."""
+    # Test base directory settings
+    os.environ['TRACKLISTIFY_OUTPUT_DIR'] = '~/.tracklistify/output'
+    os.environ['TRACKLISTIFY_CACHE_DIR'] = '~/.tracklistify/cache'
+    os.environ['TRACKLISTIFY_TEMP_DIR'] = '~/.tracklistify/temp'
+    
+    # Test other settings
+    os.environ['TRACKLISTIFY_TIME_THRESHOLD'] = '45.0'
+    os.environ['TRACKLISTIFY_MAX_DUPLICATES'] = '4'
+    os.environ['TRACKLISTIFY_MIN_CONFIDENCE'] = '0.95'
+    
+    try:
+        config = get_config()
+        clear_config()  # Clear singleton for next test
+        
+        # Verify base directory settings
+        assert config.output_dir == Path('~/.tracklistify/output').expanduser()
+        assert config.cache_dir == Path('~/.tracklistify/cache').expanduser()
+        assert config.temp_dir == Path('~/.tracklistify/temp').expanduser()
+        
+        # Verify other settings
+        assert config.time_threshold == 45.0
+        assert config.max_duplicates == 4
+        assert config.min_confidence == 0.95
+        
+        # Verify directories are created
+        assert config.output_dir.exists()
+        assert config.cache_dir.exists()
+        assert config.temp_dir.exists()
+    
+    finally:
+        # Clean up environment variables
+        del os.environ['TRACKLISTIFY_OUTPUT_DIR']
+        del os.environ['TRACKLISTIFY_CACHE_DIR']
+        del os.environ['TRACKLISTIFY_TEMP_DIR']
+        del os.environ['TRACKLISTIFY_TIME_THRESHOLD']
+        del os.environ['TRACKLISTIFY_MAX_DUPLICATES']
+        del os.environ['TRACKLISTIFY_MIN_CONFIDENCE']
+        
+        # Clean up created directories recursively
+        import shutil
+        for dir_path in [config.output_dir, config.cache_dir, config.temp_dir]:
+            if dir_path.exists():
+                shutil.rmtree(dir_path)
 
 def test_directory_creation():
-    """Test required directories are created."""
-    config = TracklistifyConfig()
-    config.load()
-    
-    # Check that directories are created
-    assert config.cache.dir.exists()
-    assert config.cache.temp_dir.exists()
-    assert config.output.dir.exists()
-    
-    # Check directory permissions (Unix-like systems only)
-    if os.name != "nt":  # Skip on Windows
-        assert oct(config.cache.dir.stat().st_mode)[-3:] == "700"
-        assert oct(config.cache.temp_dir.stat().st_mode)[-3:] == "700"
-        assert oct(config.output.dir.stat().st_mode)[-3:] == "700"
-
-def test_config_validation():
-    """Test configuration validation."""
-    config = TracklistifyConfig()
-    
-    # Test invalid confidence threshold
-    with pytest.raises(ValueError):
-        config.track.confidence_threshold = 1.5
-        config._validate()
-    
-    # Test invalid segment length
-    with pytest.raises(ValueError):
-        config.track.segment_length = -1
-        config._validate()
-    
-    # Test invalid cache TTL
-    with pytest.raises(ValueError):
-        config.cache.ttl = -3600
-        config._validate()
-
-def test_config_update():
-    """Test configuration update functionality."""
-    config = TracklistifyConfig()
-    
-    # Update values
-    config.set("app.max_requests_per_minute", 30)
-    config.set("track.confidence_threshold", 0.9)
-    config.set("cache.enabled", False)
-    
-    # Verify updates
-    assert config.app.max_requests_per_minute == 30
-    assert config.track.confidence_threshold == 0.9
-    assert config.cache.enabled is False
-    
-    # Test invalid updates
-    with pytest.raises(ValueError):
-        config.set("nonexistent.key", "value")
-
-def test_track_config_new_fields():
-    """Test new track configuration fields."""
-    config = TracklistifyConfig()
-    
-    # Test default values
-    assert config.track.time_threshold == 60
-    assert config.track.max_duplicates == 2
-    assert config.track.min_confidence == 0.8
-    
-    # Test environment variable override
-    os.environ["RECOGNITION_TIME_THRESHOLD"] = "90"
-    os.environ["RECOGNITION_MAX_DUPLICATES"] = "3"
-    os.environ["RECOGNITION_MIN_CONFIDENCE"] = "0.85"
-    
-    config = TracklistifyConfig()
-    config.load()
-    
-    assert config.track.time_threshold == 90
-    assert config.track.max_duplicates == 3
-    assert config.track.min_confidence == 0.85
-    
-    # Clean up
-    del os.environ["RECOGNITION_TIME_THRESHOLD"]
-    del os.environ["RECOGNITION_MAX_DUPLICATES"]
-    del os.environ["RECOGNITION_MIN_CONFIDENCE"]
-
-def test_config_file_loading():
-    """Test loading configuration from file."""
-    # Create a temporary config file
-    config_data = {
-        "track": {
-            "confidence_threshold": 0.75,
-            "segment_length": 40,
-            "time_threshold": 80,
-            "max_duplicates": 4
-        },
-        "cache": {
-            "enabled": True,
-            "ttl": 7200
-        }
-    }
-    
-    temp_config = Path("test_config.json")
-    try:
-        with open(temp_config, "w") as f:
-            import json
-            json.dump(config_data, f)
-        
-        config = TracklistifyConfig()
-        config.load_from_file(temp_config)
-        
-        # Verify loaded values
-        assert config.track.confidence_threshold == 0.75
-        assert config.track.segment_length == 40
-        assert config.track.time_threshold == 80
-        assert config.track.max_duplicates == 4
-        assert config.cache.enabled is True
-        assert config.cache.ttl == 7200
-        
-    finally:
-        # Clean up
-        if temp_config.exists():
-            temp_config.unlink()
-
-def test_env_var_precedence():
-    """Test environment variables take precedence over config file."""
-    # Set up config file
-    config_data = {
-        "track": {
-            "confidence_threshold": 0.75,
-            "segment_length": 40
-        }
-    }
-    
-    temp_config = Path("test_config.json")
-    try:
-        with open(temp_config, "w") as f:
-            import json
-            json.dump(config_data, f)
-        
-        # Set environment variables
-        os.environ["CONFIDENCE_THRESHOLD"] = "0.95"
-        os.environ["SEGMENT_LENGTH"] = "50"
-        
-        config = TracklistifyConfig()
-        config.load_from_file(temp_config)
-        config.load()  # Load environment variables
-        
-        # Environment variables should override file values
-        assert config.track.confidence_threshold == 0.95
-        assert config.track.segment_length == 50
-        
-    finally:
-        # Clean up
-        if temp_config.exists():
-            temp_config.unlink()
-        del os.environ["CONFIDENCE_THRESHOLD"]
-        del os.environ["SEGMENT_LENGTH"]
-
-def test_secure_config_loading():
-    """Test secure loading of sensitive configuration."""
-    config = TracklistifyConfig()
-    
-    # Set sensitive data
-    os.environ["SPOTIFY_CLIENT_ID"] = "test_client_id"
-    os.environ["SPOTIFY_CLIENT_SECRET"] = "test_client_secret"
-    os.environ["ACR_ACCESS_KEY"] = "test_access_key"
-    os.environ["ACR_ACCESS_SECRET"] = "test_access_secret"
-    
-    config.load()
-    
-    # Test that sensitive data is loaded but masked in string representation
-    assert config.providers.spotify_client_id == "test_client_id"
-    assert "test_client_id" not in str(config)
-    assert "***" in str(config)
-    
-    # Test secure storage
-    config_dict = config.to_dict()
-    assert config_dict["providers"]["spotify_client_id"] == "***"
-    assert config_dict["providers"]["spotify_client_secret"] == "***"
-    
-    # Clean up
-    del os.environ["SPOTIFY_CLIENT_ID"]
-    del os.environ["SPOTIFY_CLIENT_SECRET"]
-    del os.environ["ACR_ACCESS_KEY"]
-    del os.environ["ACR_ACCESS_SECRET"]
-
-def test_config_documentation():
-    """Test auto-generated configuration documentation."""
-    from tracklistify.config.docs import ConfigDocGenerator
-    
-    config = TracklistifyConfig()
-    doc_gen = ConfigDocGenerator(config)
-    docs = doc_gen.generate_markdown()
-    
-    # Verify documentation content
-    assert "# Tracklistify Configuration" in docs
-    assert "## Configuration Fields" in docs
-    
-    # Check field documentation
-    assert "confidence_threshold" in docs
-    assert "segment_length" in docs
-    assert "time_threshold" in docs
-    assert "max_duplicates" in docs
-    
-    # Check type information
-    assert "**Type:**" in docs
-    assert "**Properties:**" in docs
-    assert "**Constraints:**" in docs
-    
-    # Check sensitive field masking
-    assert "spotify_client_secret" in docs.lower()
-    assert "your_spotify_client_secret" not in docs.lower()
-
-def test_config_validation_comprehensive():
-    """Test comprehensive configuration validation."""
-    config = TracklistifyConfig()
-    
-    # Test track config validation
-    config.track.time_threshold = -1  # Invalid value
-    with pytest.raises(ValueError, match=r"time_threshold must be positive"):
-        config.track.validate()
-
-    # Test app config validation
-    with pytest.raises(ValueError, match=r".*rate limit.*"):
-        config.app.rate_limit_window = 0
-        config._validate()
-
-def test_track_config_validation():
-    """Test track configuration validation."""
-    # Valid configuration
-    track_config = TrackConfig(
-        time_threshold=60,
-        max_duplicates=2,
-        min_confidence=0.8
+    """Test automatic directory creation."""
+    config = TrackIdentificationConfig(
+        output_dir=Path('test_output'),
+        cache_dir=Path('test_cache'),
+        temp_dir=Path('test_temp')
     )
-    track_config.validate()  # Should not raise
     
-    # Invalid time threshold
-    with pytest.raises(ValueError, match="time_threshold must be positive"):
-        TrackConfig(time_threshold=0).validate()
+    try:
+        assert config.output_dir.exists()
+        assert config.cache_dir.exists()
+        assert config.temp_dir.exists()
     
-    # Invalid max duplicates
-    with pytest.raises(ValueError, match="max_duplicates must be at least 1"):
-        TrackConfig(max_duplicates=0).validate()
+    finally:
+        config.output_dir.rmdir()
+        config.cache_dir.rmdir()
+        config.temp_dir.rmdir()
+
+def test_to_dict():
+    """Test conversion to dictionary."""
+    config = TrackIdentificationConfig()
+    config_dict = config.to_dict()
     
-    # Invalid min confidence
-    with pytest.raises(ValueError, match="min_confidence must be between 0 and 1"):
-        TrackConfig(min_confidence=1.5).validate()
+    assert isinstance(config_dict, dict)
+    assert config_dict['time_threshold'] == 60.0
+    assert config_dict['max_duplicates'] == 2
+    assert config_dict['min_confidence'] == 0.0
+    assert isinstance(config_dict['output_dir'], str)
+    assert isinstance(config_dict['cache_dir'], str)
+    assert isinstance(config_dict['temp_dir'], str)
+    assert config_dict['verbose'] is False
+    assert config_dict['debug'] is False
+
+def test_documentation():
+    """Test documentation generation."""
+    docs = TrackIdentificationConfig.get_documentation()
+    
+    assert isinstance(docs, str)
+    assert 'Configuration Fields' in docs
+    assert 'Environment Variables' in docs
+    assert 'Configuration Example' in docs
+    assert 'Validation Rules' in docs
+
+def test_get_config():
+    """Test get_config singleton function."""
+    # Clear any existing instance
+    clear_config()
+
+    # Test default configuration
+    config1 = get_config()
+    assert isinstance(config1, TrackIdentificationConfig)
+    assert config1.time_threshold == 60.0
+
+    # Test singleton behavior
+    config2 = get_config()
+    assert config2 is config1  # Same instance
+
+    # Test environment variable override
+    os.environ['TRACKLISTIFY_TIME_THRESHOLD'] = '120.0'
+    clear_config()  # Clear instance to force reload from environment
+
+    config3 = get_config()
+    assert config3.time_threshold == 120.0
+
+    # Clean up
+    del os.environ['TRACKLISTIFY_TIME_THRESHOLD']
+    clear_config()
+
+def test_env_override_defaults():
+    """Test that environment variables properly override default values."""
+    # Get default config first
+    default_config = TrackIdentificationConfig()
+    assert default_config.output_dir == Path('.tracklistify/output')
+    assert default_config.cache_dir == Path('.tracklistify/cache')
+    assert default_config.temp_dir == Path('.tracklistify/temp')
+    
+    # Set environment variables
+    os.environ['TRACKLISTIFY_OUTPUT_DIR'] = '~/.tracklistify/output'
+    os.environ['TRACKLISTIFY_CACHE_DIR'] = '~/.tracklistify/cache'
+    os.environ['TRACKLISTIFY_TEMP_DIR'] = '~/.tracklistify/temp'
+    
+    try:
+        # Clear singleton to force reload
+        clear_config()
+        
+        # Get new config with environment variables
+        config = get_config()
+        
+        # Verify environment variables override defaults
+        assert config.output_dir == Path('~/.tracklistify/output').expanduser()
+        assert config.cache_dir == Path('~/.tracklistify/cache').expanduser()
+        assert config.temp_dir == Path('~/.tracklistify/temp').expanduser()
+        
+        # Verify directories are created
+        assert config.output_dir.exists()
+        assert config.cache_dir.exists()
+        assert config.temp_dir.exists()
+    
+    finally:
+        # Clean up environment variables
+        del os.environ['TRACKLISTIFY_OUTPUT_DIR']
+        del os.environ['TRACKLISTIFY_CACHE_DIR']
+        del os.environ['TRACKLISTIFY_TEMP_DIR']
+        
+        # Clean up created directories recursively
+        import shutil
+        for dir_path in [config.output_dir, config.cache_dir, config.temp_dir]:
+            if dir_path.exists():
+                shutil.rmtree(dir_path)

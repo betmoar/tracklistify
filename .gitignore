@@ -164,6 +164,7 @@ assets/
 temp_segments/
 .vscode/
 .DS_Store
+.tracklistify/
 dev/
 output/*
 examples/

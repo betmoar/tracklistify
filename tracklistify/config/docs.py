@@ -6,7 +6,7 @@ including markdown documentation, JSON schema, and example configurations.
 
 import json
 from typing import Any, Dict, List, Optional, Set, Type, Union
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, MISSING
 from pathlib import Path
 
 from .validation import (
@@ -283,3 +283,241 @@ class ConfigDocGenerator:
             elif field.type_info == "bool":
                 example[field.name] = False
         return example
+
+def generate_config_docs(config_class: Type[Any]) -> str:
+    """Generate markdown documentation for a configuration class."""
+    docs = ["# Configuration Reference\n"]
+    docs.append("## Configuration Fields\n")
+    
+    for field in config_class.__dataclass_fields__:
+        field_type = config_class.__dataclass_fields__[field].type.__name__ if hasattr(config_class.__dataclass_fields__[field].type, "__name__") else str(config_class.__dataclass_fields__[field].type)
+        default = config_class.__dataclass_fields__[field].default if config_class.__dataclass_fields__[field].default is not ... else "Required"
+        
+        docs.extend([
+            f"### {field}\n",
+            f"**Type:** `{field_type}`  \n",
+            f"**Default:** `{default}`\n",
+            f"{config_class.__dataclass_fields__[field].__doc__ or 'No description available.'}\n"
+        ])
+    
+    return "\n".join(docs)
+
+def generate_env_var_docs(config_class: Type[Any]) -> str:
+    """Generate markdown documentation for environment variable overrides."""
+    docs = ["# Environment Variables\n"]
+    docs.append("The following environment variables can be used to override configuration values:\n\n")
+    
+    for field in config_class.__dataclass_fields__:
+        env_var = f"TRACKLISTIFY_{field.upper()}"
+        field_type = config_class.__dataclass_fields__[field].type.__name__ if hasattr(config_class.__dataclass_fields__[field].type, "__name__") else str(config_class.__dataclass_fields__[field].type)
+        
+        docs.extend([
+            f"## {env_var}\n",
+            f"**Type:** `{field_type}`  \n",
+            f"**Overrides:** `{field}`\n",
+            f"{config_class.__dataclass_fields__[field].__doc__ or 'No description available.'}\n"
+        ])
+    
+    return "\n".join(docs)
+
+def generate_config_example() -> str:
+    """Generate an example configuration file."""
+    return """# Example Configuration File
+
+# Track Recognition Settings
+time_threshold: 60  # Seconds between tracks
+max_duplicates: 2   # Maximum number of duplicate tracks
+min_confidence: 0.8 # Minimum confidence threshold
+
+# Directory Settings
+output_directory: ./output
+cache_directory: ./.cache
+temp_directory: ./.cache/temp
+
+# Debug Settings
+verbose: true
+debug: true
+
+# Provider Settings
+primary_provider: shazam
+fallback_enabled: false
+fallback_order: acrcloud
+
+# Cache Settings
+cache:
+  enabled: true
+  ttl: 3600
+  max_size: 1000
+"""
+
+def generate_validation_docs() -> str:
+    """Generate documentation for configuration validation rules."""
+    return """# Configuration Validation Rules
+
+## General Rules
+- All required fields must be present
+- Field types must match their specifications
+- Paths must exist and be accessible (unless specified otherwise)
+
+## Numeric Validation
+- `time_threshold`: Must be a positive integer (seconds)
+- `max_duplicates`: Must be a positive integer
+- `min_confidence`: Must be between 0 and 1
+
+## Path Validation
+- All directory paths must be valid
+- Output directory must be writable
+- Cache directory will be created if it doesn't exist
+
+## Security Rules
+- Sensitive fields are always masked in logs
+- API keys and tokens must be provided via environment variables
+- Credentials are never stored in plain text
+"""
+
+"""Documentation generation utilities for configuration."""
+
+from dataclasses import Field, fields, MISSING
+from typing import Any, Dict, List, Type, TypeVar
+
+T = TypeVar('T')
+
+def generate_field_docs(config_class: Type[T]) -> str:
+    """
+    Generate markdown documentation for configuration fields.
+    
+    Args:
+        config_class: Configuration class to document
+        
+    Returns:
+        str: Markdown documentation
+    """
+    docs = ["## Configuration Fields\n"]
+    
+    for field in fields(config_class):
+        field_type = field.type
+        field_desc = field.__doc__ or "No description available."
+        default = getattr(field, "default", None)
+        
+        docs.append(f"### {field.name}\n")
+        docs.append(f"**Type:** `{field_type}`\n")
+        if default is not None and default != MISSING:
+            docs.append(f"**Default:** `{default}`\n")
+        docs.append(f"**Description:** {field_desc}\n")
+    
+    return "\n".join(docs)
+
+def generate_env_var_docs(config_class: Type[T]) -> str:
+    """
+    Generate markdown documentation for environment variable overrides.
+    
+    Args:
+        config_class: Configuration class to document
+        
+    Returns:
+        str: Markdown documentation
+    """
+    docs = ["## Environment Variables\n"]
+    docs.append("The following environment variables can be used to override configuration values:\n")
+    
+    for field in fields(config_class):
+        env_var = f"TRACKLISTIFY_{field.name.upper()}"
+        docs.append(f"- `{env_var}`: Override for `{field.name}`")
+    
+    return "\n".join(docs)
+
+def generate_validation_docs(config_class: Type[T]) -> str:
+    """
+    Generate validation documentation for configuration.
+    
+    Args:
+        config_class: Configuration class to document
+        
+    Returns:
+        str: Generated markdown documentation
+    """
+    docs = ["## Validation Rules\n"]
+    config = config_class()
+    
+    validator = getattr(config, "_validator", None)
+    if validator:
+        for field, rules in validator.rules.items():
+            docs.append(f"\n### {field}\n")
+            for rule in rules:
+                if hasattr(rule, 'description'):
+                    docs.append(f"\n- {rule.description}\n")
+                else:
+                    docs.append(f"\n- {rule.__class__.__name__}: No description\n")
+    else:
+        docs.append("No validation rules defined.\n")
+    
+    return "\n".join(docs)
+
+def generate_example_docs(config_class: Type[T]) -> str:
+    """
+    Generate markdown documentation with configuration examples.
+    
+    Args:
+        config_class: Configuration class to document
+        
+    Returns:
+        str: Markdown documentation
+    """
+    docs = ["## Configuration Example\n"]
+    
+    docs.append("```python\n")
+    docs.append(f"from {config_class.__module__} import {config_class.__name__}\n\n")
+    docs.append(f"config = {config_class.__name__}(\n")
+    
+    for field in fields(config_class):
+        field_type = field.type
+        if field_type == str:
+            example = "'example'"
+        elif field_type == int:
+            example = "42"
+        elif field_type == float:
+            example = "3.14"
+        elif field_type == bool:
+            example = "True"
+        elif field_type == Path:
+            example = "Path('example/path')"
+        else:
+            example = "..."
+        docs.append(f"    {field.name}={example},  # {field.__doc__ or ''}\n")
+    docs.append(")\n```\n")
+    
+    return "\n".join(docs)
+
+def generate_full_docs(config_class: Type[T]) -> str:
+    """
+    Generate full documentation for a configuration class.
+    
+    Args:
+        config_class: Configuration class to document
+        
+    Returns:
+        str: Generated markdown documentation
+    """
+    config = config_class()  # Create instance to access validation rules
+    
+    sections = [
+        "# Configuration Documentation\n",
+        "## Fields\n",
+        generate_field_docs(config_class),
+        "\n## Validation Rules\n",
+        generate_validation_docs(config_class),
+        "\n## Environment Variables\n",
+        generate_env_var_docs(config_class),
+        "\n## Example\n",
+        generate_example_docs(config_class)
+    ]
+    
+    return "\n".join(sections)
+
+__all__ = [
+    'generate_field_docs',
+    'generate_env_var_docs',
+    'generate_example_docs',
+    'generate_validation_docs',
+    'generate_full_docs'
+]

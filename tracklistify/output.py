@@ -25,7 +25,7 @@ class TracklistOutput:
         self.tracks = tracks
         self.mix_info = mix_info
         self._config = get_config()
-        self.output_dir = Path(self._config.output.directory)
+        self.output_dir = Path(self._config.output_dir)
         self.output_dir.mkdir(exist_ok=True)
     
     def _format_filename(self, extension: str) -> str:

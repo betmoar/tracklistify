@@ -87,10 +87,11 @@ class TrackMatcher:
     
     def __init__(self):
         self.tracks: List[Track] = []
-        self.time_threshold = get_config().track.time_threshold
+        config = get_config()
+        self.time_threshold = config.time_threshold
         self._min_confidence = 0  # Keep all tracks with confidence > 0
-        self.max_duplicates = get_config().track.max_duplicates
-        self._config = get_config()
+        self.max_duplicates = config.max_duplicates
+        self._config = config
     
     @property
     def min_confidence(self) -> float:

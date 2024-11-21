@@ -7,7 +7,7 @@ from .base import TrackIdentificationProvider, MetadataProvider, ProviderError
 from .spotify import SpotifyProvider
 from .shazam import ShazamProvider
 from .acrcloud import ACRCloudProvider
-from ..config import Config
+from ..config import TrackIdentificationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class ProviderFactory:
         for provider in self._metadata_providers.values():
             await provider.close()
 
-def create_provider_factory(config: Config) -> ProviderFactory:
+def create_provider_factory(config: TrackIdentificationConfig) -> ProviderFactory:
     """Create and configure a provider factory based on configuration.
 
     Args:
@@ -89,14 +89,14 @@ def create_provider_factory(config: Config) -> ProviderFactory:
             acr_provider = ACRCloudProvider(
                 access_key=acr_access_key,
                 access_secret=acr_access_secret,
-                host=config.providers.acrcloud_host,
-                timeout=config.providers.acrcloud_timeout,
+                host=config.acrcloud_host,
+                timeout=config.acrcloud_timeout,
             )
             factory.register_identification_provider("acrcloud", acr_provider)
             logger.info("Registered ACRCloud provider")
 
         # Configure Shazam provider
-        if config.providers.shazam_enabled:
+        if config.shazam_enabled:
             shazam_provider = ShazamProvider()
             factory.register_identification_provider("shazam", shazam_provider)
             logger.info("Registered Shazam provider")

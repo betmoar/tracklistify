@@ -6,7 +6,7 @@ import time
 from threading import Lock
 from typing import Optional
 
-from .config import get_config
+from .config import TrackIdentificationConfig, get_config
 from .logger import logger
 
 class RateLimiter:
@@ -15,23 +15,26 @@ class RateLimiter:
     def __init__(self):
         """Initialize rate limiter."""
         self._config = get_config()
-        self._tokens = self._config.app.max_requests_per_minute
+        self._tokens = self._config.max_requests_per_minute
         self._last_update = time.time()
         self._lock = Lock()
         logger.info(f"Rate limiter initialized with {self._tokens} tokens per minute")
         
     def _refill(self) -> None:
         """Refill tokens based on elapsed time."""
+        if not self._config.rate_limit_enabled:
+            return
+
         now = time.time()
         elapsed = now - self._last_update
         
         # Calculate tokens to add (1 token per (60/max_requests) seconds)
-        new_tokens = int(elapsed / (60.0 / self._config.app.max_requests_per_minute))
+        new_tokens = int(elapsed / (60.0 / self._config.max_requests_per_minute))
         if new_tokens > 0:
             old_tokens = self._tokens
             self._tokens = min(
                 self._tokens + new_tokens,
-                self._config.app.max_requests_per_minute
+                self._config.max_requests_per_minute
             )
             self._last_update = now
             logger.debug(f"Refilled {new_tokens} tokens ({old_tokens} -> {self._tokens})")
@@ -46,6 +49,9 @@ class RateLimiter:
         Returns:
             bool: True if token acquired, False if timed out
         """
+        if not self._config.rate_limit_enabled:
+            return True
+
         start_time = time.time()
         wait_start = None
         
@@ -64,7 +70,7 @@ class RateLimiter:
                 
                 if wait_start is None:
                     wait_start = time.time()
-                    logger.info(f"Rate limit reached, waiting for token (0/{self._config.app.max_requests_per_minute} available)")
+                    logger.info(f"Rate limit reached, waiting for token (0/{self._config.max_requests_per_minute} available)")
                     
             # Check timeout
             if timeout is not None:

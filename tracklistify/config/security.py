@@ -39,10 +39,21 @@ def secure_hash(value: str) -> str:
     return hashlib.blake2b(value.encode()).hexdigest()
 
 def mask_sensitive_value(value: str) -> str:
-    """Mask a sensitive value, showing only the first and last characters."""
-    if not value or len(value) < 8:
-        return "***"
-    return f"{value[0]}***{value[-1]}"
+    """
+    Mask a sensitive value, showing only the first character for short strings
+    or first three characters for longer strings.
+    
+    Args:
+        value: Value to mask
+        
+    Returns:
+        str: Masked value
+    """
+    if not value:
+        return ""
+    if len(value) <= 3:
+        return value[0] + "*" * (len(value) - 1)
+    return value[:3] + "*" * 5
 
 def is_sensitive_field(field_name: str) -> bool:
     """Check if a field name corresponds to sensitive data."""
@@ -50,6 +61,32 @@ def is_sensitive_field(field_name: str) -> bool:
         sensitive in field_name.lower()
         for sensitive in SENSITIVE_FIELDS
     )
+
+def detect_sensitive_fields(data: Dict[str, Any], parent_key: str = '') -> Set[str]:
+    """
+    Recursively detect sensitive fields in a dictionary.
+    
+    Args:
+        data: Dictionary to scan
+        parent_key: Parent key for nested fields
+        
+    Returns:
+        Set of sensitive field names
+    """
+    sensitive_fields = set()
+    
+    for key, value in data.items():
+        current_key = f"{parent_key}.{key}" if parent_key else key
+        
+        # Check if the current field is sensitive
+        if is_sensitive_field(key):
+            sensitive_fields.add(current_key)
+        
+        # Recursively check nested dictionaries
+        if isinstance(value, dict):
+            sensitive_fields.update(detect_sensitive_fields(value, current_key))
+    
+    return sensitive_fields
 
 class CryptoManager:
     """Handles encryption and decryption using built-in Python libraries."""
@@ -250,37 +287,28 @@ class SecretRotationError(SecureConfigError):
     """Raised when there's an error rotating secrets."""
     pass
 
-def mask_sensitive_data(data: Dict[str, Any], mask: str = "***") -> Dict[str, Any]:
+def mask_sensitive_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Mask sensitive data in configuration dictionary.
+    Mask sensitive values in a dictionary.
     
     Args:
-        data: Configuration dictionary
-        mask: Mask to use for sensitive data
+        data: Dictionary containing potentially sensitive data
         
     Returns:
-        Dictionary with sensitive data masked
+        Dict[str, Any]: Dictionary with sensitive values masked
     """
-    sensitive_fields = {
-        'acrcloud_access_key',
-        'acrcloud_access_secret',
-        'spotify_client_id',
-        'spotify_client_secret'
-    }
-    
-    result = {}
-    
+    if not isinstance(data, dict):
+        return data
+        
+    masked = {}
     for key, value in data.items():
         if isinstance(value, dict):
-            result[key] = mask_sensitive_data(value, mask)
-        elif isinstance(value, (list, tuple)):
-            result[key] = [mask_sensitive_data(item, mask) if isinstance(item, dict) else item for item in value]
-        elif key in sensitive_fields:
-            result[key] = mask
+            masked[key] = mask_sensitive_data(value)
+        elif isinstance(value, str) and is_sensitive_field(key):
+            masked[key] = mask_sensitive_value(value)
         else:
-            result[key] = value
-            
-    return result
+            masked[key] = value
+    return masked
 
 class SecretVersion:
     """Version information for a secret."""

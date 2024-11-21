@@ -15,9 +15,16 @@ T = TypeVar('T')
 ProviderT = TypeVar('ProviderT', bound='TrackIdentificationProvider')
 DownloaderT = TypeVar('DownloaderT', bound='Downloader')
 
-# Provider configuration types
-class ProviderConfigDict(TypedDict):
-    """Provider configuration type."""
+# Configuration types
+class TrackIdentificationConfigDict(TypedDict):
+    """Track identification configuration type."""
+    # Track identification settings
+    segment_length: int
+    min_confidence: float
+    time_threshold: float
+    max_duplicates: int
+
+    # Provider settings
     primary_provider: str
     fallback_enabled: bool
     fallback_providers: List[str]
@@ -26,45 +33,41 @@ class ProviderConfigDict(TypedDict):
     shazam_enabled: bool
     shazam_timeout: int
     spotify_timeout: int
+    retry_strategy: str
+    retry_max_attempts: int
+    retry_base_delay: float
+    retry_max_delay: float
 
-class TrackConfigDict(TypedDict):
-    """Track configuration type."""
-    segment_length: int
-    min_confidence: float
-    time_threshold: int
-    max_duplicates: int
+    # Rate limiting
+    rate_limit_enabled: bool
+    max_requests_per_minute: int
 
-class CacheConfigDict(TypedDict):
-    """Cache configuration type."""
-    enabled: bool
-    ttl: int
-    max_size: int
+    # Cache settings
+    cache_enabled: bool
+    cache_ttl: int
+    cache_max_size: int
+    cache_storage_format: str
+    cache_compression_enabled: bool
+    cache_compression_level: int
+    cache_cleanup_enabled: bool
+    cache_cleanup_interval: int
+    cache_max_age: int
+    cache_min_free_space: int
 
-class OutputConfigDict(TypedDict):
-    """Output configuration type."""
-    directory: str
-    format: Literal["json", "markdown", "m3u"]
+    # Output settings
+    output_format: str
 
-class DownloadConfigDict(TypedDict):
-    """Download configuration type."""
-    quality: str
-    format: str
+    # Download settings
+    download_quality: str
+    download_format: str
+    download_max_retries: int
+
+    # Base config settings
+    output_dir: str
+    cache_dir: str
     temp_dir: str
-    max_retries: int
-
-class AppConfigDict(TypedDict):
-    """Application configuration type."""
-    log_level: str
-    log_file: Optional[str]
-
-class ConfigDict(TypedDict):
-    """Global configuration type."""
-    providers: ProviderConfigDict
-    track: TrackConfigDict
-    cache: CacheConfigDict
-    output: OutputConfigDict
-    app: AppConfigDict
-    download: DownloadConfigDict
+    verbose: bool
+    debug: bool
 
 # Track types
 class TrackMetadata(TypedDict):
