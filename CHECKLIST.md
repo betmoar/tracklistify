@@ -4,6 +4,7 @@ See [PYTHON.md](.ai/PYTHON.MD) for detailed development guidelines.
 ## Phase 1: Project Setup and Infrastructure 🏗️ ✅ (Completed 2024-11-21)
 
 ### Development Environment ✅
+- [!] NEVER introduce new dependencies without explicit user request.
 - [x] Set up development environment:
   - [x] Black for code formatting
   - [x] isort for import sorting
@@ -53,6 +54,8 @@ See [PYTHON.md](.ai/PYTHON.MD) for detailed development guidelines.
   - [ ] Confidence threshold settings
   - [ ] Segment length configuration
   - [ ] Overlap settings
+  - [ ] Cache directory configuration
+  - [ ] Extensive Provider configuration
 - [ ] ALWAYS Move sensitive data to environment variables
 - [ ] ALWAYS Implement secure configuration loading
 - [ ] ALWAYS Add configuration validation
