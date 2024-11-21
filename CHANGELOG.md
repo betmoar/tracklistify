@@ -5,6 +5,8 @@ All notable changes to Tracklistify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Release dates are in YYYY-MM-DD format.
+
 ## [Unreleased]
 ### Added
 - Support for additional platforms (Mixcloud, SoundCloud)
@@ -22,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - XML export
   - Rekordbox compatible format
 
-## [Phase 2 - Configuration Management] - 2024-03-21
+## [Phase 2 - Configuration Management] - 2024-11-22
 ### Added
 - Enhanced configuration management system:
   - Standardized directory structure:
@@ -33,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `TRACKLISTIFY_` prefix for all variables
     - Type conversion for all config values
     - Home directory expansion for paths
+    - Enhanced list parsing with multiple formats support
+    - Better error messages for invalid values
+    - Support for single value and comma-separated lists
   - Configuration validation:
     - Comprehensive test coverage
     - Directory creation and cleanup
@@ -49,55 +54,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Overlap settings
     - Cache directory configuration
     - Provider configuration
-  - New track configuration fields:
-    - `time_threshold` for track merging (default: 60 seconds)
-    - `max_duplicates` for duplicate track control (default: 2)
-    - `min_confidence` for confidence threshold (default: 0.8)
-  - Environment variable support:
-    - Secure loading of sensitive data
-    - Override capability for all settings
-    - Validation of environment variables
-  - Configuration validation:
-    - Type checking for all fields
-    - Value range validation
-    - Required field validation
-    - Path existence and permission checks
-  - Documentation generation:
-    - Auto-generated configuration docs
-    - Field descriptions and constraints
-    - Usage examples and guides
-  - Test coverage:
-    - 14 comprehensive test cases
-    - Default configuration tests
-    - Environment variable tests
-    - Validation tests
-    - Security tests
-    - Documentation tests
-
-### Changed
-- Moved configuration to dedicated `config/` package
-- Improved configuration documentation
-- Enhanced test coverage for config module
-- Standardized environment variable naming
-- Moved sensitive data to environment variables
-- Improved error messages in configuration validation
-- Reorganized configuration documentation structure
-- Enhanced sensitive data handling with predefined fields
-- Standardized configuration validation messages
-
-### Security
-- Implemented sensitive data masking system
-- Added secure configuration loading mechanism
-- Enhanced validation for sensitive values
-- Added environment variable security checks
-
-### Documentation
-- Updated configuration documentation:
-  - Added comprehensive field descriptions
-  - Included validation rules
-  - Added environment variable guide
-  - Provided configuration examples
-  - Documented security considerations
+  - Added _parse_env_value helper for robust type conversion
+  - Support for various boolean formats (true/1/yes/on)
+  - Proper handling of Path expansion
+  - Improved validation error messages
+- Improved environment variable handling:
+  - Enhanced list parsing with multiple formats support
+  - Automatic type conversion for all config fields
+  - Better error messages for invalid values
+  - Support for single value and comma-separated lists
+- Configuration improvements:
+  - Added _parse_env_value helper for robust type conversion
+  - Support for various boolean formats (true/1/yes/on)
+  - Proper handling of Path expansion
+  - Improved validation error messages
 
 ## [Phase 1 Completion] - 2024-11-21
 ### Added

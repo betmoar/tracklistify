@@ -1,0 +1,32 @@
+#!/bin/sh
+
+commit_msg_file="$1"
+commit_msg=$(cat "$commit_msg_file")
+
+# Remove comments from the commit message
+commit_msg=$(echo "$commit_msg" | grep -v '^#')
+
+# Check if the commit message matches the required format
+if ! echo "$commit_msg" | grep -qE '^(feat|fix|docs|test|refactor|chore): .+'; then
+    echo "Error: Invalid commit message format!"
+    echo "Commit message must start with one of:"
+    echo "  feat: Add new feature"
+    echo "  fix: Bug fix"
+    echo "  docs: Documentation changes"
+    echo "  test: Add/modify tests"
+    echo "  refactor: Code refactoring"
+    echo "  chore: Maintenance tasks"
+    echo ""
+    echo "Example: feat: Add user authentication"
+    exit 1
+fi
+
+# Check subject line length
+subject_line=$(echo "$commit_msg" | head -n 1)
+if [ ${#subject_line} -gt 50 ]; then
+    echo "Error: Subject line is too long (max 50 characters)"
+    exit 1
+fi
+
+# If we get here, the commit message is valid
+exit 0

@@ -1,9 +1,11 @@
 """Configuration management for tracklistify."""
 
 import os
+import ast
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, get_origin, get_args
+from dotenv import load_dotenv
 
 from .validation import (
     ConfigValidator,
@@ -28,6 +30,38 @@ from .docs import (
     generate_example_docs
 )
 
+# Load environment variables at module import time
+_env_path = Path(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) / '.env'
+if _env_path.exists():
+    load_dotenv(dotenv_path=_env_path)
+
+def _parse_env_value(value: str, expected_type: type) -> Any:
+    """Parse environment variable value to expected type."""
+    if expected_type == bool:
+        return value.lower() in ('true', '1', 'yes', 'on')
+    elif get_origin(expected_type) == list or expected_type == list:
+        try:
+            # Try to parse as Python literal first
+            parsed = ast.literal_eval(value)
+            if isinstance(parsed, list):
+                return parsed
+            elif isinstance(parsed, str):
+                # If it's a single string, wrap it in a list
+                return [parsed]
+        except (ValueError, SyntaxError):
+            # If not a Python literal, split by comma if it contains commas
+            if ',' in value:
+                return [v.strip() for v in value.split(',')]
+            # Otherwise treat as a single value
+            return [value]
+    elif expected_type == int:
+        return int(value)
+    elif expected_type == float:
+        return float(value)
+    elif expected_type == Path:
+        return Path(os.path.expanduser(value))
+    return value
+
 @dataclass
 class BaseConfig:
     """Base configuration class."""
@@ -41,6 +75,7 @@ class BaseConfig:
         """Initialize configuration after creation."""
         self._validator = ConfigValidator()
         self._setup_validation()
+        self._load_from_env()
         self._create_directories()
         self._validate()
 
@@ -59,6 +94,19 @@ class BaseConfig:
         # Boolean validation
         for bool_field in ['verbose', 'debug']:
             self._validator.add_rule(TypeRule(bool_field, bool, f"{bool_field} must be a boolean"))
+
+    def _load_from_env(self):
+        """Load configuration from environment variables."""
+        prefix = "TRACKLISTIFY_"
+        for field_name, field_info in self.__class__.__dataclass_fields__.items():
+            env_key = f"{prefix}{field_name.upper()}"
+            if env_key in os.environ:
+                env_value = os.environ[env_key]
+                try:
+                    parsed_value = _parse_env_value(env_value, field_info.type)
+                    setattr(self, field_name, parsed_value)
+                except (ValueError, SyntaxError) as e:
+                    raise ValueError(f"Invalid value for {env_key}: {e}")
 
     def _validate(self):
         """Validate configuration."""
@@ -228,40 +276,7 @@ def get_config() -> TrackIdentificationConfig:
     global _config_instance
 
     if _config_instance is None:
-        # Create config dictionary from environment variables
-        config_dict = {}
-        
-        # First, get all default values from the dataclass
-        for field_name, field_info in TrackIdentificationConfig.__dataclass_fields__.items():
-            if hasattr(field_info.default, 'default'):
-                config_dict[field_name] = field_info.default.default
-            elif hasattr(field_info.default_factory, '__call__'):
-                config_dict[field_name] = field_info.default_factory()
-            else:
-                config_dict[field_name] = field_info.default
-        
-        # Then override with environment variables
-        for key, value in os.environ.items():
-            if key.startswith('TRACKLISTIFY_'):
-                config_key = key[len('TRACKLISTIFY_'):].lower()
-                # Handle type conversion based on default field type
-                field = TrackIdentificationConfig.__dataclass_fields__.get(config_key)
-                if field:
-                    try:
-                        if field.type == bool:
-                            config_dict[config_key] = value.lower() in ('true', '1', 'yes')
-                        elif field.type == int:
-                            config_dict[config_key] = int(value)
-                        elif field.type == float:
-                            config_dict[config_key] = float(value)
-                        elif field.type == Path:
-                            config_dict[config_key] = Path(value)
-                        else:
-                            config_dict[config_key] = value
-                    except (ValueError, TypeError) as e:
-                        print(f"Warning: Failed to convert environment variable {key}: {e}")
-
-        _config_instance = TrackIdentificationConfig(**config_dict)
+        _config_instance = TrackIdentificationConfig()
 
     return _config_instance
 

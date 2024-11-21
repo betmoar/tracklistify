@@ -67,7 +67,7 @@ tracklistify https://youtube.com/watch?v=example
 
 ### Output Format Options
 
-By default, Tracklistify uses the format specified in your `.env` file (OUTPUT_FORMAT). You can override this using the command line:
+By default, Tracklistify uses the format specified in your `.env` file (TRACKLISTIFY_OUTPUT_FORMAT). You can override this using the command line:
 
    ```bash
 # Use specific format
@@ -81,7 +81,7 @@ tracklistify -f m3u input.mp3     # M3U playlist
 tracklistify -f all input.mp3
 ```
 
-If no format is specified via command line, the OUTPUT_FORMAT from your environment will be used, defaulting to JSON if not set.
+If no format is specified via command line, the TRACKLISTIFY_OUTPUT_FORMAT from your environment will be used, defaulting to JSON if not set.
 
 ### Provider Selection
 
@@ -100,21 +100,50 @@ tracklistify --no-fallback input.mp3
 Key settings in `.env`:
 
 ```ini
-# Provider Selection
-PRIMARY_PROVIDER=shazam
-PROVIDER_FALLBACK_ENABLED=false
-PROVIDER_FALLBACK_ORDER=acrcloud
+# Directory Settings
+TRACKLISTIFY_OUTPUT_DIR=~/.tracklistify/output   # Output directory
+TRACKLISTIFY_CACHE_DIR=~/.tracklistify/cache     # Cache directory
+TRACKLISTIFY_TEMP_DIR=~/.tracklistify/temp       # Temporary files
+
+# Provider Settings
+TRACKLISTIFY_PRIMARY_PROVIDER=shazam             # Primary provider (shazam, acrcloud)
+TRACKLISTIFY_FALLBACK_ENABLED=false             # Enable fallback to other providers
+TRACKLISTIFY_FALLBACK_PROVIDERS=["acrcloud"]    # Fallback providers list
 
 # Track Identification Settings
-SEGMENT_LENGTH=15
-MIN_CONFIDENCE=50
-TIME_THRESHOLD=60
-MAX_DUPLICATES=1
+TRACKLISTIFY_SEGMENT_LENGTH=30                  # Length of audio segments (10-300s)
+TRACKLISTIFY_MIN_CONFIDENCE=0.0                 # Minimum confidence (0.0-1.0)
+TRACKLISTIFY_TIME_THRESHOLD=60.0                # Time between tracks (0.0-300.0s)
+TRACKLISTIFY_MAX_DUPLICATES=2                   # Maximum duplicate tracks
 
 # Output Settings
-OUTPUT_FORMAT=all
-OUTPUT_DIRECTORY=output
+TRACKLISTIFY_OUTPUT_FORMAT=all                  # Output format (json, markdown, m3u, all)
 ```
+
+### Environment Variable Formats
+
+Tracklistify supports various formats for environment variables:
+
+- **Lists**: Can be specified in multiple formats:
+  ```bash
+  TRACKLISTIFY_FALLBACK_PROVIDERS=["provider1", "provider2"]  # Python list syntax
+  TRACKLISTIFY_FALLBACK_PROVIDERS=provider1,provider2         # Comma-separated
+  TRACKLISTIFY_FALLBACK_PROVIDERS=provider1                   # Single value
+  ```
+
+- **Booleans**: Support multiple formats:
+  ```bash
+  TRACKLISTIFY_FALLBACK_ENABLED=true   # or false
+  TRACKLISTIFY_FALLBACK_ENABLED=1      # or 0
+  TRACKLISTIFY_FALLBACK_ENABLED=yes    # or no
+  TRACKLISTIFY_FALLBACK_ENABLED=on     # or off
+  ```
+
+- **Paths**: Support home directory expansion:
+  ```bash
+  TRACKLISTIFY_OUTPUT_DIR=~/.tracklistify/output  # Expands to home directory
+  TRACKLISTIFY_OUTPUT_DIR=/absolute/path          # Absolute paths
+  ```
 
 ## Development Setup
 

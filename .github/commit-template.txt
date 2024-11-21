@@ -1,0 +1,37 @@
+# <type>: <subject>
+#
+# Types:
+#   feat     - A new feature or enhancement
+#   fix      - A bug fix
+#   docs     - Documentation changes
+#   test     - Adding or modifying tests
+#   refactor - Code changes that neither fix bugs nor add features
+#   chore    - Maintenance tasks, dependency updates, etc.
+#
+# Rules:
+#   - Subject line should be 50 chars or less
+#   - Start subject line with a capital letter
+#   - Do not end subject line with a period
+#   - Use imperative mood in subject ("Add" not "Added" or "Adds")
+#
+# Example commit messages:
+#   feat: Add support for ACRCloud provider
+#   fix: Resolve memory leak in audio processing
+#   docs: Update installation instructions
+#   test: Add test cases for config validation
+#   refactor: Simplify track identification logic
+#   chore: Update dependencies to latest versions
+#
+# For larger commits, you can add a body after a blank line:
+#
+# <type>: <subject>
+#
+# <body>
+#
+# Example with body:
+#   feat: Add support for multiple audio providers
+#
+#   - Add provider interface for audio recognition
+#   - Implement Shazam provider
+#   - Add fallback mechanism for multiple providers
+#   - Update documentation with new provider setup

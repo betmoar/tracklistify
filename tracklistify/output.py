@@ -47,20 +47,34 @@ class TracklistOutput:
                 mix_date = datetime.now().strftime('%Y%m%d')
         
         # Get artist and description
-        artist = self.mix_info.get('artist', 'Unknown Artist')
-        description = self.mix_info.get('title', 'Unknown Mix')
+        artist = self.mix_info.get('artist', '')
+        title = self.mix_info.get('title', '')
+        venue = self.mix_info.get('venue', '')
         
         # Clean up special characters but preserve spaces and basic punctuation
         def clean_string(s: str) -> str:
             # Replace invalid filename characters with spaces
-            s = re.sub(r'[<>:"/\\|?*]', ' ', s)
+            s = re.sub(r'[<>:"/\\|?*@]', ' ', s)
             # Replace multiple spaces with single space
             s = re.sub(r'\s+', ' ', s)
             # Strip leading/trailing spaces
             return s.strip()
         
+        # Clean and format parts
         artist = clean_string(artist)
-        description = clean_string(description)
+        title = clean_string(title)
+        venue = clean_string(venue)
+        
+        # Use artist from title if no artist provided
+        if not artist and ' - ' in title:
+            artist, title = title.split(' - ', 1)
+        elif not artist:
+            artist = 'Unknown Artist'
+        
+        # Format description with venue
+        description = title
+        if venue:
+            description = f"{title} | {venue}"
         
         # Format filename
         return f"[{mix_date}] {artist} - {description}.{extension}"
