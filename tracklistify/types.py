@@ -7,7 +7,7 @@ This module defines all type definitions used throughout the application, includ
 - Comprehensive type hints and documentation
 """
 
-from typing import TypeVar, Dict, List, Optional, TypedDict, Literal, Protocol, AsyncIterator
+from typing import TypeVar, Dict, List, Optional, TypedDict, Literal, Protocol, AsyncIterator, Any
 from pathlib import Path
 
 # Generic type variables
@@ -107,6 +107,96 @@ class DownloadProgress(TypedDict):
     size: Optional[str]  # e.g., "12.3MB"
     error: Optional[str]
 
+# Cache types
+CacheMetadata = TypedDict('CacheMetadata', {
+    'ttl': int,
+    'compression': bool,
+    'compression_level': int,
+    'format': str,
+    'created_at': float,
+    'last_accessed': float,
+    'access_count': int,
+    'size_bytes': int
+})
+
+CacheEntry = TypedDict('CacheEntry', {
+    'value': T,
+    'timestamp': float,
+    'metadata': CacheMetadata
+})
+
+class CacheStorage(Protocol[T]):
+    """Protocol for cache storage backends."""
+    
+    async def read(self, key: str) -> Optional[CacheEntry[T]]:
+        """Read value from storage."""
+        ...
+        
+    async def write(self, key: str, entry: CacheEntry[T]) -> None:
+        """Write value to storage."""
+        ...
+        
+    async def delete(self, key: str) -> None:
+        """Delete value from storage."""
+        ...
+        
+    async def clear(self) -> None:
+        """Clear all values from storage."""
+        ...
+        
+    async def cleanup(self, max_age: Optional[int] = None) -> int:
+        """Clean up old entries."""
+        ...
+
+class InvalidationStrategy(Protocol):
+    """Protocol for cache invalidation strategies."""
+    
+    def should_invalidate(self, entry: CacheEntry[Any]) -> bool:
+        """Check if entry should be invalidated."""
+        ...
+        
+    def cleanup(self, storage: CacheStorage[Any]) -> None:
+        """Clean up invalid entries."""
+        ...
+
+class Cache(Protocol[T]):
+    """Enhanced cache interface with comprehensive type hints."""
+    
+    async def get(self, key: str) -> Optional[T]:
+        """Get value from cache with type safety."""
+        ...
+        
+    async def set(
+        self, 
+        key: str, 
+        value: T, 
+        ttl: Optional[int] = None,
+        compression: bool = False,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Set value in cache with validation."""
+        ...
+        
+    async def delete(self, key: str) -> None:
+        """Delete value from cache."""
+        ...
+        
+    async def clear(self) -> None:
+        """Clear all values from cache."""
+        ...
+        
+    async def cleanup(self, max_age: Optional[int] = None) -> int:
+        """Clean up old entries.
+        
+        Returns:
+            Number of entries cleaned up
+        """
+        ...
+        
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics."""
+        ...
+
 # Protocol definitions
 class TrackIdentificationProvider(Protocol):
     """Protocol defining the interface for track identification providers."""
@@ -122,7 +212,7 @@ class TrackIdentificationProvider(Protocol):
             ProviderResponse containing identification results
         """
         ...
-
+    
     async def validate_credentials(self) -> bool:
         """Validate provider credentials.
         
@@ -152,40 +242,4 @@ class Downloader(Protocol):
         Yields:
             DownloadProgress updates
         """
-        ...
-
-class Cache(Protocol):
-    """Protocol defining the interface for caching."""
-    
-    async def get(self, key: str) -> Optional[T]:
-        """Get a value from cache.
-        
-        Args:
-            key: Cache key
-            
-        Returns:
-            Cached value if exists, None otherwise
-        """
-        ...
-    
-    async def set(self, key: str, value: T, ttl: Optional[int] = None) -> None:
-        """Set a value in cache.
-        
-        Args:
-            key: Cache key
-            value: Value to cache
-            ttl: Time to live in seconds
-        """
-        ...
-    
-    async def delete(self, key: str) -> None:
-        """Delete a value from cache.
-        
-        Args:
-            key: Cache key to delete
-        """
-        ...
-    
-    async def clear(self) -> None:
-        """Clear all cached values."""
         ...
