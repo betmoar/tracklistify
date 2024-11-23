@@ -90,102 +90,80 @@ def get_mix_info(input_path: str) -> dict:
 
 async def main() -> int:
     """Main entry point."""
-    args = parse_args()
-    
-    # Set verbose logging if requested
-    if args.verbose:
-        logger.setLevel('DEBUG')
-        logger.debug("Verbose logging enabled")
-    
-    # Get configuration
-    config = get_config()
-    
-    # Override provider settings from command line
-    if args.provider:
-        config.primary_provider = args.provider
-        logger.debug(f"Using primary provider: {args.provider}")
-    if args.no_fallback:
-        config.fallback_enabled = False
-        logger.debug("Provider fallback disabled")
-    
-    # Create provider factory
-    provider_factory = create_provider_factory(config)
-    if not provider_factory:
-        logger.error("Failed to create provider factory")
-        return 1
-    
-    # Validate and clean input URL/path
-    input_path = args.input
-    if '://' in input_path:  # Looks like a URL
-        cleaned_url = validate_and_clean_url(input_path)
-        if not cleaned_url:
-            logger.error(f"Invalid URL: {input_path}")
-            return 1
-        input_path = cleaned_url
-        logger.debug(f"Cleaned URL: {input_path}")
-    
-    # Download if URL
-    if is_youtube_url(input_path) or is_mixcloud_url(input_path):
-        logger.info(f"Downloading {'YouTube' if is_youtube_url(input_path) else 'Mixcloud'} audio...")
-        try:
-            import yt_dlp  # Import here to catch import error
-            downloader = DownloaderFactory(config).create_downloader(input_path)
-            if not downloader:
-                logger.error("Failed to create downloader")
-                return 1
-            
-            audio_path = await downloader.download(input_path)
-            if not audio_path:
-                logger.error("Failed to download audio")
-                return 1
-        except ImportError:
-            logger.error("yt-dlp not installed. Please install it with: pip install yt-dlp")
-            return 1
-    else:
-        audio_path = input_path
-    
-    # Get mix information
-    mix_info = get_mix_info(input_path)
-    
-    # Create identification manager with provider factory
-    manager = IdentificationManager(config=config, provider_factory=provider_factory)
-    
-    # Identify tracks
     try:
-        tracks = await manager.identify_tracks(audio_path)
-        if not tracks:
-            logger.error("No tracks identified")
-            return 1
+        args = parse_args()
+        
+        # Set verbose logging if requested
+        if args.verbose:
+            logger.setLevel('DEBUG')
+            logger.debug("Verbose logging enabled")
+        
+        # Get configuration
+        config = get_config()
+        
+        # Override provider settings from command line
+        if args.provider:
+            config.primary_provider = args.provider
+        if args.no_fallback:
+            config.fallback_enabled = False
+        
+        # Create provider factory
+        provider_factory = create_provider_factory(config)
+        
+        # Create identification manager
+        manager = IdentificationManager(config, provider_factory)
+        
+        try:
+            # Validate input URL or path
+            input_path = validate_and_clean_url(args.input)
+            
+            # Download if URL
+            if is_youtube_url(input_path) or is_mixcloud_url(input_path):
+                downloader = DownloaderFactory.create_downloader(input_path, verbose=args.verbose)
+                input_path = await downloader.download(input_path)
+                if not input_path:
+                    logger.error("Download failed")
+                    return 1
+            
+            # Get mix info
+            mix_info = get_mix_info(args.input)
+            
+            # Identify tracks
+            tracks = await manager.identify_tracks(input_path)
+            if not tracks:
+                logger.error("No tracks identified")
+                return 1
+                
+            logger.info(f"Found {len(tracks)} tracks")
+            
+            # Generate output
+            output = TracklistOutput(mix_info, tracks)
+            output.save_all()
+            
+            return 0
+            
+        except asyncio.CancelledError:
+            # Handle task cancellation
+            logger.info("\nOperation cancelled by user")
+            return 0
+            
+        finally:
+            # Clean up resources
+            if manager:
+                await manager.close()
+            if provider_factory:
+                await provider_factory.close_all()
+                
+    except KeyboardInterrupt:
+        logger.info("\nOperation cancelled by user")
+        return 0
+        
     except Exception as e:
-        logger.error(f"Track identification failed: {e}")
+        logger.error(f"Error: {e}")
+        if args.verbose:
+            import traceback
+            logger.debug(traceback.format_exc())
         return 1
-    finally:
-        await manager.close()  # Ensure providers are properly closed
-    
-    # Generate output
-    output = TracklistOutput(tracks, mix_info)
-    
-    # Use format from command line if specified, otherwise use format from config
-    if args.formats == 'all':
-        formats = ['json', 'markdown', 'm3u']
-    elif args.formats:
-        formats = [args.formats]
-    else:
-        # Get output format from environment or config
-        config_format = os.environ.get('OUTPUT_FORMAT', config.output_format.lower())
-        if config_format == 'all':
-            formats = ['json', 'markdown', 'm3u']
-        elif config_format in ['json', 'markdown', 'm3u']:
-            formats = [config_format]
-        else:
-            logger.warning(f"Invalid format in config: {config_format}, using json")
-            formats = ['json']
-    
-    for fmt in formats:
-        output.save(fmt)
-    
-    logger.info(f"Found {len(tracks)} tracks")
-    return 0
 
 if __name__ == '__main__':
     import asyncio
