@@ -5,8 +5,10 @@ Track identification helper functions and utilities.
 import hashlib
 import logging
 import os
+import math
 from typing import Dict, Optional, List
 from datetime import timedelta
+import sys
 
 from mutagen import File
 
@@ -19,17 +21,101 @@ from .rate_limiter import RateLimiter, get_rate_limiter
 
 logger = logging.getLogger(__name__)
 
+def get_audio_info(audio_path: str) -> File:
+    """Get audio file metadata."""
+    return File(audio_path)
+
+def format_duration(duration: float) -> str:
+    """Format duration in seconds to HH:MM:SS."""
+    hours = int(duration // 3600)
+    minutes = int((duration % 3600) // 60)
+    seconds = int(duration % 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+def create_progress_bar(progress: float, width: int = 30) -> str:
+    """Create a progress bar string."""
+    filled_length = int(width * progress / 100)
+    bar = '█' * filled_length + '░' * (width - filled_length)
+    return bar
+
+class ProgressDisplay:
+    """Handles the progress display for track identification."""
+    
+    def __init__(self):
+        self.last_lines = 0
+        self.last_status = ""
+        self.last_progress = 0
+        self.GREEN = '\033[92m'
+        self.RESET = '\033[0m'
+    
+    def clear_previous(self):
+        """Clear all previous output lines."""
+        if self.last_lines > 0:
+            # Move up to the start of previous output and clear each line
+            for _ in range(self.last_lines):
+                print('\033[1A\033[K', end='', flush=True)
+    
+    def update(self, current: int, total: int, start_time: float, end_time: float, 
+              segment_size: float, status: str = ""):
+        """Update the progress display."""
+        # Calculate progress
+        progress = (current) / total * 100
+        
+        # Skip update if nothing has changed
+        if status == self.last_status and progress == self.last_progress:
+            return
+            
+        self.last_status = status
+        self.last_progress = progress
+        
+        # Clear previous output
+        self.clear_previous()
+        
+        # Format progress bar
+        bar_width = 30
+        filled_length = int(bar_width * progress // 100)
+        bar = '█' * filled_length + '░' * (bar_width - filled_length)
+        
+        # Format segment information
+        segment_info = f"Segment {current}/{total}"
+        
+        # Prepare output lines
+        lines = [
+            f"\r{self.GREEN}INFO{self.RESET} Progress: [{current}/{total}] {bar} {progress:.1f}%",
+            f"{self.GREEN}INFO{self.RESET} Time: {format_duration(start_time)} - {format_duration(end_time)}",
+            f"{self.GREEN}INFO{self.RESET} Size: {segment_size:.1f} MB",
+            f"{self.GREEN}INFO{self.RESET} Status: {segment_info} - {status}"
+        ]
+        
+        # Print all lines
+        print('\n'.join(lines), end='', flush=True)
+        
+        # Store number of lines printed
+        self.last_lines = len(lines)
 
 class IdentificationManager:
     """Manages track identification using configured providers."""
     
     def __init__(self, config: TrackIdentificationConfig = None, provider_factory: ProviderFactory = None):
         """Initialize identification manager."""
+        logger.info("Initializing track identification system...")
+        
+        logger.debug("├─ Loading configuration...")
         self.config = config or get_config()
+        
+        logger.debug("├─ Setting up provider factory...")
         self.provider_factory = provider_factory or create_provider_factory(self.config)
+        
+        logger.debug("├─ Initializing cache system...")
         self.cache = get_cache()
+        
+        logger.debug("├─ Setting up rate limiter...")
         self.rate_limiter = get_rate_limiter()
+        
+        logger.debug("└─ Creating track matcher...")
         self.track_matcher = TrackMatcher()
+        
+        logger.info("Track identification system ready.")
 
     async def identify_tracks(self, audio_path: str) -> List[Track]:
         """
@@ -45,46 +131,33 @@ class IdentificationManager:
             IdentificationError: If track identification fails
         """
         try:
-            # Get providers in priority order
-            providers = self._get_providers_in_priority()
-            if not providers:
-                raise IdentificationError("No identification providers configured")
-            
-            # Get audio file metadata
-            audio = File(audio_path)
-            if audio is None:
-                raise IdentificationError("Failed to read audio file metadata")
-                
-            total_length = audio.info.length
+            # Get audio duration and calculate segments
+            audio_info = get_audio_info(audio_path)
+            duration = audio_info.info.length
             segment_length = self.config.segment_length
-            total_segments = int(total_length // segment_length)
+            total_segments = math.ceil(duration / segment_length)
+            file_size = os.path.getsize(audio_path) / (1024 * 1024)  # Convert to MB
+
+            # Log initial setup
+            logger.info("Starting audio analysis:")
+            logger.info(f"├─ Duration: {format_duration(duration)}")
+            logger.info(f"├─ Segment length: {segment_length} seconds")
+            logger.info(f"├─ Total segments: {total_segments}")
+            logger.info(f"└─ File size: {file_size:.1f} MB")
+            logger.info("")
+
+            identified_tracks = []
+            providers = self._get_providers_in_priority()
+            progress = ProgressDisplay()
             
-            # Log identification start
-            total_time_str = str(timedelta(seconds=int(total_length)))
-            logger.info(f"Starting track identification...")
-            logger.info(f"Total length: {total_time_str}")
-            logger.info(f"Total segments to analyze: {total_segments}")
-            logger.info(f"Segment length: {segment_length} seconds")
-            
-            identified_count = 0
-            
-            # Calculate audio file metrics
-            audio_size = os.path.getsize(audio_path)
-            bytes_per_second = audio_size / total_length
-            
-            # Process each segment
             for i in range(total_segments):
                 start_time = i * segment_length
-                # Format time as HH:MM:SS
-                hours = int(start_time // 3600)
-                minutes = int((start_time % 3600) // 60)
-                seconds = int(start_time % 60)
-                time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                logger.info(f"Analyzing segment {i+1}/{total_segments} at {time_str}...")
+                end_time = min((i + 1) * segment_length, duration)
                 
-                # Get segment data
-                start_bytes = int((start_time / total_length) * audio_size)
-                end_bytes = int(((start_time + segment_length) / total_length) * audio_size)
+                # Calculate segment size
+                start_bytes = int(start_time / duration * os.path.getsize(audio_path))
+                end_bytes = int(end_time / duration * os.path.getsize(audio_path))
+                segment_size = (end_bytes - start_bytes) / (1024 * 1024)  # Convert to MB
                 
                 # Try each provider in priority order
                 result = None
@@ -92,56 +165,50 @@ class IdentificationManager:
                 
                 for provider in providers:
                     try:
+                        # Update progress with current status
+                        progress.update(i + 1, total_segments, start_time, end_time, segment_size,
+                                     f"Using {provider.__class__.__name__}")
+                        
                         result = await self._identify_segment(
-                            audio_path=audio_path,
-                            provider=provider,
-                            start_time=start_time,
-                            start_bytes=start_bytes,
-                            end_bytes=end_bytes
+                            audio_path, provider, start_time, start_bytes, end_bytes
                         )
-                        if result and result.get('metadata', {}).get('music'):
-                            logger.debug(f"Successfully identified segment with provider {provider.__class__.__name__}")
+                        if result:
                             break
-                    except (AuthenticationError, RateLimitError) as e:
-                        # Critical errors - remove provider from list
-                        logger.error(f"Provider {provider.__class__.__name__} error: {e}")
-                        providers.remove(provider)
-                        if not providers:
-                            raise IdentificationError("All providers failed with critical errors")
-                    except ProviderError as e:
-                        # Non-critical error - try next provider
-                        if "URL is invalid" in str(e):
-                            # This is a normal case when Shazam can't identify a segment
-                            logger.debug(f"Provider {provider.__class__.__name__} could not identify segment {i+1}")
-                        else:
-                            logger.warning(f"Provider {provider.__class__.__name__} error: {e}")
+                    except Exception as e:
                         last_error = e
+                        continue
                 
-                if not result and last_error:
-                    if "URL is invalid" in str(last_error):
-                        logger.debug(f"No providers could identify segment {i+1}")
-                    else:
-                        logger.warning(f"All providers failed for segment {i+1}: {last_error}")
+                if last_error and not result:
+                    progress.update(i + 1, total_segments, start_time, end_time, segment_size,
+                                 f"No match found")
                     continue
-                
+
+                # Process identification result
                 if result and result.get('metadata', {}).get('music'):
                     for music in result['metadata']['music']:
                         track = Track(
                             song_name=music['title'],
                             artist=music['artists'][0]['name'],
-                            time_in_mix=time_str,
+                            time_in_mix=format_duration(start_time),
                             confidence=float(music['score'])
                         )
                         self.track_matcher.add_track(track)
-                        identified_count += 1
-                        logger.info(f"Found track: {track.song_name} by {track.artist} (Confidence: {track.confidence:.1f}%)")
-                else:
-                    logger.debug(f"No music detected in segment {i+1}")
-            
+                        identified_tracks.append(track)
+                        
+                        # Update progress with found track
+                        progress.update(i + 1, total_segments, start_time, end_time, segment_size,
+                                     f"Found: {track.song_name} by {track.artist}")
+                        
+                        # Log the found track
+                        logger.info(f"Found track: {track.song_name} by {track.artist}")
+
+            # Add newline after progress display
+            print("\n")
+
             # Log identification completion
-            logger.info(f"\nTrack identification completed:")
+            logger.info("Identification complete:")
             logger.info(f"- Segments analyzed: {total_segments}")
-            logger.info(f"- Raw tracks identified: {identified_count}")
+            logger.info(f"- Raw tracks identified: {len(identified_tracks)}")
             
             # Merge nearby tracks and return
             merged_tracks = self.track_matcher.merge_nearby_tracks()

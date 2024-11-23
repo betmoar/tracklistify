@@ -4,7 +4,11 @@ import os
 import sys
 import shutil
 import asyncio
+import signal
 from pathlib import Path
+
+# Global variables for cleanup
+_cleanup_tasks = set()
 
 def setup_environment():
     """Setup the Python path and environment variables."""
@@ -55,8 +59,37 @@ def check_dependencies():
         print(f"Error verifying ffmpeg: {e}")
         sys.exit(1)
 
-async def main():
-    """Main entry point."""
+def handle_interrupt(signum, frame):
+    """Handle interrupt signal (Ctrl+C) gracefully."""
+    print("\n\nGracefully shutting down...")
+    
+    # Get the current event loop
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+        
+    # Cancel all tasks
+    for task in asyncio.all_tasks(loop):
+        task.cancel()
+    
+    # Stop the loop
+    loop.stop()
+    sys.exit(0)
+
+async def cleanup():
+    """Clean up resources before shutdown."""
+    # Cancel all tracked tasks
+    for task in _cleanup_tasks:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+async def amain():
+    """Async main entry point."""
     # Setup environment
     setup_environment()
     check_dependencies()
@@ -64,15 +97,36 @@ async def main():
     try:
         # Import tracklistify main after environment is set up
         from tracklistify.__main__ import main as tracklistify_main
-        await tracklistify_main()
+        return await tracklistify_main()
     except ImportError as e:
         print(f"Error importing tracklistify: {e}")
         print("Make sure you're in the correct directory and have installed requirements:")
         print("pip install -r requirements.txt")
-        sys.exit(1)
+        return 1
+    except asyncio.CancelledError:
+        # Handle cancellation gracefully
+        print("\nOperation cancelled by user")
+        return 0
+    except KeyboardInterrupt:
+        # Handle Ctrl+C gracefully
+        print("\nOperation cancelled by user")
+        return 0
     except Exception as e:
         print(f"Error running tracklistify: {e}")
-        sys.exit(1)
+        return 1
+
+def main():
+    """Main entry point."""
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, handle_interrupt)
+    signal.signal(signal.SIGTERM, handle_interrupt)
+    
+    try:
+        # Run the async main with proper cleanup
+        return asyncio.run(amain())
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user")
+        return 0
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(main())
