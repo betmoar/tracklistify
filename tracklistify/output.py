@@ -14,16 +14,16 @@ from .config import get_config
 class TracklistOutput:
     """Handles tracklist output in various formats."""
     
-    def __init__(self, tracks: List[Track], mix_info: dict):
+    def __init__(self, mix_info: dict, tracks: List[Track]):
         """
-        Initialize with tracks and mix information.
+        Initialize with mix information and tracks.
         
         Args:
-            tracks: List of identified tracks
             mix_info: Dictionary containing mix metadata
+            tracks: List of identified tracks
         """
-        self.tracks = tracks
         self.mix_info = mix_info
+        self.tracks = tracks
         self._config = get_config()
         self.output_dir = Path(self._config.output_dir)
         self.output_dir.mkdir(exist_ok=True)
@@ -174,3 +174,19 @@ class TracklistOutput:
         
         logger.info(f"Saved M3U playlist to: {output_file}")
         return output_file
+
+    def save_all(self) -> List[Path]:
+        """
+        Save tracks in all available formats.
+        
+        Returns:
+            List of paths to saved files
+        """
+        formats = ['json', 'markdown', 'm3u']
+        saved_files = []
+        
+        for format_type in formats:
+            if path := self.save(format_type):
+                saved_files.append(path)
+                
+        return saved_files

@@ -100,19 +100,19 @@ class IdentificationManager:
         """Initialize identification manager."""
         logger.info("Initializing track identification system...")
         
-        logger.debug("├─ Loading configuration...")
+        logger.info("├─ Loading configuration...")
         self.config = config or get_config()
         
-        logger.debug("├─ Setting up provider factory...")
+        logger.info("├─ Setting up provider factory...")
         self.provider_factory = provider_factory or create_provider_factory(self.config)
         
-        logger.debug("├─ Initializing cache system...")
+        logger.info("├─ Initializing cache system...")
         self.cache = get_cache()
         
-        logger.debug("├─ Setting up rate limiter...")
+        logger.info("├─ Setting up rate limiter...")
         self.rate_limiter = get_rate_limiter()
         
-        logger.debug("└─ Creating track matcher...")
+        logger.info("└─ Creating track matcher...")
         self.track_matcher = TrackMatcher()
         
         logger.info("Track identification system ready.")
@@ -297,6 +297,7 @@ class IdentificationManager:
                 segment_data = f.read(end_bytes - start_bytes)
             
             # Log provider being used
+            
             logger.info(f"Identifying segment at {start_time}s using {provider.__class__.__name__}")
             
             # Identify segment

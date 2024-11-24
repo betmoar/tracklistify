@@ -4,6 +4,7 @@ Main entry point for Tracklistify.
 
 import argparse
 import os
+import asyncio
 from datetime import timedelta
 from typing import List, Optional
 
