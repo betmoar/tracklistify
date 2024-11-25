@@ -173,10 +173,29 @@ class TrackIdentificationConfig(BaseConfig):
     retry_base_delay: float = field(default=1.0)
     retry_max_delay: float = field(default=30.0)
     
-    # Rate limiting
+    # Rate limiting settings
     rate_limit_enabled: bool = field(default=True)
     max_requests_per_minute: int = field(default=60)
-
+    max_concurrent_requests: int = field(default=10)
+    
+    # Circuit breaker settings
+    circuit_breaker_enabled: bool = field(default=True)
+    circuit_breaker_threshold: int = field(default=5)  # Consecutive failures before opening
+    circuit_breaker_reset_timeout: float = field(default=60.0)  # Seconds to wait before half-open
+    
+    # Alert settings
+    rate_limit_alert_enabled: bool = field(default=True)
+    rate_limit_alert_threshold: float = field(default=5.0)  # Alert if wait time exceeds this
+    rate_limit_alert_cooldown: float = field(default=300.0)  # Minimum time between alerts
+    
+    # Per-provider rate limits
+    spotify_max_rpm: int = field(default=120)
+    spotify_max_concurrent: int = field(default=20)
+    shazam_max_rpm: int = field(default=60)
+    shazam_max_concurrent: int = field(default=10)
+    acrcloud_max_rpm: int = field(default=30)
+    acrcloud_max_concurrent: int = field(default=5)
+    
     # Cache settings
     cache_enabled: bool = field(default=True)
     cache_ttl: int = field(default=3600)
@@ -235,6 +254,38 @@ class TrackIdentificationConfig(BaseConfig):
         self._validator.add_rule(TypeRule('rate_limit_enabled', bool))
         self._validator.add_rule(TypeRule('max_requests_per_minute', int))
         self._validator.add_rule(RangeRule('max_requests_per_minute', 1, 1000))
+        self._validator.add_rule(TypeRule('max_concurrent_requests', int))
+        self._validator.add_rule(RangeRule('max_concurrent_requests', 1, 100))
+        
+        # Circuit breaker validation
+        self._validator.add_rule(TypeRule('circuit_breaker_enabled', bool))
+        self._validator.add_rule(TypeRule('circuit_breaker_threshold', int))
+        self._validator.add_rule(RangeRule('circuit_breaker_threshold', 1, 100))
+        self._validator.add_rule(TypeRule('circuit_breaker_reset_timeout', float))
+        self._validator.add_rule(RangeRule('circuit_breaker_reset_timeout', 1.0, 3600.0))
+        
+        # Alert validation
+        self._validator.add_rule(TypeRule('rate_limit_alert_enabled', bool))
+        self._validator.add_rule(TypeRule('rate_limit_alert_threshold', float))
+        self._validator.add_rule(RangeRule('rate_limit_alert_threshold', 0.1, 60.0))
+        self._validator.add_rule(TypeRule('rate_limit_alert_cooldown', float))
+        self._validator.add_rule(RangeRule('rate_limit_alert_cooldown', 1.0, 3600.0))
+        
+        # Per-provider rate limit validation
+        self._validator.add_rule(TypeRule('spotify_max_rpm', int))
+        self._validator.add_rule(RangeRule('spotify_max_rpm', 1, 1000))
+        self._validator.add_rule(TypeRule('spotify_max_concurrent', int))
+        self._validator.add_rule(RangeRule('spotify_max_concurrent', 1, 100))
+        
+        self._validator.add_rule(TypeRule('shazam_max_rpm', int))
+        self._validator.add_rule(RangeRule('shazam_max_rpm', 1, 1000))
+        self._validator.add_rule(TypeRule('shazam_max_concurrent', int))
+        self._validator.add_rule(RangeRule('shazam_max_concurrent', 1, 100))
+        
+        self._validator.add_rule(TypeRule('acrcloud_max_rpm', int))
+        self._validator.add_rule(RangeRule('acrcloud_max_rpm', 1, 1000))
+        self._validator.add_rule(TypeRule('acrcloud_max_concurrent', int))
+        self._validator.add_rule(RangeRule('acrcloud_max_concurrent', 1, 100))
 
         # Cache validation
         self._validator.add_rule(TypeRule('cache_enabled', bool))
