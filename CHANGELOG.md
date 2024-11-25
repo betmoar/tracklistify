@@ -48,7 +48,65 @@ Release dates are in YYYY-MM-DD format.
 - Temporary file cleanup
 - Interrupt signal handling
 
-## [Phase 3 - Track Identification and Output Enhancement] - 2024-01-23
+## [Phase 4 - Spotify Integration] - 2024-11-25
+### Added
+- Spotify downloader implementation:
+  - Support for multiple audio qualities:
+    * Vorbis: 96, 160, 320 kbps
+    * AAC: 24, 32, 96, 128, 256 kbps
+  - Multiple output formats (M4A/OGG/MP3)
+  - Rich metadata tagging:
+    * Artist and album information
+    * Track and disc numbers
+    * Release dates and genres
+    * Cover art embedding
+  - Factory method for environment-based creation
+- Environment variable configuration:
+  - TRACKLISTIFY_SPOTIFY_COOKIES: Browser cookie path
+  - TRACKLISTIFY_SPOTIFY_QUALITY: Audio quality setting
+  - TRACKLISTIFY_SPOTIFY_FORMAT: Output format selection
+  - TRACKLISTIFY_OUTPUT_DIR: Download directory
+  - TRACKLISTIFY_TEMP_DIR: Temporary file location
+  - TRACKLISTIFY_VERBOSE: Logging verbosity
+- Enhanced file management:
+  - Structured .tracklistify directory:
+    * /output: Downloaded files
+    * /temp: Temporary processing
+  - Safe filename generation
+  - Home directory expansion (~)
+  - Automatic directory creation
+
+### Changed
+- Project structure improvements:
+  - Integrated Spotify downloader with existing base
+  - Enhanced environment variable handling
+  - Expanded configuration options
+  - Improved directory organization
+- Audio processing:
+  - FFmpeg integration for format conversion
+  - Quality-preserving transcoding
+  - Metadata preservation during conversion
+- Error handling and logging:
+  - Detailed debug information
+  - Operation progress tracking
+  - Comprehensive error messages
+  - Clean error recovery
+
+### Fixed
+- Path handling:
+  - Home directory expansion
+  - Illegal character sanitization
+  - Unicode filename support
+- Temporary file management:
+  - Proper cleanup after processing
+  - Unique temp file naming
+  - Error state cleanup
+- Cookie handling:
+  - Path expansion support
+  - Better error messages
+  - Validation checks
+
+## [Phase 3 - Track Identification and Output Enhancement] - 2024-11-24
 ### Added
 - Real-time progress display for track identification:
   - Visual progress bar
