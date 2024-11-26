@@ -1,6 +1,4 @@
-"""
-Tracklistify - Automatic tracklist generator for DJ mixes and audio streams.
-"""
+"""Tracklistify - Automatic tracklist generator for DJ mixes and audio streams."""
 
 from importlib.metadata import metadata
 

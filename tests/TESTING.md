@@ -99,7 +99,7 @@ python -m pytest tests/test_cache.py::test_cache_lru_invalidation
 #### 2. TTL Invalidation
 **Test**: `test_cache_ttl_invalidation`
 - **Purpose**: Validate time-based cache invalidation
-- **Methodology**: 
+- **Methodology**:
   - Set entries with TTL
   - Wait for expiration
   - Verify invalidation

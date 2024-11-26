@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
+### Added
+- Comprehensive caching system implementation:
+  - Multiple invalidation strategies:
+    * Time-based (TTL) with configurable expiration
+    * Least Recently Used (LRU) for memory optimization
+    * Size-based for storage management
+    * Composite strategy for combining approaches
+  - JSON storage with compression support
+  - Cache statistics tracking and monitoring
+  - Concurrent access support
+  - Global cache instance management
+  - Type-safe operations with generics
+  - Async/await pattern for all operations
+  - Minimum free space management
+  - Configurable compression levels
+  - Cache metadata tracking
+  - Extensive test coverage
+
+### Changed
+- Enhanced cache configuration system
+- Improved error handling in cache operations
+- Optimized cache cleanup processes
+- Added pre-commit hooks for code quality
+- Expanded type hints coverage
+
 ### Unimplemented
 - Support for additional platforms (Mixcloud, SoundCloud)
 - Web interface for easier usage
