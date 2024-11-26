@@ -24,6 +24,14 @@ Release dates are in YYYY-MM-DD format.
   - XML export
   - Rekordbox compatible format
 
+### Changed
+- Updated dependency management:
+  - Now using acrcloud SDK directly from GitHub
+  - Switched to main shazamio repository
+  - Updated dependency versions for better compatibility
+- Simplified environment setup process
+- Improved error handling in installation scripts
+
 ## [Phase 2 - Cache System] - 2024-11-22
 ### Added
 - Enhanced cache management system:

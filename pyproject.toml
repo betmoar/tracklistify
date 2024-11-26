@@ -31,10 +31,10 @@ dependencies = [
     "configparser>=5.3.0",
     "mutagen>=1.47.0",
     "pydub>=0.25.1",
-    "pyacrcloud>=1.0.2",
+    "pyacrcloud>=1.0.7",
     "python-dotenv>=1.0.1",
     "requests>=2.31.0",
-    "shazamio==0.7.0",
+    "shazamio>=0.7.0",
     "yt-dlp>=2024.7.7",
 ]
 
