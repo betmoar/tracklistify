@@ -87,12 +87,20 @@ See [PYTHON.md](.ai/PYTHON.MD) for detailed development guidelines.
 - [x] Add type-safe cache operations
 - [x] Add cache entry metadata management
 
-### Rate Limiter
-- [ ] Add type hints to rate limiter
-- [ ] Implement configurable retry strategies
-- [ ] Add exponential backoff
-- [ ] Add per-provider rate limiting
-- [ ] Add concurrent request limiting
+### Rate Limiter ✅
+- [x] Add type hints to rate limiter
+- [x] Implement configurable retry strategies
+- [x] Add exponential backoff
+- [x] Add per-provider rate limiting
+- [x] Add concurrent request limiting
+- [x] Add token bucket implementation
+- [x] Add configurable time windows
+- [x] Add provider-specific configurations
+- [x] Implement thread-safe operations
+- [x] Add comprehensive logging
+- [x] Add timeout handling
+- [x] Add token refill mechanism
+- [x] Add remaining tokens tracking
 
 ### Validation System
 - [ ] Add input validation utilities

@@ -81,10 +81,10 @@ class ProgressDisplay:
         
         # Prepare output lines
         lines = [
-            f"\r{self.GREEN}INFO{self.RESET} Progress: [{current}/{total}] {bar} {progress:.1f}%",
+            f"\r{self.GREEN}INFO{self.RESET} Status: {segment_info} - {status}",
             f"{self.GREEN}INFO{self.RESET} Time: {format_duration(start_time)} - {format_duration(end_time)}",
             f"{self.GREEN}INFO{self.RESET} Size: {segment_size:.1f} MB",
-            f"{self.GREEN}INFO{self.RESET} Status: {segment_info} - {status}"
+            f"{self.GREEN}INFO{self.RESET} Progress: [{current}/{total}] {bar} {progress:.1f}%"
         ]
         
         # Print all lines
@@ -144,7 +144,6 @@ class IdentificationManager:
             logger.info(f"├─ Segment length: {segment_length} seconds")
             logger.info(f"├─ Total segments: {total_segments}")
             logger.info(f"└─ File size: {file_size:.1f} MB")
-            logger.info("")
 
             identified_tracks = []
             providers = self._get_providers_in_priority()
@@ -200,10 +199,10 @@ class IdentificationManager:
                                      f"Found: {track.song_name} by {track.artist}")
                         
                         # Log the found track
-                        logger.info(f"Found track: {track.song_name} by {track.artist}")
+                        print('')
 
             # Add newline after progress display
-            print("\n")
+            #logger.info("")
 
             # Log identification completion
             logger.info("Identification complete:")
@@ -289,7 +288,7 @@ class IdentificationManager:
         if self.config.rate_limit_enabled:
             if not self.rate_limiter.acquire(timeout=30):
                 raise ProviderError("Rate limit exceeded")
-        
+            
         try:
             # Read segment data
             with open(audio_path, 'rb') as f:
@@ -298,7 +297,8 @@ class IdentificationManager:
             
             # Log provider being used
             
-            logger.info(f"Identifying segment at {start_time}s using {provider.__class__.__name__}")
+            print("")
+            #logger.info(f"Identifying segment at {start_time}s using {provider.__class__.__name__}")
             
             # Identify segment
             result = await provider.identify_track(segment_data, start_time)
@@ -314,6 +314,9 @@ class IdentificationManager:
             
         except Exception as e:
             raise ProviderError(f"Failed to identify segment with {provider.__class__.__name__}: {str(e)}")
+        finally:
+            if self.config.rate_limit_enabled:
+                self.rate_limiter.release()
 
     async def close(self) -> None:
         """Close all resources."""

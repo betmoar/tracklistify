@@ -171,4 +171,4 @@ temp_segments/
 .tracklistify/
 dev/
 output/*
-examples/
+docs/examples/

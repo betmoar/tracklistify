@@ -8,8 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
-### Added
+### Unimplemented
 - Support for additional platforms (Mixcloud, SoundCloud)
+- Web interface for easier usage
+- Docker support
+- Additional output formats:
+  - CSV export
+  - XML export
+  - Rekordbox compatible format
+- Enhanced progress display:
+  - Single-line progress updates
+  - Color-coded INFO prefix
+  - Improved readability with newlines
+
+## [Phase 2 - Rate Limiter] - 2024-11-26
+### Added
+- Comprehensive rate limiter implementation:
+  - Token bucket algorithm with configurable time windows
+  - Provider-specific rate limiting configurations
+  - Concurrent request limiting with per-provider caps
+  - Multiple retry strategies (constant, linear, exponential)
+  - Thread-safe operations with proper locking
+  - Comprehensive logging for rate limit events
+  - Configurable timeout handling
+  - Automatic token refill mechanism
+  - Remaining tokens tracking
+
+## [Other Changes] - 2024-11-26
+### Added
 - Advanced error recovery strategies
 - Batch processing for multiple files
 - Progress bar for long operations
@@ -17,18 +43,8 @@ Release dates are in YYYY-MM-DD format.
   - Interactive mode
   - Configuration wizard
   - Batch processing options
-- Web interface for easier usage
-- Docker support
-- Additional output formats:
-  - CSV export
-  - XML export
-  - Rekordbox compatible format
 
 ### Changed
-- Enhanced progress display:
-  - Single-line progress updates
-  - Color-coded INFO prefix
-  - Improved readability with newlines
 - Improved YouTube downloader:
   - Environment-based download paths
   - Automatic temp directory creation
