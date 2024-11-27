@@ -7,17 +7,34 @@ This module defines all type definitions used throughout the application, includ
 - Comprehensive type hints and documentation
 """
 
-from typing import TypeVar, Dict, List, Optional, TypedDict, Literal, Protocol, AsyncIterator, Any
+from dataclasses import dataclass
+from datetime import datetime
+
+# Standard library imports
 from pathlib import Path
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    Generic,
+    List,
+    Literal,
+    Optional,
+    Protocol,
+    TypedDict,
+    TypeVar,
+)
 
 # Generic type variables
-T = TypeVar('T')
-ProviderT = TypeVar('ProviderT', bound='TrackIdentificationProvider')
-DownloaderT = TypeVar('DownloaderT', bound='Downloader')
+T = TypeVar("T")
+ProviderT = TypeVar("ProviderT", bound="TrackIdentificationProvider")
+DownloaderT = TypeVar("DownloaderT", bound="Downloader")
+
 
 # Configuration types
 class TrackIdentificationConfigDict(TypedDict):
     """Track identification configuration type."""
+
     # Track identification settings
     segment_length: int
     min_confidence: float
@@ -69,9 +86,11 @@ class TrackIdentificationConfigDict(TypedDict):
     verbose: bool
     debug: bool
 
+
 # Track types
 class TrackMetadata(TypedDict):
     """Track metadata type."""
+
     song_name: str
     artist: str
     album: Optional[str]
@@ -81,16 +100,20 @@ class TrackMetadata(TypedDict):
     confidence: float
     time_in_mix: str
 
+
 class ProviderResponse(TypedDict):
     """Provider response type."""
+
     success: bool
     error: Optional[str]
     metadata: Optional[TrackMetadata]
     raw_response: Dict
 
+
 # Downloader types
 class DownloadResult(TypedDict):
     """Download result type."""
+
     success: bool
     file_path: Optional[str]
     error: Optional[str]
@@ -98,8 +121,10 @@ class DownloadResult(TypedDict):
     format: str
     size: int
 
+
 class DownloadProgress(TypedDict):
     """Download progress type."""
+
     status: Literal["downloading", "converting", "complete", "error"]
     progress: float  # 0-100
     speed: Optional[str]  # e.g., "1.2MB/s"
@@ -107,139 +132,119 @@ class DownloadProgress(TypedDict):
     size: Optional[str]  # e.g., "12.3MB"
     error: Optional[str]
 
-# Cache types
-CacheMetadata = TypedDict('CacheMetadata', {
-    'ttl': int,
-    'compression': bool,
-    'compression_level': int,
-    'format': str,
-    'created_at': float,
-    'last_accessed': float,
-    'access_count': int,
-    'size_bytes': int
-})
 
-CacheEntry = TypedDict('CacheEntry', {
-    'value': T,
-    'timestamp': float,
-    'metadata': CacheMetadata
-})
+# Cache types
+class CacheMetadata:
+    """Cache entry metadata."""
+
+    created_at: datetime
+    accessed_at: datetime
+    size: int
+    hits: int
+
+
+class CacheEntry(Generic[T]):
+    """Cache entry with metadata."""
+
+    value: T
+    metadata: CacheMetadata
+
 
 class CacheStorage(Protocol[T]):
-    """Protocol for cache storage backends."""
-    
-    async def read(self, key: str) -> Optional[CacheEntry[T]]:
-        """Read value from storage."""
-        ...
-        
-    async def write(self, key: str, entry: CacheEntry[T]) -> None:
-        """Write value to storage."""
-        ...
-        
-    async def delete(self, key: str) -> None:
-        """Delete value from storage."""
-        ...
-        
-    async def clear(self) -> None:
-        """Clear all values from storage."""
-        ...
-        
-    async def cleanup(self, max_age: Optional[int] = None) -> int:
-        """Clean up old entries."""
-        ...
+    """Cache storage protocol."""
+
+    def get(self, key: str) -> Optional[CacheEntry[T]]: ...
+    def set(self, key: str, value: T) -> None: ...
+    def delete(self, key: str) -> None: ...
+    def clear(self) -> None: ...
+    def contains(self, key: str) -> bool: ...
+
 
 class InvalidationStrategy(Protocol):
-    """Protocol for cache invalidation strategies."""
-    
-    def should_invalidate(self, entry: CacheEntry[Any]) -> bool:
-        """Check if entry should be invalidated."""
-        ...
-        
-    def cleanup(self, storage: CacheStorage[Any]) -> None:
-        """Clean up invalid entries."""
-        ...
+    """Cache invalidation strategy protocol."""
+
+    def should_invalidate(self, entry: CacheEntry) -> bool: ...
+    def on_access(self, entry: CacheEntry) -> None: ...
+    def on_add(self, entry: CacheEntry) -> None: ...
+    def on_remove(self, entry: CacheEntry) -> None: ...
+
 
 class Cache(Protocol[T]):
-    """Enhanced cache interface with comprehensive type hints."""
-    
-    async def get(self, key: str) -> Optional[T]:
-        """Get value from cache with type safety."""
-        ...
-        
-    async def set(
-        self, 
-        key: str, 
-        value: T, 
-        ttl: Optional[int] = None,
-        compression: bool = False,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """Set value in cache with validation."""
-        ...
-        
-    async def delete(self, key: str) -> None:
-        """Delete value from cache."""
-        ...
-        
-    async def clear(self) -> None:
-        """Clear all values from cache."""
-        ...
-        
-    async def cleanup(self, max_age: Optional[int] = None) -> int:
-        """Clean up old entries.
-        
-        Returns:
-            Number of entries cleaned up
-        """
-        ...
-        
-    def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
-        ...
+    """Cache protocol."""
+
+    def get(self, key: str) -> Optional[T]: ...
+    def set(self, key: str, value: T) -> None: ...
+    def delete(self, key: str) -> None: ...
+    def clear(self) -> None: ...
+    def contains(self, key: str) -> bool: ...
+
 
 # Protocol definitions
 class TrackIdentificationProvider(Protocol):
     """Protocol defining the interface for track identification providers."""
-    
-    async def identify_track(self, audio_path: Path, start_time: float = 0) -> ProviderResponse:
+
+    async def identify_track(
+        self, audio_path: Path, start_time: float = 0
+    ) -> ProviderResponse:
         """Identify a track from an audio file.
-        
+
         Args:
             audio_path: Path to the audio file
             start_time: Start time in seconds for identification
-            
+
         Returns:
             ProviderResponse containing identification results
         """
         ...
-    
+
     async def validate_credentials(self) -> bool:
         """Validate provider credentials.
-        
+
         Returns:
             True if credentials are valid, False otherwise
         """
         ...
 
+
 class Downloader(Protocol):
     """Protocol defining the interface for audio downloaders."""
-    
+
     async def download(self, url: str, output_path: Path) -> DownloadResult:
         """Download audio from a URL.
-        
+
         Args:
             url: URL to download from
             output_path: Path to save the downloaded file
-            
+
         Returns:
             DownloadResult containing download status and metadata
         """
         ...
-    
+
     async def get_progress(self) -> AsyncIterator[DownloadProgress]:
         """Get download progress updates.
-        
+
         Yields:
             DownloadProgress updates
         """
         ...
+
+
+class ConfigProvider(Protocol):
+    """Config provider interface to break circular dependencies"""
+
+    @property
+    def primary_provider(self) -> str: ...
+    @property
+    def fallback_enabled(self) -> bool: ...
+    @property
+    def fallback_providers(self) -> list[str]: ...
+
+
+@dataclass
+class AudioSegment:
+    """Represents an audio segment for processing."""
+
+    file_path: str
+    start_time: int = 0
+    duration: int = 60

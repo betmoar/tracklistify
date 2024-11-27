@@ -1,20 +1,40 @@
 """
 Tracklistify - Automatic tracklist generator for DJ mixes and audio streams.
+
+This module provides the main entry point for the Tracklistify package. It includes
+metadata about the package such as version, title, author, and license. The version
+information is retrieved from the _version.py file if available, otherwise it falls
+back to the package metadata.
 """
 
-from importlib.metadata import metadata
+# Standard library imports
+import importlib.metadata
 
-try:
-    from ._version import __version__
-except ImportError:
-    # Fallback to package metadata if _version.py is not available
-    __version__ = metadata("tracklistify")["Version"]
 
-# Get package metadata
-_metadata = metadata("tracklistify")
+def get_metadata():
+    """
+    Extract version and metadata from package distribution.
 
-__title__ = _metadata.get("Name", "")
-__author__ = _metadata.get("Author", "Unknown")
-__license__ = _metadata.get("License", "")
+    This function is used in the generated `__init__.py` to extract the package
+    version and metadata from the distribution. It is used as a fallback when the
+    `importlib.metadata` module is not available.
 
-__all__ = ["__version__", "__title__", "__author__", "__license__"]
+    Returns
+    -------
+    list
+        A list of strings containing the version, title, author, and license of
+        the package.
+    """
+    from importlib.metadata import metadata, version
+
+    _meta = metadata("tracklistify")
+    __version__ = version("tracklistify")
+    __title__ = _meta.get("Name", "Unknown")
+    __author__ = _meta.get("Author", "Unknown")
+    __license__ = _meta.get("License", "Unknown")
+
+    __all__ = ["__version__", "__title__", "__author__", "__license__"]
+    return __all__
+
+
+__all__ = get_metadata()

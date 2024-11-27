@@ -18,7 +18,7 @@ We use GitHub to host code, to track issues and feature requests, as well as acc
    # Clone your fork
    git clone https://github.com/betmoar/tracklistify.git
    cd tracklistify
-   
+
    # Run the setup script
    ./env-setup.sh --dev
    ```
@@ -36,7 +36,7 @@ We use GitHub to host code, to track issues and feature requests, as well as acc
    isort .
    flake8
    mypy .
-   
+
    # Run tests
    pytest
    ```

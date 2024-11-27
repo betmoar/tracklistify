@@ -9,6 +9,12 @@ Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 ### Added
+- Introduced `TracklistOutput` class.
+  - Handles tracklist output in various formats.
+- Added `ProgressDisplay` class.
+  - Manages progress display during track identification.
+- Integrated ACRCloud provider.
+  - Supports track identification.
 - Support for additional platforms (Mixcloud, SoundCloud)
 - Advanced error recovery strategies
 - Batch processing for multiple files
@@ -25,6 +31,13 @@ Release dates are in YYYY-MM-DD format.
   - Rekordbox compatible format
 
 ### Changed
+- Refactored `SpotifyPlaylistExporter`.
+  - Now uses `tracklistify.core.track`.
+  - Utilizes `tracklistify.utils.logger`.
+- Improved YouTube downloader.
+  - Sets video title before download.
+- Enhanced `save_output` method.
+  - Better error handling for missing titles.
 - Enhanced progress display:
   - Single-line progress updates
   - Color-coded INFO prefix
@@ -44,7 +57,16 @@ Release dates are in YYYY-MM-DD format.
 - Simplified rate limiter tests to focus on core functionality
 - Temporarily skipped complex timing-dependent tests
 
+### Removed
+- Deprecated `tracklistify/identification.py`.
+- Centralized logging removed `tracklistify/logger.py`.
+- Streamlined output handling removed `tracklistify/output.py`.
+
 ### Fixed
+- Corrected YouTube downloader issue.
+  - Ensures title is set before download.
+- Improved title handling in `save_output`.
+  - Provides better fallbacks.
 - Duplicate progress line display
 - Event loop deprecation warnings
 - Temporary file cleanup
