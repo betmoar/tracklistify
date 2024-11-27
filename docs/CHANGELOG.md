@@ -29,6 +29,9 @@ Release dates are in YYYY-MM-DD format.
   - CSV export
   - XML export
   - Rekordbox compatible format
+- Created `refactor-step1.md` and `refactor-step2.md` to guide the refactoring process.
+  - `refactor-step1.md` includes an analysis of the existing project structure.
+  - `refactor-step2.md` outlines the proposed new structure with detailed module descriptions.
 
 ### Changed
 - Refactored `SpotifyPlaylistExporter`.
@@ -56,6 +59,8 @@ Release dates are in YYYY-MM-DD format.
   - User-friendly cancellation messages
 - Simplified rate limiter tests to focus on core functionality
 - Temporarily skipped complex timing-dependent tests
+- Enhanced `refactor-step2.md` with a comprehensive structure including `base.py` and `factory.py` for each logical component directory.
+- Added guidance on combining or removing unnecessary files to optimize project structure.
 
 ### Removed
 - Deprecated `tracklistify/identification.py`.
