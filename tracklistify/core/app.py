@@ -1,11 +1,10 @@
 # tracklistify/core/app.py
 
 # Standard library imports
-import asyncio
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 # Local/package imports
 from tracklistify.config.factory import get_config
@@ -30,8 +29,8 @@ class App:
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super(App, cls).__new__(cls, *args, **kwargs)
-            cls._instance._initialized = False  # Add initialization flag
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
         return cls._instance
 
     def __init__(self, config=None):
@@ -214,6 +213,7 @@ class App:
                 result = subprocess.run(
                     params["cmd"], capture_output=True, text=True, check=True
                 )
+                logger.debug(f"FFmpeg output: {result.stdout}")
 
                 if params["file"].exists() and params["file"].stat().st_size > 1000:
                     return AudioSegment(

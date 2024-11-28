@@ -1,13 +1,8 @@
 # Standard library imports
 import argparse
 import asyncio
-import sys
-from typing import List, Optional
 
 # Local/package imports
-from tracklistify.downloaders import DownloaderFactory
-from tracklistify.providers.factory import create_provider_factory
-from tracklistify.utils.identification import IdentificationManager
 from tracklistify.utils.logger import logger
 
 # Relative imports (to avoid circular dependencies)

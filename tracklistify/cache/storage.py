@@ -4,18 +4,18 @@ Cache storage backends.
 
 # Standard library imports
 import asyncio
-import base64
-import copy
 import hashlib
 import json
 import os
 import time
 import zlib
 from pathlib import Path
-from typing import Any, Dict, Generic, Optional, TypeVar, Union
+from typing import Optional, TypeVar, Union
 
 # Third-party imports
 import aiofiles
+
+from tracklistify.config.factory import get_config
 
 # Local/package imports
 from tracklistify.core.types import CacheEntry, CacheStorage
@@ -161,7 +161,7 @@ class JSONStorage(CacheStorage[T]):
                     if now - float(last_accessed) > float(max_age):
                         path.unlink()
                         count += 1
-                except (OSError, json.JSONDecodeError, ValueError, TypeError) as e:
+                except (OSError, json.JSONDecodeError, ValueError, TypeError):
                     # Delete invalid entries
                     try:
                         path.unlink()

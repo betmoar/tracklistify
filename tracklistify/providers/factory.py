@@ -1,12 +1,8 @@
 """Provider factory for creating track identification providers."""
 
 # Standard library imports
-from typing import Dict, Optional, Type
 
 # Local imports
-from .base import TrackIdentificationProvider
-from .shazam import ShazamProvider
-from .spotify import SpotifyProvider
 
 _provider_factory = None
 

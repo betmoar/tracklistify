@@ -7,9 +7,6 @@ information is retrieved from the _version.py file if available, otherwise it fa
 back to the package metadata.
 """
 
-# Standard library imports
-import importlib.metadata
-
 
 def get_metadata():
     """
@@ -25,15 +22,12 @@ def get_metadata():
         A list of strings containing the version, title, author, and license of
         the package.
     """
-    from importlib.metadata import metadata, version
+    from importlib.metadata import metadata
 
     _meta = metadata("tracklistify")
-    __version__ = version("tracklistify")
-    __title__ = _meta.get("Name", "Unknown")
-    __author__ = _meta.get("Author", "Unknown")
-    __license__ = _meta.get("License", "Unknown")
 
     __all__ = ["__version__", "__title__", "__author__", "__license__"]
+
     return __all__
 
 

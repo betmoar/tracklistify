@@ -7,7 +7,6 @@ import hmac
 import json
 import time
 from typing import Dict, Optional
-from urllib.parse import urlencode
 
 # Third-party imports
 import aiohttp
@@ -22,7 +21,6 @@ from tracklistify.providers.base import (
 )
 
 # Local/package imports
-from tracklistify.utils.logger import logger
 
 
 class ACRCloudProvider(TrackIdentificationProvider):
@@ -184,7 +182,7 @@ class ACRCloudProvider(TrackIdentificationProvider):
                     "metadata": {"music": music_list},
                 }
 
-        except (AuthenticationError, RateLimitError, IdentificationError) as e:
+        except (AuthenticationError, RateLimitError, IdentificationError):
             raise
         except Exception as e:
             raise ProviderError(f"ACRCloud provider error: {str(e)}")

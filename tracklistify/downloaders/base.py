@@ -9,7 +9,6 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 # Local/package imports
-from tracklistify.utils.logger import logger
 
 
 class Downloader(ABC):

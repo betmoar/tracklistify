@@ -5,18 +5,10 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
-
-from tracklistify.core.types import (
-    Cache,
-    CacheEntry,
-    CacheMetadata,
-    CacheStorage,
-    InvalidationStrategy,
-)
+from typing import List
 
 # Local imports
-from .validation import ConfigValidator, PathRequirement, PathRule, RangeRule, TypeRule
+from .validation import ConfigValidator, PathRequirement, PathRule
 
 
 @dataclass
@@ -64,7 +56,7 @@ class BaseConfig:
                 # Convert string value to appropriate type
                 field_type = field_value.type
                 try:
-                    if field_type == bool:
+                    if field_type is bool:
                         # Handle boolean values
                         value = env_value.lower() in ("true", "1", "yes", "on")
                     elif field_type == Path:

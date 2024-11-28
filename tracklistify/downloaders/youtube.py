@@ -3,11 +3,9 @@ YouTube video downloader implementation.
 """
 
 # Standard library imports
-import asyncio
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 # Third-party imports
 import yt_dlp
@@ -15,7 +13,7 @@ import yt_dlp
 # Local/package imports
 from tracklistify.config import get_config
 from tracklistify.downloaders.base import Downloader
-from tracklistify.utils.logger import COLORS, logger
+from tracklistify.utils.logger import logger
 
 
 class YTDLPLogger:

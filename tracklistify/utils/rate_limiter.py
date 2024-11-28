@@ -3,17 +3,13 @@ Rate limiting functionality for API calls with metrics, circuit breaker, and ale
 """
 
 # Standard library imports
-import asyncio
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from enum import Enum
 from threading import Lock, Semaphore
-from typing import Dict, List, Optional, Tuple, Type
+from typing import List, Optional, Tuple
 
 # Local/package imports
-from tracklistify.providers.base import TrackIdentificationProvider
-from tracklistify.utils.logger import logger
 
 
 class CircuitState(Enum):

@@ -6,15 +6,13 @@ including markdown documentation, JSON schema, and example configurations.
 """
 
 # Standard library imports
-import json
 from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Type, Union
+from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 
 # Local/package imports
 from .validation import (
     ConfigValidator,
-    DependencyRule,
     PathRequirement,
     PathRule,
     PatternRule,
@@ -22,6 +20,8 @@ from .validation import (
     TypeRule,
     ValidationRule,
 )
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -59,7 +59,6 @@ class ConfigDocGenerator:
     def _create_field_doc(self, field: str, rules: List[ValidationRule]) -> ConfigField:
         """Create field documentation from validation rules."""
         type_info = "any"
-        description = []
         constraints = []
         example = None
         required = True
@@ -211,7 +210,7 @@ class ConfigDocGenerator:
         for field in sensitive_fields:
             if field not in fields:
                 docs.append(f"### {field}\n")
-                docs.append(f"**Type:** `str`\n")
+                docs.append("**Type:** `str`\n")
                 docs.append(f"API credential for {field.replace('_', ' ').title()}\n")
                 docs.append("**Properties:**")
                 docs.append("- Required: Yes")
@@ -291,14 +290,6 @@ class ConfigDocGenerator:
             elif field.type_info == "bool":
                 example[field.name] = False
         return example
-
-
-"""Documentation generation utilities for configuration."""
-
-from dataclasses import MISSING, Field, fields
-from typing import Any, Dict, List, Type, TypeVar
-
-T = TypeVar("T")
 
 
 def generate_field_docs(config_class: Type[T]) -> str:
@@ -395,13 +386,13 @@ def generate_example_docs(config_class: Type[T]) -> str:
 
     for field in fields(config_class):
         field_type = field.type
-        if field_type == str:
+        if field_type is str:
             example = "'example'"
-        elif field_type == int:
+        elif field_type is int:
             example = "42"
-        elif field_type == float:
+        elif field_type is float:
             example = "3.14"
-        elif field_type == bool:
+        elif field_type is bool:
             example = "True"
         elif field_type == Path:
             example = "Path('example/path')"
@@ -423,7 +414,6 @@ def generate_full_docs(config_class: Type[T]) -> str:
     Returns:
         str: Generated markdown documentation
     """
-    config = config_class()  # Create instance to access validation rules
 
     sections = [
         "# Configuration Documentation\n",

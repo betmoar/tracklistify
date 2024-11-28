@@ -4,22 +4,16 @@ Spotify audio downloader implementation.
 
 # Standard library imports
 import asyncio
-import base64
-import json
 import os
 import re
 import subprocess
-import tempfile
-from datetime import datetime
 from enum import Enum
 from http.cookiejar import MozillaCookieJar
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import parse_qs, urlparse
+from typing import Any, Dict, Optional
 
 # Third-party imports
 import aiohttp
-import mutagen
 from mutagen.mp4 import MP4, MP4Cover
 from mutagen.oggvorbis import OggVorbis
 

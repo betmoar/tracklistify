@@ -1,7 +1,6 @@
 """Spotify playlist exporter implementation."""
 
 # Standard library imports
-import asyncio
 from datetime import datetime
 from typing import List, Optional
 
@@ -10,7 +9,6 @@ from tracklistify.config import get_config
 from tracklistify.core.exceptions import AuthenticationError, ExportError
 from tracklistify.core.track import Track
 from tracklistify.providers.spotify import SpotifyProvider
-from tracklistify.utils.logger import logger
 
 
 class SpotifyPlaylistExporter:

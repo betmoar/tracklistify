@@ -1,19 +1,12 @@
 """Shazam track identification provider using shazamio."""
 
 # Standard library imports
-import asyncio
 from typing import Any, Dict, Optional
 
 # Third-party imports
 from shazamio import Shazam
 
-from tracklistify.providers.base import (
-    AuthenticationError,
-    IdentificationError,
-    ProviderError,
-    RateLimitError,
-    TrackIdentificationProvider,
-)
+from tracklistify.providers.base import TrackIdentificationProvider
 
 # Local/package imports
 from tracklistify.utils.logger import logger

@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from tracklistify.config import TrackIdentificationConfig
 from tracklistify.utils.logger import logger
 
 from .exceptions import TrackIdentificationError
@@ -21,8 +22,47 @@ class Track:
     artist: str
     time_in_mix: str
     confidence: float
-    # Type hint as a string to avoid circular import
     config: Optional["TrackIdentificationConfig"] = None
+
+    def __str__(self) -> str:
+        return f"{self.time_in_mix} - {self.artist} - {self.song_name} ({self.confidence:.0f}%)"
+
+    def is_similar_to(self, other: "Track") -> bool:
+        """Check if two tracks are similar based on the configuration."""
+        if not self.config:
+            from tracklistify.config.factory import get_config
+
+            self.config = get_config()
+        if not other.config:
+            other.config = self.config
+
+        time_threshold = self.config.time_threshold
+
+        # Normalize strings for comparison
+        def normalize(s: str) -> str:
+            return re.sub(r"[^\w\s]", "", s.lower())
+
+        this_song = normalize(self.song_name)
+        this_artist = normalize(self.artist)
+        other_song = normalize(other.song_name)
+        other_artist = normalize(other.artist)
+
+        # Check for exact matches first
+        if this_song == other_song and this_artist == other_artist:
+            return True
+
+        # Use time_threshold to compare time_in_mix
+        def time_to_seconds(time_str: str) -> int:
+            h, m, s = map(int, time_str.split(":"))
+            return h * 3600 + m * 60 + s
+
+        this_time = time_to_seconds(self.time_in_mix)
+        other_time = time_to_seconds(other.time_in_mix)
+
+        if abs(this_time - other_time) <= time_threshold:
+            return True
+
+        return False
 
     def __init__(
         self, song_name: str, artist: str, time_in_mix: str, confidence: float
@@ -70,41 +110,6 @@ class Track:
         """Format track for M3U playlist."""
         return f"#EXTINF:-1,{self.artist} - {self.song_name}"
 
-    def __str__(self) -> str:
-        return f"{self.time_in_mix} - {self.artist} - {self.song_name} ({self.confidence:.0f}%)"
-
-    def is_similar_to(self, other: "Track") -> bool:
-        """Check if two tracks are similar based on the configuration."""
-        if not self.config:
-            from tracklistify.config.factory import get_config
-
-            self.config = get_config()
-        if not other.config:
-            other.config = self.config
-
-        time_threshold = self.config.time_threshold
-
-        # Normalize strings for comparison
-        def normalize(s: str) -> str:
-            return re.sub(r"[^\w\s]", "", s.lower())
-
-        this_song = normalize(self.song_name)
-        this_artist = normalize(self.artist)
-        other_song = normalize(other.song_name)
-        other_artist = normalize(other.artist)
-
-        # Check for exact matches first
-        if this_song == other_song and this_artist == other_artist:
-            return True
-
-        # Check for substring matches
-        if (this_song in other_song or other_song in this_song) and (
-            this_artist in other_artist or other_artist in this_artist
-        ):
-            return True
-
-        return False
-
     def time_to_seconds(self) -> int:
         """Convert time_in_mix to seconds."""
         try:
@@ -118,7 +123,11 @@ class Track:
         from tracklistify.config.factory import get_config
 
         config = get_config()
-        # Use config as needed
+        # Example usage of config
+        time_threshold = config.time_threshold
+        max_duplicates = config.max_duplicates
+        # Use these variables as needed
+        print(f"Time threshold: {time_threshold}, Max duplicates: {max_duplicates}")
 
 
 class TrackMatcher:
@@ -288,6 +297,42 @@ class TrackMatcher:
             logger.error(f"Failed to process audio file: {e}")
             raise TrackIdentificationError(f"Failed to process audio file: {e}") from e
 
+    def _create_track_group(self, track: Track) -> List[Track]:
+        """Initialize a new track group with a single track."""
+        return [track]
+
+    def _should_add_to_group(self, current_group: List[Track], track: Track) -> bool:
+        """Determine if a track should be added to the current group."""
+        last_track = current_group[-1]
+        time_diff = track.time_to_seconds() - last_track.time_to_seconds()
+        return (
+            time_diff <= self.time_threshold
+            and track.is_similar_to(last_track)
+            and len(current_group) < self.max_duplicates
+        )
+
+    def _add_to_group(self, current_group: List[Track], track: Track) -> None:
+        """Add a track to the current group and log the action."""
+        current_group.append(track)
+        logger.debug(f"Grouped similar track: {track.song_name} at {track.time_in_mix}")
+
+    def _get_best_track(self, group: List[Track]) -> Track:
+        """Select the track with highest confidence from a group."""
+        return max(group, key=lambda t: t.confidence)
+
+    def _is_unique_track(self, track: Track, merged_tracks: List[Track]) -> bool:
+        """Check if a track is unique in the merged list."""
+        return not any(track.is_similar_to(m) for m in merged_tracks)
+
+    def _add_to_merged_list(self, track: Track, merged_tracks: List[Track]) -> None:
+        """Add a track to the merged list and log the action."""
+        merged_tracks.append(track)
+        logger.debug(
+            f"Added merged track: {track.song_name} "
+            f"at {track.time_in_mix} "
+            f"(Confidence: {track.confidence:.1f}%)"
+        )
+
     def merge_nearby_tracks(self) -> List[Track]:
         """Merge similar tracks that appear close together in time."""
         if not self.tracks:
@@ -295,47 +340,28 @@ class TrackMatcher:
 
         # Sort tracks by time
         self.tracks.sort(key=lambda t: t.time_to_seconds())
-
-        merged = []
-        current_group = [self.tracks[0]]
-
         logger.debug(
             f"\nStarting track merging process with {len(self.tracks)} tracks..."
         )
 
-        for track in self.tracks[1:]:
-            last_track = current_group[-1]
-            time_diff = track.time_to_seconds() - last_track.time_to_seconds()
+        merged = []
+        current_group = self._create_track_group(self.tracks[0])
 
-            if time_diff <= self.time_threshold and track.is_similar_to(last_track):
-                # Add to current group if similar and within time threshold
-                if len(current_group) < self.max_duplicates:
-                    current_group.append(track)
-                    logger.debug(
-                        f"Grouped similar track: {track.song_name} at {track.time_in_mix}"
-                    )
+        for track in self.tracks[1:]:
+            if self._should_add_to_group(current_group, track):
+                self._add_to_group(current_group, track)
             else:
-                # Start new group
                 if current_group:
-                    # Add highest confidence track from current group
-                    best_track = max(current_group, key=lambda t: t.confidence)
-                    if not any(best_track.is_similar_to(m) for m in merged):
-                        merged.append(best_track)
-                        logger.debug(
-                            f"Added merged track: {best_track.song_name} "
-                            f"at {best_track.time_in_mix} "
-                            f"(Confidence: {best_track.confidence:.1f}%)"
-                        )
-                current_group = [track]
+                    best_track = self._get_best_track(current_group)
+                    if self._is_unique_track(best_track, merged):
+                        self._add_to_merged_list(best_track, merged)
+                current_group = self._create_track_group(track)
 
         # Handle last group
         if current_group:
-            best_track = max(current_group, key=lambda t: t.confidence)
-            if not any(best_track.is_similar_to(m) for m in merged):
-                merged.append(best_track)
-                logger.debug(
-                    f"Added final merged track: {best_track.song_name} at {best_track.time_in_mix}"
-                )
+            best_track = self._get_best_track(current_group)
+            if self._is_unique_track(best_track, merged):
+                self._add_to_merged_list(best_track, merged)
 
         logger.debug(f"Track merging completed. Final track count: {len(merged)}")
         return merged

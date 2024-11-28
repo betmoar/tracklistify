@@ -6,12 +6,10 @@ Base cache implementation with enhanced features.
 import json
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, Generic, Optional, TypeVar
 
 # Local/package imports
 from tracklistify.core.types import (
-    Cache,
     CacheEntry,
     CacheMetadata,
     CacheStorage,

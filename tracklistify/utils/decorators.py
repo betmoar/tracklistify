@@ -10,7 +10,6 @@ from typing import Any, Callable, Dict, Optional, TypeVar, cast
 
 # Local/package imports
 from tracklistify.cache import get_cache
-from tracklistify.utils.logger import logger
 
 T = TypeVar("T")
 

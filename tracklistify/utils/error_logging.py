@@ -12,7 +12,6 @@ This module provides a comprehensive error logging system with:
 import functools
 import inspect
 import logging
-import sys
 import traceback
 from contextlib import contextmanager
 from dataclasses import dataclass, field

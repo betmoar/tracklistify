@@ -6,9 +6,8 @@ including type checking, range validation, dependency validation, and path valid
 """
 
 # Standard library imports
-import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import fields
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Type, TypeVar, Union
@@ -94,7 +93,7 @@ class TypeRule(ValidationRule):
         if value is None:
             if not self.allow_none:
                 raise ConfigValidationError(
-                    self.field, self.message or f"Value cannot be None"
+                    self.field, self.message or "Value cannot be None"
                 )
             return
 
@@ -124,7 +123,7 @@ class RangeRule(ValidationRule):
         self.include_min = include_min
         self.include_max = include_max
         self.description = (
-            f"must be positive"
+            "must be positive"
             if min_value == 0
             else f"must be between {min_value} and {max_value}"
         )
@@ -240,7 +239,7 @@ class PathRule(ValidationRule):
         if PathRequirement.EXISTS in self.requirements and not path.exists():
             if self.create_if_missing:
                 try:
-                    if not PathRequirement.IS_DIR in self.requirements:
+                    if PathRequirement.IS_DIR not in self.requirements:
                         path.parent.mkdir(parents=True, exist_ok=True)
                         path.touch()
                 except Exception as e:
@@ -414,8 +413,6 @@ class ConfigValidator:
                 rule.validate(value)
 
     def validate_track_config(self, config: Dict[str, Any]) -> None:
-        from tracklistify.utils.logger import logger
-
         if "time_threshold" in config:
             if (
                 not isinstance(config["time_threshold"], (int, float))

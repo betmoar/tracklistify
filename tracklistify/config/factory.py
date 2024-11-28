@@ -1,9 +1,7 @@
 """Configuration factory module."""
 
 # Standard library imports
-import os
-from pathlib import Path
-from typing import Dict, Optional, Type, TypeVar
+from typing import Dict, Type, TypeVar
 
 # Local imports
 from .base import BaseConfig, TrackIdentificationConfig
@@ -40,12 +38,6 @@ class ConfigFactory:
     def clear_cache(cls) -> None:
         """Clear all cached configuration instances."""
         cls._instances.clear()
-
-
-# Convenience functions
-from typing import Optional
-
-from .base import TrackIdentificationConfig
 
 
 def get_config(force_refresh: bool = False) -> TrackIdentificationConfig:

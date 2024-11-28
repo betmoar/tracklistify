@@ -5,6 +5,7 @@ Input validation utilities for Tracklistify.
 # Standard library imports
 import re
 from typing import Optional
+from urllib.error import URLError
 from urllib.parse import unquote, urlparse
 
 # Local/package imports
@@ -107,7 +108,8 @@ def is_youtube_url(url: str) -> bool:
 
 
 def is_mixcloud_url(url: str) -> bool:
-    """Check if a URL is a valid Mixcloud URL.
+    """
+    Check if a URL is a valid Mixcloud URL.
 
     Args:
         url: URL to check
@@ -121,7 +123,7 @@ def is_mixcloud_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
         return parsed.netloc.endswith("mixcloud.com") and len(parsed.path) > 1
-    except:
+    except (ValueError, URLError):
         return False
 
 
@@ -148,40 +150,11 @@ def clean_url(url: str) -> str:
     url = unquote(url)
 
     try:
-        # Parse URL
         parsed = urlparse(url)
-
-        # Check basic URL validity
-        if not all([parsed.scheme, parsed.netloc]):
-            raise URLValidationError("Invalid URL format")
-
-        # Clean YouTube URLs
-        if "youtube.com" in parsed.netloc or "youtu.be" in parsed.netloc:
-            # Extract video ID
-            if "youtube.com" in parsed.netloc:
-                video_id = re.search(r"[?&]v=([^&]+)", url)
-            else:  # youtu.be
-                video_id = re.search(r"youtu\.be/([^?&]+)", url)
-
-            if not video_id:
-                raise URLValidationError("Invalid YouTube URL format")
-
-            # Return clean YouTube URL
-            return f"https://www.youtube.com/watch?v={video_id.group(1)}"
-
-        # Clean Mixcloud URLs
-        if "mixcloud.com" in parsed.netloc:
-            # Remove trailing slash and query parameters
-            path = parsed.path.rstrip("/")
-            return f"https://www.mixcloud.com{path}"
-
-        # For other URLs, return cleaned version
-        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-
-    except URLValidationError:
-        raise
-    except Exception as e:
-        raise URLValidationError(f"Invalid URL: {str(e)}")
+        # Further cleaning logic can be added here
+        return parsed.geturl()
+    except (ValueError, URLError) as e:
+        raise URLValidationError(f"Invalid URL: {e}")
 
 
 def validate_url(url: str) -> bool:

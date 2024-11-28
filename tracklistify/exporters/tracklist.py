@@ -159,7 +159,7 @@ class TracklistOutput:
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
 
-        logger.info(f"Analysis Summary:")
+        logger.info("Analysis Summary:")
         logger.info(f"- Total tracks: {data['analysis_info']['track_count']}")
         logger.info(
             f"- Average confidence: {data['analysis_info']['average_confidence']:.1f}%"

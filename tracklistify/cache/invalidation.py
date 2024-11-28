@@ -5,11 +5,10 @@ Cache invalidation strategies.
 # Standard library imports
 import copy
 import json
-import math
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
-from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
+from datetime import datetime
+from typing import Any, Generic, List, Optional, TypeVar
 
 # Local/package imports
 from tracklistify.core.types import CacheEntry, CacheStorage
