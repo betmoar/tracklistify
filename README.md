@@ -1,3 +1,5 @@
+![Tracklistify banner](docs/assets/banner.png)
+
 # Tracklistify
 
 Automatic tracklist generator for DJ mixes and audio streams. Identifies tracks in your mixes using multiple providers (Shazam, ACRCloud) and generates formatted playlists.
