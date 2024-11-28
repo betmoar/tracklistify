@@ -1,8 +1,8 @@
-## Unreleased
+## v0.7.0 (2024-11-28)
 
-### BREAKING CHANGE
+### Refactor
 
-- Event loop handling has been updated to use modern asyncio patterns
+- improve project configuration and documentation
 
 ## v0.6.7 (2024-11-28)
 
