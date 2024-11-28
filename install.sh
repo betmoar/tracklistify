@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Script name: env-setup.sh
-# Description: Setup script for Tracklistify development environment
+# Script name: install-deps.sh
+# Description: Check system dependencies for Tracklistify
 
 # Configuration
 VENV_DIR=".venv"
@@ -57,14 +57,27 @@ check_python() {
 check_system_deps() {
     local missing_deps=()
 
+    # Check for poetry
+    if ! command -v poetry &> /dev/null; then
+        echo "Poetry is not installed."
+        missing_deps+=("poetry")
+    fi
+
     # Check for ffmpeg
     if ! command -v ffmpeg &> /dev/null; then
+        echo "FFmpeg is not installed."
         missing_deps+=("ffmpeg")
     fi
 
     # Check for git (needed for setuptools_scm)
     if ! command -v git &> /dev/null; then
+        echo "Git is not installed."
         missing_deps+=("git")
+    fi
+
+    # Check for rustc (needed for shazamio-core)
+    if ! command -v rustc &> /dev/null; then
+        missing_deps+=("rustup")
     fi
 
     # If there are missing dependencies, print instructions
@@ -82,77 +95,17 @@ check_system_deps() {
     fi
 }
 
-# Create and activate virtual environment
-setup_venv() {
-    print_status "Setting up virtual environment..."
-
-    # Create venv if it doesn't exist
-    if [ ! -d "$VENV_DIR" ]; then
-        $PYTHON -m venv $VENV_DIR
-    else
-        print_warning "Virtual environment already exists"
-    fi
-
-    # Source the activate script based on OS
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-        source $VENV_DIR/Scripts/activate
-    else
-        source $VENV_DIR/bin/activate
-    fi
-}
-
-# Install shazamio and its core dependencies
-install_shazamio() {
-    print_status "Installing shazamio and dependencies..."
-
-    # Create a temporary directory for shazamio-core
-    local temp_dir=$(mktemp -d)
-
-    # Clone and install shazamio-core
-    git clone https://github.com/shazamio/shazamio-core.git "$temp_dir"
-    cd "$temp_dir"
-    git switch --detach 1.0.7
-    python -m pip install .
-
-    # Install shazamio itself
-    pip install shazamio==0.7.0
-
-    # Clean up
-    cd - > /dev/null
-    rm -rf "$temp_dir"
-}
-
 # Install package and dependencies
 install_package() {
     print_status "Installing package and dependencies..."
 
-    # Upgrade pip
-    pip install --upgrade pip
-
     if [ "$1" == "--dev" ]; then
         print_status "Installing in development mode with dev dependencies..."
-        pip install -e ".[dev]"
+        poetry install --with dev
+        poetry run pre-commit install
     else
-        print_status "Installing in development mode..."
-        pip install -e "."
-    fi
-}
-
-# Setup pre-commit hooks
-setup_precommit() {
-    if [ "$1" == "--dev" ]; then
-        print_status "Setting up pre-commit hooks..."
-        pre-commit install
-        pre-commit install --hook-type commit-msg
-    fi
-}
-
-# Setup environment file
-setup_env() {
-    if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-        print_status "Creating .env file from example..."
-        cp .env.example .env
-        print_warning "Please edit .env file with your credentials"
+        print_status "Installing in default mode..."
+        poetry install
     fi
 }
 
@@ -166,24 +119,14 @@ main() {
     # Check system dependencies
     check_system_deps
 
-    # Setup virtual environment
-    setup_venv
-
     # Install package and dependencies
     install_package "$1"
 
-    install_shazamio
-
-    # Setup pre-commit hooks for dev installation
-    setup_precommit "$1"
-
-    # Setup environment file
-    setup_env
-
     print_status "Setup complete! You can now:"
-    echo "1. Edit .env with your credentials (if you haven't already)"
+    echo " "
+    echo "1. Edit .env with your credentials"
     echo "2. Activate the virtual environment:"
-    echo "   source $VENV_DIR/bin/activate"
+    echo "   poetry shell"
     echo "3. Run Tracklistify:"
     echo "   tracklistify <command>"
 }

@@ -1,5 +1,3 @@
-from datetime import datetime
-
 import pytest
 
 from tracklistify.config.base import TrackIdentificationConfig
@@ -147,7 +145,7 @@ class TestTrackMatcher:
             create_track("Song 2", "Artist 2", "00:00:40", confidence=75.0),
             # Group 3 - Separate track
             create_track("Song 3", "Artist 3", "00:02:00", confidence=95.0),
-            # Similar to Group 1 but will be filtered out since it's similar to an existing track
+            # Similar to Group 1 but filtered out since it's similar to existing track
             create_track("Song 1", "Artist 1", "00:05:00", confidence=70.0),
         ]
         track_matcher.tracks = tracks

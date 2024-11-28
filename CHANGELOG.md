@@ -1,14 +1,13 @@
-# Changelog
+## Unreleased
 
-All notable changes to Tracklistify will be documented in this file.
+### BREAKING CHANGE
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+- Event loop handling has been updated to use modern asyncio patterns
 
-Release dates are in YYYY-MM-DD format.
+## v0.6.7 (2024-11-28)
 
-## [Unreleased]
 ### Added
+
 - Introduced `TracklistOutput` class.
   - Handles tracklist output in various formats.
 - Added `ProgressDisplay` class.
@@ -47,6 +46,7 @@ Release dates are in YYYY-MM-DD format.
   - Better error recovery for failed downloads
 
 ### Changed
+
 - Refactored `SpotifyPlaylistExporter`.
   - Now uses `tracklistify.core.track`.
   - Utilizes `tracklistify.utils.logger`.
@@ -76,11 +76,13 @@ Release dates are in YYYY-MM-DD format.
 - Added guidance on combining or removing unnecessary files to optimize project structure.
 
 ### Removed
+
 - Deprecated `tracklistify/identification.py`.
 - Centralized logging removed `tracklistify/logger.py`.
 - Streamlined output handling removed `tracklistify/output.py`.
 
 ### Fixed
+
 - Corrected YouTube downloader issue.
   - Ensures title is set before download.
 - Improved title handling in `save_output`.
@@ -91,8 +93,14 @@ Release dates are in YYYY-MM-DD format.
 - Interrupt signal handling
 - Rate limiter test reliability issues
 
-## [0.6.6] - 2024-11-25
+### Refactor
+
+- enhance configuration management system
+
+## v0.6.6 (2024-11-25)
+
 ### Added
+
 - Enhanced rate limiter with metrics collection and monitoring
 - Circuit breaker pattern for rate limiting
 - Alert system for rate limit events
@@ -115,17 +123,21 @@ Release dates are in YYYY-MM-DD format.
   - Timeout handling
 
 ### Changed
+
 - Updated rate limiter implementation with token bucket algorithm
 - Enhanced provider limits with metrics tracking
 - Improved error handling with circuit breaker pattern
 
 ### Fixed
+
 - Rate limiting resource cleanup
 - Proper handling of concurrent requests
 - Thread-safe rate limit operations
 
-## [0.6.5] - 2024-11-25
+## v0.6.5 (2024-11-25)
+
 ### Added
+
 - Spotify downloader implementation:
   - Support for multiple audio qualities:
     * Vorbis: 96, 160, 320 kbps
@@ -153,6 +165,7 @@ Release dates are in YYYY-MM-DD format.
   - Automatic directory creation
 
 ### Changed
+
 - Project structure improvements:
   - Integrated Spotify downloader with existing base
   - Enhanced environment variable handling
@@ -169,6 +182,7 @@ Release dates are in YYYY-MM-DD format.
   - Clean error recovery
 
 ### Fixed
+
 - Path handling:
   - Home directory expansion
   - Illegal character sanitization
@@ -182,8 +196,10 @@ Release dates are in YYYY-MM-DD format.
   - Better error messages
   - Validation checks
 
-## [0.6.4] - 2024-11-24
+## v0.6.4 (2024-11-24)
+
 ### Added
+
 - Real-time progress display for track identification:
   - Visual progress bar
   - Segment-by-segment tracking
@@ -204,6 +220,7 @@ Release dates are in YYYY-MM-DD format.
   - Provider fallback control
 
 ### Changed
+
 - Improved identification system:
   - Better provider management
   - Enhanced error handling
@@ -220,13 +237,16 @@ Release dates are in YYYY-MM-DD format.
   - Error reporting
 
 ### Fixed
+
 - Resource cleanup in main execution flow
 - Provider fallback mechanism
 - Special character handling in filenames
 - Progress display overlapping
 
-## [0.6.3]  - 2024-11-22
+## v0.6.3 (2024-11-22)
+
 ### Added
+
 - Enhanced cache management system:
   - Base cache implementation with generic type support
   - Multiple invalidation strategies:
@@ -262,6 +282,7 @@ Release dates are in YYYY-MM-DD format.
     - Enhanced type safety for cache operations
 
 ### Changed
+
 - Improved cache entry handling:
   - Enhanced metadata management
   - Strict type checking
@@ -281,6 +302,7 @@ Release dates are in YYYY-MM-DD format.
   - Improved code organization
 
 ### Fixed
+
 - Cache invalidation timing issues
 - Metadata update consistency
 - Concurrent access race conditions
@@ -288,12 +310,14 @@ Release dates are in YYYY-MM-DD format.
 - Type checking in cache operations
 
 ### Security
+
 - Implemented atomic file operations
 - Added comprehensive error logging
 - Enhanced metadata validation
 - Secure file permissions handling
 
 ### Documentation
+
 - Added detailed cache system documentation
 - Created comprehensive testing guide (TESTING.md)
 - Added performance benchmarks
@@ -305,8 +329,10 @@ Release dates are in YYYY-MM-DD format.
   - Configuration types
   - Cache-specific types
 
-## [0.6.2]  - 2024-11-22
+## v0.6.2 (2024-11-22)
+
 ### Added
+
 - Enhanced configuration management system:
   - Standardized directory structure:
     - `.tracklistify/output` for output files
@@ -350,8 +376,10 @@ Release dates are in YYYY-MM-DD format.
   - Proper handling of Path expansion
   - Improved validation error messages
 
-## [0.6.1] - 2024-11-21
+## v0.6.1 (2024-11-21)
+
 ### Added
+
 - Comprehensive development environment setup
   - Black for code formatting
   - isort for import sorting
@@ -373,8 +401,10 @@ Release dates are in YYYY-MM-DD format.
   - Virtual environment validation
   - Development tools validation
 
-## [0.6.0] - 2024-03-21
+## v0.6.0 (2024-11-21)
+
 ### Added
+
 - Modern Python packaging with pyproject.toml
 - Dynamic version management using setuptools_scm
 - Improved development tooling:
@@ -390,6 +420,7 @@ Release dates are in YYYY-MM-DD format.
   - Better error handling and retries
 
 ### Changed
+
 - Optimized track identification settings:
   - Reduced segment length to 15 seconds for faster processing
   - Set minimum confidence threshold to 50%
@@ -401,42 +432,49 @@ Release dates are in YYYY-MM-DD format.
 - Updated Python requirement to 3.11+
 
 ### Fixed
+
 - Various bug fixes and performance improvements
 - Enhanced error handling in audio processing
 - More reliable track identification
 
-## [0.5.8] - 2024-01-09
+## v0.5.8 (2024-11-20)
 
 ### Changed
+
 - Improved logging system across all downloaders
 - Enhanced error handling for unidentified segments
 - Reduced segment length to 20 seconds for better identification
 - Enabled verbose and debug modes by default
 
 ### Added
+
 - Detailed logging for YouTube and Mixcloud downloaders
 - Specific error messages for common download failures
 - Debug logging for download initialization and settings
 - More informative success messages with track details
 
 ### Fixed
+
 - Better handling of unidentified segments in identification process
 - More appropriate log levels for different types of messages
 - Simplified downloader factory implementation
 
-## [0.5.7] - 2024-11-19
+## v0.5.7 (2024-11-19)
 
 ### Changed
+
 - Refactored downloader modules into dedicated factory folder structure
 - Improved code organization with proper separation of concerns
 - Enhanced maintainability and extensibility for future downloaders
 
 ### Removed
+
 - Deprecated `downloader.py` module in favor of new `downloaders` package
 
-## [0.5.6] - 2024-11-19
+## v0.5.6 (2024-11-19)
 
 ### Added
+
 - New download configuration options in `.env` file:
   - `DOWNLOAD_QUALITY`: Audio quality setting (default: 320kbps)
   - `DOWNLOAD_FORMAT`: Output audio format (default: mp3)
@@ -444,6 +482,7 @@ Release dates are in YYYY-MM-DD format.
   - `DOWNLOAD_MAX_RETRIES`: Maximum retry attempts for downloads
 
 ### Changed
+
 - Improved downloader implementation with async support
 - Enhanced YouTube downloader with better error handling
 - Implemented singleton pattern for downloader instances
@@ -451,52 +490,64 @@ Release dates are in YYYY-MM-DD format.
 - Improved thread handling for non-blocking downloads
 
 ### Removed
+
 - Redundant download code from main application
 - Unused app.py module
 
-## [0.5.5] - 2024-11-19
+## v0.5.5 (2024-11-19)
+
 ### Changed
+
 - Cache implementation now uses ttl instead of duration
 - Improved cache key generation with byte range support
 - Better error handling in cache operations
 - Added cache entry deletion method
 
 ### Fixed
+
 - Cache configuration error with duration attribute
 - Cache expiration handling
 - Cache key generation for better segment isolation
 
-## [0.5.4] - 2024-11-19
+## v0.5.4 (2024-11-19)
+
 ### Added
+
 - Exponential backoff retry logic for Shazam provider
 - Rate limiting with configurable intervals
 - Improved session management with automatic recovery
 - Better audio format handling with consistent WAV output
 
 ### Changed
+
 - Shazam provider completely refactored for better reliability
 - Output format handling now properly respects environment variables
 - Session management now uses exponential backoff with jitter
 - Audio processing standardized to stereo 44.1kHz WAV
 
 ### Fixed
+
 - URL validation errors in Shazam provider
 - Session expiration handling
 - Output format not respecting environment variables
 - Audio format inconsistencies causing recognition failures
 
 ### Security
+
 - Added rate limiting to prevent API abuse
 - Improved session handling to prevent resource leaks
 
-## [0.5.3] - 2024-11-19
+## v0.5.3 (2024-11-19)
+
 ### Added
+
 - Configurable provider fallback system
 - Enhanced logging for provider selection and usage
 - Output configuration with customizable directory and format
 - Improved cache error handling with graceful degradation
 
 ### Changed
+
 - Provider fallback now respects PROVIDER_FALLBACK_ENABLED setting
 - Rate limiter now has configurable timeout (30s default)
 - Cache operations now handle errors gracefully
@@ -504,32 +555,40 @@ Release dates are in YYYY-MM-DD format.
 - Better error messages for provider failures
 
 ### Fixed
+
 - Cache enabled check now uses config object correctly
 - Rate limiter synchronization issues
 - Provider fallback logic to skip duplicate providers
 - Cache key now includes provider name for better isolation
 
-## [0.5.2] - 2024-11-17
+## v0.5.2 (2024-11-17)
+
 ### Changed
+
 - Migrated ACRCloud to provider interface
 - Enhanced provider factory with better configuration
 - Improved error handling for providers
 - Standardized provider timeouts
 
-## [0.5.1] - 2024-11-17
+## v0.5.1 (2024-11-17)
+
 ### Added
+
 - Comprehensive contributing guidelines (CONTRIBUTING.md)
 - Detailed development environment setup instructions
 - Code style and linting configuration
 - Pre-commit hooks setup
 
 ### Changed
+
 - Enhanced environment configuration template
 - Expanded documentation for API keys and settings
 - Improved project structure documentation
 
-## [0.5.0] - 2024-11-17
+## v0.5.0 (2024-11-17)
+
 ### Added
+
 - Enhanced Shazam integration:
   - Advanced audio fingerprinting with MFCCs
   - Spectral centroid analysis
@@ -541,8 +600,10 @@ Release dates are in YYYY-MM-DD format.
 - Advanced audio processing with librosa
 - Shazam integration using shazamio package
 
-## [0.4.0] - 2024-11-16
+## v0.4.0 (2024-11-16)
+
 ### Added
+
 - Multiple provider support through provider interface
 - Spotify integration for metadata enrichment
 - Provider factory for managing multiple providers
@@ -572,6 +633,7 @@ Release dates are in YYYY-MM-DD format.
   - MAX_REQUESTS_PER_MINUTE for API throttling
 
 ### Changed
+
 - Modular provider architecture
 - Enhanced metadata enrichment
 - Optimized memory usage during audio processing
@@ -584,6 +646,7 @@ Release dates are in YYYY-MM-DD format.
 - Improved configuration management
 
 ### Fixed
+
 - Track timestamp ordering
 - Confidence threshold validation
 - Track metadata validation
@@ -591,59 +654,68 @@ Release dates are in YYYY-MM-DD format.
 - Memory leaks in audio processing
 - API rate limiting issues
 
-## [0.3.6] - 2024-11-16
+## v0.3.6 (2024-11-16)
 
 ### Fixed
+
 - Fixed track timing calculation using MP3 metadata for accurate timestamps
 - Adjusted default segment length to 60 seconds for better track identification
 - Removed redundant acrcloud-py dependency in favor of pyacrcloud
 
 ### Added
+
 - Added mutagen dependency for MP3 metadata handling
 - Added total mix length display in track identification output
 
 ### Changed
+
 - Improved segment timing calculation to use actual audio duration
 - Enhanced logging with proper time formatting (HH:MM:SS)
 - Updated requirements.txt for better dependency management
 
-## [0.3.5] - 2024-11-15
+## v0.3.5 (2024-11-15)
 
 ### Fixed
+
 - YouTube download functionality
 - Import error handling for yt-dlp
 - Downloader factory creation
 - Mix information extraction order
 
 ### Changed
+
 - Better error messages for missing dependencies
 - Improved YouTube URL handling
 - More robust downloader initialization
 - Cleaner error handling flow
 
-## [0.3.4] - 2024-11-15
+## v0.3.4 (2024-11-15)
 
 ### Added
+
 - URL validation and cleaning functionality
 - Support for various YouTube URL formats
 - Automatic backslash stripping from URLs
 - URL unescaping for encoded characters
 
 ### Changed
+
 - Improved URL handling in main program
 - Enhanced error messages for invalid URLs
 - Better logging of URL processing steps
 - Cleaner YouTube URL reconstruction
 
 ### Fixed
+
 - Issue with backslashes in URLs
 - Problems with URL-encoded characters
 - Inconsistent YouTube URL formats
 - Invalid URL handling
 
-## [0.3.3] - 2024-11-15
+## v0.3.3 (2024-11-15)
 
 ### Added
+
 - Comprehensive error handling system with specific exception types
 - Retry mechanism with exponential backoff for API calls
 - Timeout handling for long-running operations
@@ -651,28 +723,32 @@ Release dates are in YYYY-MM-DD format.
 - Detailed error logging and reporting
 
 ### Changed
+
 - Enhanced API calls with retry logic
 - Improved download operations with timeout handling
 - Updated error messages with more context
 - Added detailed error documentation
 
-## [0.3.2] - 2024-11-15
+## v0.3.2 (2024-11-15)
 
 ### Added
+
 - Enhanced logging system with colored console output
 - Configurable log file output with timestamps
 - Debug-level logging for development
 - Custom log formatters for both console and file output
 
 ### Changed
+
 - Updated logger module with comprehensive configuration options
 - Improved log message formatting
 - Added color-coding for different log levels
 - Enhanced logging verbosity control
 
-## [0.3.1] - 2024-11-15
+## v0.3.1 (2024-11-15)
 
 ### Added
+
 - Enhanced track identification verbosity with detailed progress and status logging
 - Comprehensive analysis summary in output files including confidence statistics
 - Additional metadata in M3U playlists (artist and date information)
@@ -684,12 +760,14 @@ Release dates are in YYYY-MM-DD format.
 - Enhanced markdown output with analysis statistics section
 
 ### Fixed
+
 - Filename sanitization to preserve spaces and valid punctuation
 - Date format handling in filenames for consistency
 
-## [0.3.0] - 2024-11-15
+## v0.3.0 (2024-11-15)
 
 ### Added
+
 - Modular package structure with dedicated modules:
   - config.py for configuration management
   - logger.py for centralized logging
@@ -702,6 +780,7 @@ Release dates are in YYYY-MM-DD format.
 - Factory pattern for platform-specific downloaders
 
 ### Changed
+
 - Restructured project into proper Python package
 - Improved configuration using dataclasses
 - Enhanced error handling and logging
@@ -709,13 +788,15 @@ Release dates are in YYYY-MM-DD format.
 - Improved code organization and maintainability
 
 ### Fixed
+
 - FFmpeg path detection on different platforms
 - Package dependencies and versions
 - Installation process
 
-## [0.2.0] - 2024-11-15
+## v0.2.0 (2024-11-15)
 
 ### Added
+
 - Enhanced track identification algorithm with confidence-based filtering
 - New track merging logic to handle duplicate detections
 - Dedicated tracklists directory for organized output
@@ -728,18 +809,22 @@ Release dates are in YYYY-MM-DD format.
 - Better timestamp handling in track identification
 
 ### Changed
+
 - Updated .env.example with new configuration options
 - Improved README documentation with output format examples
 - Enhanced error handling in track identification process
 - Optimized FFmpeg integration
 
 ### Fixed
+
 - Duplicate track detection issues
 - Timestamp accuracy in track listing
 - File naming sanitization
 
-## [0.1.0] - 2024-11-15
+##  v0.1.0 (2024-11-15)
+
 ### Added
+
 - Core track identification functionality
 - Support for YouTube and Mixcloud platforms
 - ACRCloud integration for audio recognition
@@ -754,6 +839,7 @@ Release dates are in YYYY-MM-DD format.
 - Documentation and usage examples
 
 ### Technical Features
+
 - Abstract base class for stream downloaders
 - Factory pattern for platform-specific downloaders
 - Modular architecture for easy platform additions
@@ -764,7 +850,9 @@ Release dates are in YYYY-MM-DD format.
 - Error reporting
 
 ## Future Plans
+
 ### Planned Features
+
 - Support for additional streaming platforms
 - Enhanced duplicate detection algorithms
 - Local audio fingerprinting
@@ -779,6 +867,7 @@ Release dates are in YYYY-MM-DD format.
 - Caching system for recognized tracks
 
 ### Technical Improvements
+
 - Unit test coverage
 - Performance optimizations
 - Memory usage improvements

@@ -1,8 +1,9 @@
 import asyncio
+import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import ANY, AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -10,7 +11,6 @@ from tracklistify.config.factory import get_config
 from tracklistify.core.app import App
 from tracklistify.core.track import Track
 from tracklistify.core.types import AudioSegment
-from tracklistify.exporters.tracklist import TracklistOutput
 
 
 @pytest.fixture(autouse=True)
@@ -376,7 +376,6 @@ class TestAppCleanup:
     @pytest.mark.asyncio
     async def test_cleanup_inaccessible_directory(self, app, temp_dir):
         """Test cleanup with inaccessible directory."""
-        import os
 
         # Create a file in the temp directory
         test_file = temp_dir / "test.txt"
@@ -394,7 +393,6 @@ class TestAppCleanup:
             ),
             patch("tracklistify.core.app.logger.warning") as mock_logger,
         ):
-
             await app.cleanup()
 
             # Verify warning was logged for permission error
@@ -539,12 +537,15 @@ class TestAppProcessInput:
         test_file = temp_dir / "test.mp3"
         test_file.write_text("mock audio content")
 
-        app.split_audio = Mock(side_effect=Exception("Split failed"))
+        # Mock split_audio to raise a specific exception
+        app.split_audio = Mock(side_effect=ValueError("Split failed"))
         app.cleanup = AsyncMock()
 
-        with pytest.raises(Exception):
+        # Expect a specific exception type
+        with pytest.raises(ValueError, match="Split failed"):
             await app.process_input(str(test_file))
 
+        # Verify cleanup is called
         app.cleanup.assert_called_once()
 
     @pytest.mark.asyncio
@@ -609,12 +610,14 @@ class TestAppProcessInput:
         """Test handling of download failures."""
         url = "https://www.youtube.com/watch?v=test123"
         mock_downloader = Mock()
-        mock_downloader.download = AsyncMock(side_effect=Exception("Download failed"))
+        mock_downloader.download = AsyncMock(
+            side_effect=RuntimeError("Download failed")
+        )
 
         app.downloader_factory.create_downloader = Mock(return_value=mock_downloader)
         app.cleanup = AsyncMock()
 
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError, match="Download failed"):
             await app.process_input(url)
 
         app.cleanup.assert_called_once()

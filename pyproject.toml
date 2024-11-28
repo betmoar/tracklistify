@@ -1,73 +1,149 @@
-[build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "tracklistify"
-dynamic = ["version"]
+version = "0.6.6"
 description = "Automatic tracklist generator for DJ mixes and audio streams"
-readme = "README.md"
+
+license = "MIT"
+
 authors = [
-    {name = "betmoar", email = "betmoar@mailsecure.me"}
+    "betmoar <betmoar@mailsecure.me>"
 ]
-license = {text = "MIT"}
-requires-python = ">=3.11"
-keywords = ["dj", "music", "tracklist", "mix", "audio", "recognition", "shazam"]
+
+homepage = "https://github.com/betmoar/tracklistify"
+repository = "https://github.com/betmoar/tracklistify.git"
+documentation = "https://github.com/betmoar/tracklistify#readme"
+
+# README file(s) are used as the package description
+readme = ["README.md", "docs/CHANGELOG.md", "docs/CONTRIBUTING.md"]
+
+# Keywords (translated to tags on the package index)
+keywords = ["tracklistify", "youtube", "mixcloud", "shazam", "tracklist", "audio", "fingerprinting"]
+
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Sound/Audio :: Analysis",
     "Topic :: Utilities",
 ]
-dependencies = [
-    "aiohttp>=3.10.11",
-    "configparser>=5.3.0",
-    "mutagen>=1.47.0",
-    "pydub>=0.25.1",
-    "pyacrcloud>=1.0.2",
-    "python-dotenv>=1.0.1",
-    "requests>=2.31.0",
-    "shazamio>=0.7.0",
-    "yt-dlp>=2024.7.7",
-]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.23.5",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.11.1",
-    "responses>=0.23.1",
-    "black>=24.10.0",
-    "isort>=5.13.2",
-    "pre-commit>=4.0.1",
-    "commitizen>=3.30.1",
-]
+[tool.poetry.dependencies]
+python = ">3.11,<4.0"
+aiohttp = "^3.11.8"
+configparser = "^7.1.0"
+mutagen = "^1.47.0"
+pydub = "^0.25.1"
+python-dotenv = "^1.0.1"
+requests = "^2.32.3"
+yt-dlp = "^2024.11.18"
+shazamio = { git = "https://github.com/shazamio/shazamio.git" }
+shazamio-core = { git = "https://github.com/shazamio/shazamio-core.git" }
+pyacrcloud = { git = "https://github.com/acrcloud/acrcloud_sdk_python.git" }
 
-[project.urls]
-Homepage = "https://github.com/betmoar/tracklistify"
-Documentation = "https://github.com/betmoar/tracklistify#readme"
-Repository = "https://github.com/betmoar/tracklistify.git"
-"Bug Tracker" = "https://github.com/betmoar/tracklistify/issues"
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+pytest-cov = "^6.0.0"
+pytest-mock = "^3.14.0"
+pytest-asyncio = "^0.24.0"
+pre-commit = "^4.0.1"
+ruff = "^0.8.0"
+commitizen = "^4.0.0"
+yt-dlp = "^2024.11.18"
 
-[project.scripts]
-tracklistify = "tracklistify.__main__:main"
+[tool.poetry.scripts]
+tracklistify = "tracklistify:main"
 
-[tool.setuptools]
-packages = ["tracklistify"]
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "pep440"
+version_provider = "poetry"
+update_changelog_on_bump = true
+major_version_zero = true
+changelog_incremental = true
 
-[tool.setuptools_scm]
-write_to = "tracklistify/_version.py"
-version_scheme = "guess-next-dev"
-local_scheme = "node-and-date"
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
-minversion = "7.0"
+minversion = "8.3.0"
 addopts = "-ra -q --cov=tracklistify"
 testpaths = ["tests"]
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+include = [
+    "pyproject.toml",
+    "tracklistify/**/*.py",
+    "scripts/**/*.py"
+]
+
+# Match Black
+line-length = 88
+
+# Assume Python 3.11
+target-version = "py311"
+
+[tool.ruff.lint]
+# E and F are for PEP8, W (pycodestyle warnings),
+# I for isort, B for flake8-bugbear, ANN for type hints
+select = ["E", "F", "B"]
+ignore = []
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = ["B"]
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+# Enable auto-formatting of code examples in docstrings. Markdown,
+# reStructuredText code/literal blocks and doctests are all supported.
+#
+# This is currently disabled by default, but it is planned for this
+# to be opt-out in the future.
+docstring-code-format = false
+
+# Set the line length limit used when formatting code snippets in
+# docstrings.
+#
+# This only has an effect when the `docstring-code-format` setting is
+# enabled.
+docstring-code-line-length = "dynamic"

@@ -207,7 +207,7 @@ class TracklistOutput:
             for track in self.tracks:
                 duration = getattr(track, "duration", -1)
                 f.write(f"#EXTINF:{duration},{track.artist} - {track.song_name}\n")
-                # Note: Since we don't have actual file paths, we add a comment with the time in mix
+                # Note: We don't have actual file paths, add comment with time in mix
                 f.write(f"# Time in mix: {track.time_in_mix}\n")
 
         logger.info(f"Saved M3U playlist to: {output_file}")

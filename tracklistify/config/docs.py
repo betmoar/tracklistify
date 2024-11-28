@@ -329,9 +329,7 @@ def generate_env_var_docs(config_class: Type[T]) -> str:
         str: Markdown documentation
     """
     docs = ["## Environment Variables\n"]
-    docs.append(
-        "The following environment variables can be used to override configuration values:\n"
-    )
+    docs.append("The environment variables to override configuration values:\n")
 
     for field in fields(config_class):
         env_var = f"TRACKLISTIFY_{field.name.upper()}"

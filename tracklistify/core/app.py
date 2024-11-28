@@ -112,7 +112,8 @@ class App:
         """Split audio file into overlapping segments for analysis."""
         logger.info(f"Splitting audio file: {file_path}")
         logger.debug(
-            f"Config values: segment_length={self.config.segment_length}, overlap_duration={self.config.overlap_duration}"
+            f"Config values: segment_length={self.config.segment_length}, "
+            f"overlap_duration={self.config.overlap_duration}"
         )
 
         import os
@@ -223,7 +224,8 @@ class App:
                     )
                 else:
                     logger.error(
-                        f"Failed to create segment at {params['start_time']}s: Output file is missing or too small"
+                        f"Failed to create segment at {params['start_time']}s: "
+                        f"Output file is missing or too small"
                     )
                     return None
 

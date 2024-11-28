@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 import asyncio
-import os
-import shutil
 import signal
 import sys
 from pathlib import Path

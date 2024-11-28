@@ -132,12 +132,15 @@ class ACRCloudProvider(TrackIdentificationProvider):
                     text_response = await response.text()
                     try:
                         result = json.loads(text_response)
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as json_err:
                         raise ProviderError(
-                            f"Failed to parse ACRCloud response. Response text: {text_response[:200]}"
-                        )
+                            f"Failed to parse ACRCloud response. "
+                            f"Response text: {text_response[:200]}"
+                        ) from json_err
                 except Exception as e:
-                    raise ProviderError(f"Failed to read ACRCloud response: {str(e)}")
+                    raise ProviderError(
+                        f"Failed to read ACRCloud response: {str(e)}"
+                    ) from e
 
                 if result["status"]["code"] != 0:
                     if result["status"]["code"] == 2000:
@@ -182,10 +185,10 @@ class ACRCloudProvider(TrackIdentificationProvider):
                     "metadata": {"music": music_list},
                 }
 
-        except (AuthenticationError, RateLimitError, IdentificationError):
-            raise
+        except (AuthenticationError, RateLimitError, IdentificationError) as e:
+            raise e
         except Exception as e:
-            raise ProviderError(f"ACRCloud provider error: {str(e)}")
+            raise ProviderError(f"ACRCloud provider error: {str(e)}") from e
 
     async def enrich_metadata(self, track_info: Dict) -> Dict:
         """

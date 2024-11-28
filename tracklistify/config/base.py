@@ -40,8 +40,8 @@ class BaseConfig:
                 directory = directory.expanduser()
                 try:
                     directory.mkdir(parents=True, exist_ok=True)
-                except Exception as e:
-                    raise ValueError(f"Failed to create directory {directory}: {e}")
+                except OSError as e:
+                    raise ValueError(f"Failed to create directory {directory}") from e
 
     def _load_from_env(self) -> None:
         """Load configuration from environment variables."""
@@ -79,9 +79,7 @@ class BaseConfig:
                     # Set the value on the instance
                     setattr(self, field_name, value)
                 except Exception as e:
-                    raise ValueError(
-                        f"Invalid value for {env_key}: {env_value} - {str(e)}"
-                    )
+                    raise ValueError(f"Invalid value for {env_key}: {env_value}") from e
 
     def _setup_validation(self):
         """Set up validation rules."""

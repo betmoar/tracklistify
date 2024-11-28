@@ -15,7 +15,6 @@ from tracklistify.config import (
     get_config,
 )
 from tracklistify.config.docs import (
-    ConfigDocGenerator,
     generate_example_docs,
     generate_field_docs,
     generate_validation_docs,
@@ -384,7 +383,6 @@ def test_config_validation_edge_cases():
 
 def test_config_to_dict_with_sensitive_data():
     """Test configuration dictionary conversion with sensitive data handling."""
-    config = TrackIdentificationConfig()
 
     # Add some sensitive data
     sensitive_data = {
@@ -394,7 +392,6 @@ def test_config_to_dict_with_sensitive_data():
     }
 
     # Convert to dictionary and verify sensitive data is masked
-    config_dict = config.to_dict()
     masked_dict = mask_sensitive_data(sensitive_data)
 
     assert masked_dict["api_key"] != "secret_key_123"

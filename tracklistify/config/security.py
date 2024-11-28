@@ -147,7 +147,7 @@ class CryptoManager:
                 with open(self.key_file, "rb") as f:
                     return f.read()
             except Exception as e:
-                raise KeyManagementError(f"Failed to load key: {e}")
+                raise KeyManagementError(f"Failed to load key: {e}") from e
         else:
             key = generate_key()
             try:
@@ -156,7 +156,7 @@ class CryptoManager:
                 self.key_file.chmod(0o600)
                 return key
             except Exception as e:
-                raise KeyManagementError(f"Failed to save key: {e}")
+                raise KeyManagementError(f"Failed to save key: {e}") from e
 
     def encrypt(self, data: Union[str, bytes]) -> bytes:
         """
@@ -182,9 +182,9 @@ class CryptoManager:
 
             for block in blocks:
                 # XOR with previous block (CBC mode)
-                xored = bytes(a ^ b for a, b in zip(block, prev_block))
+                xored = bytes(a ^ b for a, b in zip(block, prev_block, strict=False))
                 # XOR with key (simplified AES round)
-                encrypted = bytes(a ^ b for a, b in zip(xored, key[:16]))
+                encrypted = bytes(a ^ b for a, b in zip(xored, key[:16], strict=False))
                 ciphertext.extend(encrypted)
                 prev_block = encrypted
 
@@ -192,7 +192,7 @@ class CryptoManager:
             return base64.b64encode(salt + iv + ciphertext)
 
         except Exception as e:
-            raise EncryptionError(f"Encryption failed: {e}")
+            raise EncryptionError(f"Encryption failed: {e}") from e
 
     def decrypt(self, encrypted_data: bytes) -> bytes:
         """
@@ -218,9 +218,11 @@ class CryptoManager:
 
             for block in blocks:
                 # XOR with key (reverse simplified AES round)
-                decrypted = bytes(a ^ b for a, b in zip(block, key[:16]))
+                decrypted = bytes(a ^ b for a, b in zip(block, key[:16], strict=False))
                 # XOR with previous block (CBC mode)
-                xored = bytes(a ^ b for a, b in zip(decrypted, prev_block))
+                xored = bytes(
+                    a ^ b for a, b in zip(decrypted, prev_block, strict=False)
+                )
                 plaintext.extend(xored)
                 prev_block = block
 
@@ -232,7 +234,7 @@ class CryptoManager:
             return bytes(plaintext[:-pad_len])
 
         except Exception as e:
-            raise EncryptionError(f"Decryption failed: {e}")
+            raise EncryptionError(f"Decryption failed: {e}") from e
 
     def rotate_key(self) -> None:
         """Rotate the encryption key."""
@@ -251,7 +253,7 @@ class CryptoManager:
                 ctypes.memset(old_key, 0, len(old_key))
 
         except Exception as e:
-            raise KeyManagementError(f"Key rotation failed: {e}")
+            raise KeyManagementError(f"Key rotation failed: {e}") from e
 
 
 class SecureString:

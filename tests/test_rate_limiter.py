@@ -2,7 +2,7 @@
 # Standard library imports
 import asyncio
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 # Third-party imports
 import pytest
@@ -10,10 +10,7 @@ import pytest
 # Local/package imports
 from tracklistify.providers.base import TrackIdentificationProvider
 from tracklistify.rate_limiter import (
-    CircuitState,
-    ProviderLimits,
     RateLimiter,
-    RateLimitMetrics,
 )
 
 
@@ -135,7 +132,6 @@ class TestRateLimiter:
         """Test resource cleanup."""
         # Register provider with small concurrent limit
         rate_limiter.register_provider(mock_provider, max_concurrent_requests=2)
-        limits = rate_limiter._provider_limits[mock_provider]
 
         # Acquire both slots
         assert await rate_limiter.acquire(mock_provider)
