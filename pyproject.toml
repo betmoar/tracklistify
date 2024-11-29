@@ -55,13 +55,6 @@ commitizen = "^4.0.0"
 [tool.poetry.scripts]
 tracklistify = "tracklistify.cli:cli"
 
-[virtualenvs]
-in-project = true
-path = ".venv"
-create = true
-prefer-active-python = false
-python-version = "3.11"
-
 [tool.commitizen]
 name = "cz_conventional_commits"
 tag_format = "v$version"
