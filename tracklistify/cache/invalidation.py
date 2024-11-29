@@ -102,7 +102,10 @@ class TTLStrategy(InvalidationStrategy[T]):
             age = current_time - created_time
 
             logger.debug(
-                f"TTL check: current={current_time}, created={created_time}, age={age}, ttl={self.default_ttl}"
+                (
+                    f"TTL check: current={current_time}, created={created_time}, "
+                    f"age={age}, ttl={self.default_ttl}"
+                )
             )
 
             return age > self.default_ttl
@@ -151,7 +154,8 @@ class LRUStrategy(InvalidationStrategy[T]):
             age = current_time - last_accessed
 
             logger.debug(
-                f"LRU check: current={current_time}, last={last_accessed}, age={age}, max_age={self.max_age}"
+                f"LRU check: current={current_time}, last={last_accessed}, "
+                f"age={age}, max_age={self.max_age}"
             )
 
             # Add a small buffer to account for timing variations
@@ -223,7 +227,10 @@ class LRUStrategy(InvalidationStrategy[T]):
             age = current_time - float(last_accessed)
 
             logger.debug(
-                f"LRU check: current={current_time}, last={last_accessed}, age={age}, max_age={self.max_age}"
+                (
+                    f"LRU check: current={current_time}, last={last_accessed}, "
+                    f"age={age}, max_age={self.max_age}"
+                )
             )
 
             # Entry is valid if age is less than max_age
@@ -298,7 +305,10 @@ class CompositeStrategy(InvalidationStrategy[T]):
             for strategy in self.strategies:
                 if not await strategy.is_valid(entry):
                     logger.debug(
-                        f"Entry invalid according to strategy: {strategy.__class__.__name__}"
+                        (
+                            f"Entry invalid according to strategy: "
+                            f"{strategy.__class__.__name__}"
+                        )
                     )
                     return False
             return True
@@ -342,7 +352,10 @@ class CompositeStrategy(InvalidationStrategy[T]):
             for strategy in self.strategies:
                 if strategy.should_invalidate(entry):
                     logger.debug(
-                        f"Strategy {strategy.__class__.__name__} indicates entry should be invalidated"
+                        (
+                            f"Strategy {strategy.__class__.__name__} "
+                            "indicates entry should be invalidated"
+                        )
                     )
                     return True
             return False

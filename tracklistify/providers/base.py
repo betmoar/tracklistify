@@ -94,6 +94,7 @@ class MetadataProvider(ABC):
         """
         pass
 
+    @abstractmethod
     async def close(self) -> None:
         """Close the provider's resources."""
         pass

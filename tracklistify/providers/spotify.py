@@ -152,7 +152,7 @@ class SpotifyProvider(MetadataProvider):
 
             return tracks
         except Exception as e:
-            raise ProviderError(f"Error searching for track: {e}")
+            raise ProviderError(f"Error searching for track: {e}") from e
 
     async def get_track_details(self, track_id: str) -> Dict:
         """

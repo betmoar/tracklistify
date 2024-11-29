@@ -96,7 +96,10 @@ class IdentificationManager:
         # Get unique tracks sorted by time in mix
         unique_tracks = self.track_matcher.get_unique_tracks()
         logger.info(
-            f"Identified {len(unique_tracks)} unique tracks from {len(identified_tracks)} total matches"
+            (
+                f"Identified {len(unique_tracks)} unique tracks from "
+                f"{len(identified_tracks)} total matches"
+            )
         )
         return unique_tracks
 

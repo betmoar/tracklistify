@@ -62,7 +62,7 @@ def setup_logger(
 
     # Set base level
     base_level = (
-        logging.DEBUG if debug else (logging.INFO if verbose else logging.WARNING)
+        logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
     )
     logger.setLevel(base_level)  # getattr(logging, log_level.upper())
 
@@ -72,7 +72,10 @@ def setup_logger(
     )
 
     file_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
+        (
+            "%(asctime)s - %(name)s - %(levelname)s - "
+            "%(filename)s:%(lineno)d - %(message)s"
+        ),
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
