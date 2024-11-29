@@ -379,7 +379,7 @@ class SpotifyDownloader(Downloader):
             return str(output_path)
 
         except Exception as e:
-            raise DownloadError(f"Failed to download from Spotify: {str(e)}")
+            raise DownloadError(f"Failed to download from Spotify: {str(e)}") from e
 
     async def close(self):
         """Close the downloader session."""

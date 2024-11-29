@@ -2,11 +2,10 @@
 
 # Standard library imports
 import asyncio
-import json
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 # Third-party imports
 import pytest
@@ -125,7 +124,8 @@ async def test_cache_lru_invalidation(temp_cache_dir: Path):
     # Wait for slightly less than max_age
     await asyncio.sleep(0.5)
 
-    # key1 should still be valid since it was accessed recently and hasn't exceeded max_age
+    # key1 should still be valid since it was accessed recently
+    # and hasn't exceeded max_age
     assert await base_cache.get("key1") == TEST_DATA["key1"]["value"]
 
     # Wait for more than max_age

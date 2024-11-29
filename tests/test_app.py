@@ -2,7 +2,8 @@ import asyncio
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import ANY, AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
+import subprocess
 
 import pytest
 
@@ -10,7 +11,6 @@ from tracklistify.config.factory import get_config
 from tracklistify.core.app import App
 from tracklistify.core.track import Track
 from tracklistify.core.types import AudioSegment
-from tracklistify.exporters.tracklist import TracklistOutput
 
 
 @pytest.fixture(autouse=True)
@@ -376,7 +376,6 @@ class TestAppCleanup:
     @pytest.mark.asyncio
     async def test_cleanup_inaccessible_directory(self, app, temp_dir):
         """Test cleanup with inaccessible directory."""
-        import os
 
         # Create a file in the temp directory
         test_file = temp_dir / "test.txt"
@@ -394,7 +393,6 @@ class TestAppCleanup:
             ),
             patch("tracklistify.core.app.logger.warning") as mock_logger,
         ):
-
             await app.cleanup()
 
             # Verify warning was logged for permission error
@@ -542,7 +540,7 @@ class TestAppProcessInput:
         app.split_audio = Mock(side_effect=Exception("Split failed"))
         app.cleanup = AsyncMock()
 
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError, match="Split failed"):
             await app.process_input(str(test_file))
 
         app.cleanup.assert_called_once()
@@ -614,7 +612,7 @@ class TestAppProcessInput:
         app.downloader_factory.create_downloader = Mock(return_value=mock_downloader)
         app.cleanup = AsyncMock()
 
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             await app.process_input(url)
 
         app.cleanup.assert_called_once()
