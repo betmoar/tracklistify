@@ -9,7 +9,9 @@ from shazamio import Shazam
 from tracklistify.providers.base import TrackIdentificationProvider
 
 # Local/package imports
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ShazamProvider(TrackIdentificationProvider):

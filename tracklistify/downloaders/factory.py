@@ -7,12 +7,14 @@ from typing import Dict, Optional
 
 # Local/package imports
 from tracklistify.config import TrackIdentificationConfig, get_config
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
 from tracklistify.utils.validation import is_mixcloud_url, is_youtube_url
 
 from .base import Downloader
 from .mixcloud import MixcloudDownloader
 from .youtube import YouTubeDownloader
+
+logger = get_logger(__name__)
 
 
 class DownloaderFactory:

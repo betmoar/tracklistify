@@ -1,6 +1,8 @@
 # tracklistify/core/app.py
 
 # Standard library imports
+import asyncio
+import concurrent.futures
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +16,7 @@ from tracklistify.downloaders import DownloaderFactory
 from tracklistify.exporters import TracklistOutput
 from tracklistify.providers.factory import create_provider_factory
 from tracklistify.utils.identification import IdentificationManager
-from tracklistify.utils.logger import logger, setup_logger
+from tracklistify.utils.logger import get_logger
 from tracklistify.utils.validation import (
     is_mixcloud_url,
     is_youtube_url,
@@ -22,46 +24,36 @@ from tracklistify.utils.validation import (
 )
 
 
-class App:
+class AsyncApp:
     """Main application logic container"""
 
-    _instance = None  # Singleton instance
-
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
     def __init__(self, config=None):
-        # Only initialize once
-        if not self._initialized:
-            self.provider_factory = create_provider_factory()
-            self.downloader_factory = DownloaderFactory()
-            self._initialized = True
-
         # Always refresh config
         self.config = config or get_config(force_refresh=True)
-
-        # Configure logging with current config
-        setup_logger(
-            verbose=self.config.verbose,
-            debug=self.config.debug,
-            log_dir=self.config.log_dir,
-        )
+        self.provider_factory = create_provider_factory()
+        self.downloader_factory = DownloaderFactory()
+        self.logger = get_logger(__name__)
+        self.shutdown_event = asyncio.Event()
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
         # Always recreate identification_manager with fresh config
         self.identification_manager = IdentificationManager(
             config=self.config, provider_factory=self.provider_factory
         )
 
+    def shutdown(self) -> None:
+        """Shutdown the application gracefully."""
+        self.logger.info("Shutting down...")
+        self.shutdown_event.set()
+        self.executor.shutdown(wait=True)
+
     async def process_input(self, input_path: str):
-        logger.info(f"Processing input: {input_path}")
+        self.logger.info(f"Processing input: {input_path}")
         try:
             if is_youtube_url(input_path) or is_mixcloud_url(input_path):
                 url = validate_and_clean_url(input_path)
                 downloader = self.downloader_factory.create_downloader(url)
-                logger.info(f"Starting download: {url}")
+                self.logger.info(f"Starting download: {url}")
                 local_path = await downloader.download(url)
                 # Extract title from downloader if available
                 if hasattr(downloader, "title"):
@@ -84,25 +76,25 @@ class App:
 
             tracks = await self.identification_manager.identify_tracks(audio_segments)
             if not tracks:
-                logger.warning("No tracks were identified in the audio file")
+                self.logger.warning("No tracks were identified in the audio file")
                 return
 
             # Log the identified tracks
-            logger.debug(f"Identified tracks: {tracks}")
+            self.logger.debug(f"Identified tracks: {tracks}")
 
             # Only save if we have identified tracks
             if len(tracks) > 0:
-                logger.info(f"Identified {len(tracks)} tracks, saving output...")
+                self.logger.info(f"Identified {len(tracks)} tracks, saving output...")
                 await self.save_output(tracks, self.config.output_format)
             else:
-                logger.warning(
+                self.logger.warning(
                     "No tracks were successfully identified with sufficient confidence"
                 )
 
         except Exception as e:
-            logger.error(f"Failed to process input: {e}")
+            self.logger.error(f"Failed to process input: {e}")
             if self.config.debug:
-                logger.error(traceback.format_exc())
+                self.logger.error(traceback.format_exc())
             raise
         finally:
             # Always clean up temporary files
@@ -110,8 +102,8 @@ class App:
 
     def split_audio(self, file_path: str) -> List[AudioSegment]:
         """Split audio file into overlapping segments for analysis."""
-        logger.info(f"Splitting audio file: {file_path}")
-        logger.debug(
+        self.logger.info(f"Splitting audio file: {file_path}")
+        self.logger.debug(
             f"Config values: segment_length={self.config.segment_length}, overlap_duration={self.config.overlap_duration}"
         )
 
@@ -123,13 +115,13 @@ class App:
 
         audio = File(file_path)
         if audio is None:
-            logger.error(f"Could not read audio file: {file_path}")
+            self.logger.error(f"Could not read audio file: {file_path}")
             return []
 
         try:
             duration = audio.info.length  # Duration in seconds
         except AttributeError:
-            logger.error("Could not determine audio duration")
+            self.logger.error("Could not determine audio duration")
             return []
 
         # Get configuration for segmentation from instance
@@ -213,7 +205,7 @@ class App:
                 result = subprocess.run(
                     params["cmd"], capture_output=True, text=True, check=True
                 )
-                logger.debug(f"FFmpeg output: {result.stdout}")
+                self.logger.debug(f"FFmpeg output: {result.stdout}")
 
                 if params["file"].exists() and params["file"].stat().st_size > 1000:
                     return AudioSegment(
@@ -222,18 +214,20 @@ class App:
                         duration=int(params["length"]),
                     )
                 else:
-                    logger.error(
+                    self.logger.error(
                         f"Failed to create segment at {params['start_time']}s: Output file is missing or too small"
                     )
                     return None
 
             except subprocess.CalledProcessError as e:
-                logger.error(
+                self.logger.error(
                     f"Failed to create segment at {params['start_time']}s: {e.stderr}"
                 )
                 return None
             except Exception as e:
-                logger.error(f"Error creating segment at {params['start_time']}s: {e}")
+                self.logger.error(
+                    f"Error creating segment at {params['start_time']}s: {e}"
+                )
                 return None
 
         # Process segments in parallel using ThreadPoolExecutor
@@ -241,7 +235,7 @@ class App:
         try:
             # Use more workers for better parallelization
             max_workers = min(os.cpu_count() * 2, len(segment_params))
-            logger.debug(f"Processing segments with {max_workers} workers")
+            self.logger.debug(f"Processing segments with {max_workers} workers")
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 # Submit all tasks and gather results
@@ -250,11 +244,11 @@ class App:
                 # Filter out failed segments
                 segments = [seg for seg in future_segments if seg is not None]
 
-            logger.info(f"Split audio into {len(segments)} segments")
+            self.logger.info(f"Split audio into {len(segments)} segments")
             return segments
 
         except Exception as e:
-            logger.error(f"Failed to process segments: {e}")
+            self.logger.error(f"Failed to process segments: {e}")
             return []
 
     async def save_output(self, tracks: List["Track"], format: str):
@@ -268,7 +262,7 @@ class App:
             ValueError: If tracks list is empty
         """
         if len(tracks) == 0:
-            logger.error("Cannot save output: No tracks provided")
+            self.logger.error("Cannot save output: No tracks provided")
             return
 
         # Get title from the original title or use a default
@@ -296,19 +290,19 @@ class App:
                 saved_files = output.save_all()
                 if saved_files:
                     for file in saved_files:
-                        logger.debug(f"Saved tracklist to: {file}")
+                        self.logger.debug(f"Saved tracklist to: {file}")
                 else:
-                    logger.error("Failed to save tracklist in any format")
+                    self.logger.error("Failed to save tracklist in any format")
             else:
                 if saved_file := output.save(format):
-                    logger.info(f"Saved {format} tracklist to: {saved_file}")
+                    self.logger.info(f"Saved {format} tracklist to: {saved_file}")
                 else:
-                    logger.error(f"Failed to save tracklist in format: {format}")
+                    self.logger.error(f"Failed to save tracklist in format: {format}")
 
         except Exception as e:
-            logger.error(f"Error saving tracklist: {e}")
+            self.logger.error(f"Error saving tracklist: {e}")
             if self.config.debug:
-                logger.error(traceback.format_exc())
+                self.logger.error(traceback.format_exc())
 
     async def cleanup(self):
         """Cleanup resources"""
@@ -321,14 +315,14 @@ class App:
                     try:
                         if file.is_file():
                             file.unlink()
-                            logger.debug(f"Removed temporary file: {file}")
+                            self.logger.debug(f"Removed temporary file: {file}")
                         elif file.is_dir():
                             import shutil
 
                             shutil.rmtree(file)
-                            logger.debug(f"Removed temporary directory: {file}")
+                            self.logger.debug(f"Removed temporary directory: {file}")
                     except Exception as e:
-                        logger.warning(f"Failed to remove {file}: {e}")
+                        self.logger.warning(f"Failed to remove {file}: {e}")
 
                 # Try to remove the directory itself
                 try:
@@ -336,24 +330,30 @@ class App:
                     import shutil
 
                     shutil.rmtree(temp_dir)
-                    logger.debug("Removed temporary directory")
+                    self.logger.debug("Removed temporary directory")
                 except Exception as e:
-                    logger.debug(f"Could not remove temp directory: {e}")
+                    self.logger.debug(f"Could not remove temp directory: {e}")
                     # If rmtree fails, try to at least remove empty directory
                     try:
                         temp_dir.rmdir()
                     except Exception:
                         pass
         except Exception as e:
-            logger.warning(f"Error during cleanup: {e}")
+            self.logger.warning(f"Error during cleanup: {e}")
 
         # Clean up other resources
         try:
             if hasattr(self.identification_manager, "close"):
                 await self.identification_manager.close()
         except Exception as e:
-            logger.warning(f"Error cleaning up identification manager: {e}")
+            self.logger.warning(f"Error cleaning up identification manager: {e}")
 
     async def close(self):
         """Cleanup resources."""
         await self.cleanup()
+
+
+class ApplicationError(Exception):
+    """Base application error."""
+
+    pass

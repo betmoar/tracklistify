@@ -19,7 +19,10 @@ from tracklistify.config.factory import get_config
 
 # Local/package imports
 from tracklistify.core.types import CacheEntry, CacheStorage
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 T = TypeVar("T")
 

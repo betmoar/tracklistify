@@ -13,7 +13,9 @@ import yt_dlp
 # Local/package imports
 from tracklistify.config import get_config
 from tracklistify.downloaders.base import Downloader
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class YTDLPLogger:

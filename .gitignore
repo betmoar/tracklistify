@@ -164,6 +164,8 @@ cython_debug/
 #.idea/
 
 # other files and directories
+.ruff_cache
+poetry.lock
 temp_segments/
 .vscode/
 .DS_Store

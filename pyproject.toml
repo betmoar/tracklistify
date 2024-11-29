@@ -1,73 +1,60 @@
-[build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "tracklistify"
-dynamic = ["version"]
+version = "0.6.0"
 description = "Automatic tracklist generator for DJ mixes and audio streams"
-readme = "README.md"
+
+license = "MIT"
+
 authors = [
-    {name = "betmoar", email = "betmoar@mailsecure.me"}
+    "betmoar <betmoar@mailsecure.me>"
 ]
-license = {text = "MIT"}
-requires-python = ">=3.11"
-keywords = ["dj", "music", "tracklist", "mix", "audio", "recognition", "shazam"]
+
+homepage = "https://github.com/betmoar/tracklistify"
+repository = "https://github.com/betmoar/tracklistify.git"
+documentation = "https://github.com/betmoar/tracklistify#readme"
+
+# README file(s) are used as the package description
+readme = ["README.md"]
+
+# Keywords (translated to tags on the package index)
+keywords = ["tracklistify", "youtube", "mixcloud", "shazam", "tracklist", "audio", "fingerprinting"]
+
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Multimedia :: Sound/Audio :: Analysis",
     "Topic :: Utilities",
 ]
-dependencies = [
-    "aiohttp>=3.10.11",
-    "configparser>=5.3.0",
-    "mutagen>=1.47.0",
-    "pydub>=0.25.1",
-    "pyacrcloud>=1.0.2",
-    "python-dotenv>=1.0.1",
-    "requests>=2.31.0",
-    "shazamio>=0.7.0",
-    "yt-dlp>=2024.7.7",
-]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.23.5",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.11.1",
-    "responses>=0.23.1",
-    "black>=24.10.0",
-    "isort>=5.13.2",
-    "pre-commit>=4.0.1",
-    "commitizen>=3.30.1",
-]
+[tool.poetry.dependencies]
+python = ">3.11,<3.13"
+aiohttp = "^3.11.8"
+configparser = "^7.1.0"
+mutagen = "^1.47.0"
+pydub = "^0.25.1"
+python-dotenv = "^1.0.1"
+requests = "^2.32.3"
+yt-dlp = "^2024.11.18"
+shazamio = { git = "https://github.com/shazamio/shazamio.git" }
+shazamio-core = { git = "https://github.com/shazamio/shazamio-core.git" }
+pyacrcloud = { git = "https://github.com/acrcloud/acrcloud_sdk_python.git" }
 
-[project.urls]
-Homepage = "https://github.com/betmoar/tracklistify"
-Documentation = "https://github.com/betmoar/tracklistify#readme"
-Repository = "https://github.com/betmoar/tracklistify.git"
-"Bug Tracker" = "https://github.com/betmoar/tracklistify/issues"
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+pytest-cov = "^6.0.0"
+pytest-mock = "^3.14.0"
+pytest-asyncio = "^0.24.0"
+pre-commit = "^4.0.1"
+ruff = "^0.8.0"
+commitizen = "^4.0.0"
+yt-dlp = "^2024.11.18"
 
-[project.scripts]
-tracklistify = "tracklistify.__main__:main"
+[tool.poetry.scripts]
+tracklistify = "tracklistify.cli:cli"
 
-[tool.setuptools]
-packages = ["tracklistify"]
-
-[tool.setuptools_scm]
-write_to = "tracklistify/_version.py"
-version_scheme = "guess-next-dev"
-local_scheme = "node-and-date"
-
-[tool.pytest.ini_options]
-minversion = "7.0"
-addopts = "-ra -q --cov=tracklistify"
-testpaths = ["tests"]
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

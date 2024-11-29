@@ -3,6 +3,12 @@
 
 # Local imports
 from .base import BaseConfig, TrackIdentificationConfig
-from .factory import clear_config, get_config
+from .factory import ConfigError, clear_config, get_config
 
-__all__ = ["BaseConfig", "TrackIdentificationConfig", "get_config", "clear_config"]
+__all__ = [
+    "BaseConfig",
+    "TrackIdentificationConfig",
+    "get_config",
+    "clear_config",
+    "ConfigError",
+]

@@ -13,8 +13,10 @@ from tracklistify.config.factory import get_config
 # Local/package imports
 from tracklistify.core.track import Track, TrackMatcher
 from tracklistify.providers.factory import create_provider_factory
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
 from tracklistify.utils.time_formatter import format_seconds_to_hhmmss
+
+logger = get_logger(__name__)
 
 
 def get_audio_info(audio_path: str) -> File:

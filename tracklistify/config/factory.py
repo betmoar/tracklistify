@@ -57,3 +57,9 @@ def get_config(force_refresh: bool = False) -> TrackIdentificationConfig:
 def clear_config() -> None:
     """Clear global configuration instance."""
     ConfigFactory.clear_cache(TrackIdentificationConfig)
+
+
+class ConfigError(Exception):
+    """Configuration related errors."""
+
+    pass

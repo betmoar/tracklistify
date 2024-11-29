@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 # Local/package imports
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Fields that should be masked in logs and error messages
 SENSITIVE_FIELDS = {

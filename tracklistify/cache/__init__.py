@@ -7,12 +7,15 @@ import asyncio
 from pathlib import Path
 from typing import Optional, TypeVar
 
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
 
 # Local/package imports (using relative imports to avoid cycles)
 from .base import BaseCache
 from .invalidation import CompositeStrategy, LRUStrategy, SizeStrategy, TTLStrategy
 from .storage import JSONStorage
+
+# Global logger instance
+logger = get_logger(__name__)
 
 T = TypeVar("T")
 

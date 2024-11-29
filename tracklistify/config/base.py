@@ -1,4 +1,3 @@
-# tracklistify/config/base.py
 """Base configuration types and interfaces."""
 
 # Standard library imports

@@ -13,7 +13,9 @@ from typing import List, Optional
 from tracklistify.config import get_config
 from tracklistify.core.exceptions import ExportError
 from tracklistify.core.track import Track
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class TracklistOutput:
