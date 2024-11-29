@@ -16,7 +16,7 @@ def main():
     """Main entry point for the development tools CLI."""
     try:
         # Initialize logger with default settings
-        DevCliLogger()
+        DevCliLogger().setup()
 
         # Run the CLI
         cli()
