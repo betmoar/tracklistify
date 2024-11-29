@@ -330,7 +330,8 @@ def generate_env_var_docs(config_class: Type[T]) -> str:
     """
     docs = ["## Environment Variables\n"]
     docs.append(
-        "The following environment variables can be used to override configuration values:\n"
+        "The following environment variables can be used to override configuration "
+        "values:\n"
     )
 
     for field in fields(config_class):

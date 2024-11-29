@@ -61,7 +61,10 @@ class SpotifyPlaylistExporter:
                 if not track.metadata.get("spotify_id"):
                     # Try to find track on Spotify
                     spotify_info = await self.spotify.search_track(
-                        track.song_name, track.artist, None, None  # album  # duration
+                        track.song_name,
+                        track.artist,
+                        None,
+                        None,  # album  # duration
                     )
                     if spotify_info:
                         track_ids.append(spotify_info["spotify_id"])
@@ -78,7 +81,7 @@ class SpotifyPlaylistExporter:
             return f"https://open.spotify.com/playlist/{playlist_id}"
 
         except Exception as e:
-            raise ExportError(f"Failed to export playlist: {str(e)}")
+            raise ExportError(f"Failed to export playlist: {str(e)}") from e
 
     async def _create_playlist(self, name: str) -> str:
         """Create a new Spotify playlist."""

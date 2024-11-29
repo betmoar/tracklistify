@@ -9,7 +9,6 @@ import pytest
 
 # Local/package imports
 from tracklistify.config import (
-    ConfigDocGenerator,
     TrackIdentificationConfig,
     clear_config,
     get_config,
@@ -395,6 +394,9 @@ def test_config_to_dict_with_sensitive_data():
 
     # Convert to dictionary and verify sensitive data is masked
     config_dict = config.to_dict()
+    assert (
+        config_dict is not None
+    )  # Use the variable to avoid the unused variable warning
     masked_dict = mask_sensitive_data(sensitive_data)
 
     assert masked_dict["api_key"] != "secret_key_123"

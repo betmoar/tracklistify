@@ -66,7 +66,11 @@ class DownloadProgress:
         if d["status"] == "downloading":
             # Only show progress for meaningful updates
             if "_percent_str" in d and d.get("_percent_str", "0%")[:-1] != "0":
-                progress = f"{d['_percent_str']} of {d.get('_total_bytes_str', 'Unknown size')} at {d.get('_speed_str', 'Unknown speed')}"
+                progress = (
+                    f"{d['_percent_str']} of "
+                    f"{d.get('_total_bytes_str', 'Unknown size')} "
+                    f"at {d.get('_speed_str', 'Unknown speed')}"
+                )
                 # Clear previous line and show progress
                 print("\r" + " " * self.last_line_length, end="")
                 print(f"\rDownloading: {progress}", end="")
@@ -78,7 +82,8 @@ class DownloadProgress:
             print("\r" + " " * self.last_line_length + "\r", end="")
             if "_total_bytes_str" in d and "_elapsed_str" in d and "_speed_str" in d:
                 logger.info(
-                    f"Downloaded {d['_total_bytes_str']} in {d['_elapsed_str']} at {d['_speed_str']}"
+                    f"Downloaded {d['_total_bytes_str']} in {d['_elapsed_str']} "
+                    f"at {d['_speed_str']}"
                 )
 
 

@@ -27,7 +27,10 @@ class Track:
     config: Optional["TrackIdentificationConfig"] = None
 
     def __str__(self) -> str:
-        return f"{self.time_in_mix} - {self.artist} - {self.song_name} ({self.confidence:.0f}%)"
+        return (
+            f"{self.time_in_mix} - {self.artist} - "
+            f"{self.song_name} ({self.confidence:.0f}%)"
+        )
 
     def is_similar_to(self, other: "Track") -> bool:
         """Check if two tracks are similar based on the configuration."""
@@ -158,7 +161,10 @@ class TrackMatcher:
         self._min_confidence = max(0, min(float(value), 100))
 
     def add_track(self, track: Track) -> None:
-        """Add a track to the collection if it meets confidence threshold and isn't a duplicate."""
+        """
+        Add a track to the collection if it meets confidence threshold
+        and isn't a duplicate.
+        """
         # Skip tracks below confidence threshold
         if track.confidence < self.min_confidence:
             logger.debug(
@@ -186,15 +192,17 @@ class TrackMatcher:
                     self.tracks.remove(similar_track)
                 self.tracks.append(track)
                 logger.debug(
-                    f"Replaced {len(similar_tracks)} similar tracks with higher confidence version:"
-                    f"{track.song_name} (Confidence: {track.confidence:.1f}%)"
+                    f"Replaced {len(similar_tracks)} similar tracks with higher "
+                    f"confidence version: {track.song_name} "
+                    f"(Confidence: {track.confidence:.1f}%)"
                 )
             return
 
         # If we get here, this is a new track
         self.tracks.append(track)
         logger.info(
-            f"Added new track to matcher: {track.song_name} (Confidence: {track.confidence:.1f}%)"
+            f"Added new track to matcher: {track.song_name} "
+            f"(Confidence: {track.confidence:.1f}%)"
         )
 
     def get_unique_tracks(self) -> List[Track]:
@@ -210,7 +218,8 @@ class TrackMatcher:
             # Create a unique key for the track
             track_key = f"{track.artist.lower()}|{track.song_name.lower()}"
 
-            # If we haven't seen this track before, or this version has higher confidence
+            # If we haven't seen this track before, or this version has higher
+            # confidence
             if track_key not in seen_tracks:
                 seen_tracks.add(track_key)
                 unique_tracks.append(track)

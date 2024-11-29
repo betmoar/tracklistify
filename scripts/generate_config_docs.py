@@ -4,15 +4,14 @@ Generate configuration documentation from code.
 """
 
 # Standard library imports
-import os
 import sys
 from pathlib import Path
+
+from tracklistify.config import get_config
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
-
-from tracklistify.config import get_config
 
 
 def main():

@@ -101,7 +101,8 @@ class TypeRule(ValidationRule):
             raise ConfigValidationError(
                 self.field,
                 self.message
-                or f"Expected type {self.expected_type.__name__}, got {type(value).__name__}",
+                or f"Expected type {self.expected_type.__name__}, "
+                f"got {type(value).__name__}",
             )
 
 
@@ -140,17 +141,20 @@ class RangeRule(ValidationRule):
                 )
             if not self.include_min and value <= self.min_value:
                 raise RangeValidationError(
-                    f"{self.field}: Value {value} is less than or equal to minimum {self.min_value}"
+                    f"{self.field}: Value {value} is less than or equal to "
+                    f"minimum {self.min_value}"
                 )
 
         if self.max_value is not None:
             if self.include_max and value > self.max_value:
                 raise RangeValidationError(
-                    f"{self.field}: Value {value} is greater than maximum {self.max_value}"
+                    f"{self.field}: Value {value} is greater than "
+                    f"maximum {self.max_value}"
                 )
             if not self.include_max and value >= self.max_value:
                 raise RangeValidationError(
-                    f"{self.field}: Value {value} is greater than or equal to maximum {self.max_value}"
+                    f"{self.field}: Value {value} is greater than or equal to "
+                    f"maximum {self.max_value}"
                 )
 
 
@@ -234,7 +238,7 @@ class PathRule(ValidationRule):
             except Exception as e:
                 raise PathValidationError(
                     f"{self.field}: Failed to create directory: {e}"
-                )
+                ) from e
 
         if PathRequirement.EXISTS in self.requirements and not path.exists():
             if self.create_if_missing:
@@ -245,7 +249,7 @@ class PathRule(ValidationRule):
                 except Exception as e:
                     raise PathValidationError(
                         f"{self.field}: Failed to create path: {e}"
-                    )
+                    ) from e
             else:
                 raise PathValidationError(f"{self.field}: Path does not exist")
 
@@ -261,7 +265,9 @@ class PathRule(ValidationRule):
                     with open(path, "r"):
                         pass
             except Exception as e:
-                raise PathValidationError(f"{self.field}: Path is not readable: {e}")
+                raise PathValidationError(
+                    f"{self.field}: Path is not readable: {e}"
+                ) from e
 
         if PathRequirement.WRITABLE in self.requirements:
             try:
@@ -276,7 +282,9 @@ class PathRule(ValidationRule):
                     test_file.touch()
                     test_file.unlink()
             except Exception as e:
-                raise PathValidationError(f"{self.field}: Path is not writable: {e}")
+                raise PathValidationError(
+                    f"{self.field}: Path is not writable: {e}"
+                ) from e
 
 
 class DependencyRule(ValidationRule):
@@ -307,7 +315,10 @@ class DependencyRule(ValidationRule):
         if missing_fields:
             raise DependencyError(
                 self.message
-                or f"Missing required fields for {self.field}: {', '.join(missing_fields)}"
+                or (
+                    f"Missing required fields for {self.field}: "
+                    f"{', '.join(missing_fields)}"
+                )
             )
 
 
@@ -470,7 +481,7 @@ def validate_path(
             raise ValueError(f"{field_name}: Path does not exist: {path}")
         return path
     except Exception as e:
-        raise ValueError(f"{field_name}: Invalid path: {e}")
+        raise ValueError(f"{field_name}: Invalid path: {e}") from e
 
 
 def validate_positive_float(value: float, field_name: str) -> float:
