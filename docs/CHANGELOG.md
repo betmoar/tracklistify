@@ -113,6 +113,11 @@ Release dates are in YYYY-MM-DD format.
 - Modified `.gitignore` to exclude `poetry.lock`
 - Removed deprecated virtualenv settings from `pyproject.toml`
 - Standardized Python version requirements across config files
+- Streamlined README.md with updated features and Poetry-based installation
+  - Reorganized features into clear categories
+  - Updated installation instructions to use Poetry
+  - Added comprehensive usage examples
+  - Improved documentation structure
 
 ### Removed
 - Deprecated `tracklistify/identification.py`.

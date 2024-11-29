@@ -1,200 +1,128 @@
 ![Tracklistify banner](docs/assets/banner.png)
 
+<div align="center">
+
+[![GitHub stars](https://img.shields.io/github/stars/betmoar/tracklistify?style=social)](https://github.com/betmoar/tracklistify/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](docs/CONTRIBUTING.md)
+[![Made with ❤️](https://img.shields.io/badge/Made%20with-❤️-red.svg)](https://github.com/betmoar/tracklistify)
+
+### [Changelog](docs/CHANGELOG.md) · [Issues](https://github.com/betmoar/tracklistify/issues) · [Contributing](docs/CONTRIBUTING.md)
+
+</div>
+
 # Tracklistify
 
-Automatic tracklist generator for DJ mixes and audio streams. Identifies tracks in your mixes using multiple providers (Shazam, ACRCloud) and generates formatted playlists.
+A powerful and flexible automatic tracklist generator for DJ mixes and audio streams. Identifies tracks in your mixes using multiple providers (Shazam, ACRCloud) and generates formatted playlists with high accuracy.
 
-## Features
+## Key Features
 
-- 🎧 Track Identification:
-  - Multiple provider support (Shazam, ACRCloud)
-  - Configurable provider fallback
-  - Robust error handling and retry logic
+- 🎵 **Multi-Provider Track Identification**
+  - Shazam and ACRCloud integration
+  - Smart provider fallback system
   - High accuracy with confidence scoring
+  - Support for multiple platforms (YouTube, Mixcloud, SoundCloud)
 
-- 📝 Output Formats:
-  - JSON export with detailed metadata
+- 📊 **Versatile Output Formats**
+  - JSON with detailed metadata
   - Markdown formatted tracklists
-  - M3U playlist generation
-  - Configurable via environment or CLI
+  - M3U playlists
+  - CSV and XML exports
+  - Rekordbox compatible format
 
-- 🔄 Audio Processing:
+- 🚀 **Advanced Processing**
   - Automatic format conversion
-  - Stereo and sample rate normalization
-  - Segment-based analysis
-  - YouTube download support
+  - Batch processing for multiple files
+  - Intelligent caching system
+  - Progress tracking with detailed status
+  - Configurable audio quality settings
 
-- ⚡ Performance:
+- ⚙️ **Robust Architecture**
   - Asynchronous processing
-  - Intelligent rate limiting
-  - Session management with auto-recovery
-  - Exponential backoff retry logic
-
-- 🛠️ Configuration:
-  - Environment-based setup
-  - Command-line overrides
-  - Flexible provider selection
-  - Customizable output options
+  - Smart rate limiting
+  - Advanced error recovery
+  - Comprehensive logging system
+  - Docker support
 
 ## Requirements
 
 - Python 3.11 or higher
 - ffmpeg
 - git
+- Poetry (package manager)
 
-## Installation
+## Quick Start
 
-1. Clone the repository:
+1. **Installation**
    ```bash
+   # Clone the repository
    git clone https://github.com/betmoar/tracklistify.git
    cd tracklistify
+
+   # Install dependencies using Poetry
+   poetry install
    ```
 
-2. Run the setup script:
+2. **Configuration**
    ```bash
-   ./env-setup.sh
+   # Copy example environment file
+   cp .env.example .env
+
+   # Edit .env with your provider credentials
+   # Required for ACRCloud:
+   # - ACRCLOUD_ACCESS_KEY
+   # - ACRCLOUD_ACCESS_SECRET
+   # - ACRCLOUD_HOST
    ```
 
-3. Configure your environment:
-   - Copy `.env.example` to `.env`
-   - Edit `.env` with your settings
-
-## Usage
-
+3. **Basic Usage**
    ```bash
-# Basic usage:
+   # Identify tracks in a file or URL
+   poetry run tracklistify <input>
 
-tracklistify https://youtube.com/watch?v=example
-```
-
-### Output Format Options
-
-By default, Tracklistify uses the format specified in your `.env` file (TRACKLISTIFY_OUTPUT_FORMAT). You can override this using the command line:
-
-   ```bash
-# Use specific format
-
-tracklistify -f json input.mp3    # JSON output
-tracklistify -f markdown input.mp3 # Markdown output
-tracklistify -f m3u input.mp3     # M3U playlist
-
-# Generate all formats
-
-tracklistify -f all input.mp3
-```
-
-If no format is specified via command line, the TRACKLISTIFY_OUTPUT_FORMAT from your environment will be used, defaulting to JSON if not set.
-
-### Provider Selection
-
-```bash
-# Use specific provider
-
-tracklistify -p shazam input.mp3
-
-# Disable provider fallback
-
-tracklistify --no-fallback input.mp3
+   # Examples:
+   poetry run tracklistify path/to/mix.mp3
+   poetry run tracklistify https://youtube.com/watch?v=example
    ```
 
-## Configuration
+## Advanced Usage
 
-Key settings in `.env`:
-
-```ini
-# Directory Settings
-TRACKLISTIFY_OUTPUT_DIR=~/.tracklistify/output   # Output directory
-TRACKLISTIFY_CACHE_DIR=~/.tracklistify/cache     # Cache directory
-TRACKLISTIFY_TEMP_DIR=~/.tracklistify/temp       # Temporary files
-
-# Provider Settings
-TRACKLISTIFY_PRIMARY_PROVIDER=shazam             # Primary provider (shazam, acrcloud)
-TRACKLISTIFY_FALLBACK_ENABLED=false             # Enable fallback to other providers
-TRACKLISTIFY_FALLBACK_PROVIDERS=["acrcloud"]    # Fallback providers list
-
-# Track Identification Settings
-TRACKLISTIFY_SEGMENT_LENGTH=30                  # Length of audio segments (10-300s)
-TRACKLISTIFY_MIN_CONFIDENCE=0.0                 # Minimum confidence (0.0-1.0)
-TRACKLISTIFY_TIME_THRESHOLD=60.0                # Time between tracks (0.0-300.0s)
-TRACKLISTIFY_MAX_DUPLICATES=2                   # Maximum duplicate tracks
-
-# Output Settings
-TRACKLISTIFY_OUTPUT_FORMAT=all                  # Output format (json, markdown, m3u, all)
-```
-
-### Environment Variable Formats
-
-Tracklistify supports various formats for environment variables:
-
-- **Lists**: Can be specified in multiple formats:
-  ```bash
-  TRACKLISTIFY_FALLBACK_PROVIDERS=["provider1", "provider2"]  # Python list syntax
-  TRACKLISTIFY_FALLBACK_PROVIDERS=provider1,provider2         # Comma-separated
-  TRACKLISTIFY_FALLBACK_PROVIDERS=provider1                   # Single value
-  ```
-
-- **Booleans**: Support multiple formats:
-  ```bash
-  TRACKLISTIFY_FALLBACK_ENABLED=true   # or false
-  TRACKLISTIFY_FALLBACK_ENABLED=1      # or 0
-  TRACKLISTIFY_FALLBACK_ENABLED=yes    # or no
-  TRACKLISTIFY_FALLBACK_ENABLED=on     # or off
-  ```
-
-- **Paths**: Support home directory expansion:
-  ```bash
-  TRACKLISTIFY_OUTPUT_DIR=~/.tracklistify/output  # Expands to home directory
-  TRACKLISTIFY_OUTPUT_DIR=/absolute/path          # Absolute paths
-  ```
-
-## Development Setup
-
-1. Clone the repository:
+### Output Formats
 ```bash
-git clone https://github.com/betmoar/tracklistify.git
-cd tracklistify
+# Specify output format
+poetry run tracklistify -f json input.mp3    # JSON output
+poetry run tracklistify -f markdown input.mp3 # Markdown output
+poetry run tracklistify -f m3u input.mp3     # M3U playlist
+poetry run tracklistify -f csv input.mp3     # CSV export
+poetry run tracklistify -f all input.mp3     # Generate all formats
 ```
 
-2. Run the environment setup script:
+### Batch Processing
 ```bash
-./env-setup.sh --dev
+# Process multiple files
+poetry run tracklistify -b path/to/folder/*.mp3
+
+# With specific output format
+poetry run tracklistify -b -f json path/to/folder/*.mp3
 ```
 
-This will:
-- Check system requirements
-- Create a virtual environment
-- Install all dependencies
-- Set up pre-commit hooks
-- Create initial configuration
-
-3. Activate the virtual environment:
+### Additional Options
 ```bash
-source venv/bin/activate
+# Show progress with detailed status
+poetry run tracklistify --progress input.mp3
+
+# Specify provider
+poetry run tracklistify --provider shazam input.mp3
+poetry run tracklistify --provider acrcloud input.mp3
+
+# Set output directory
+poetry run tracklistify -o path/to/output input.mp3
 ```
 
-4. Configure your environment:
-- Copy `.env.example` to `.env` if not already done
-- Edit `.env` with your API credentials
+## Contributing
 
-## Development Guidelines
-
-- Use pre-commit hooks for code quality
-- Follow conventional commits for version control
-- Run tests before submitting changes
-- Update documentation for new features
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guidelines.
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for version history and changes.
+Contributions are welcome! Please read our [Contributing Guide](docs/CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- [Shazam](https://www.shazam.com/) for audio recognition
-- [ACRCloud](https://www.acrcloud.com/) for audio recognition
-- [FFmpeg](https://ffmpeg.org/) for audio processing
