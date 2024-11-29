@@ -61,6 +61,10 @@ Release dates are in YYYY-MM-DD format.
   - Comprehensive error tracking in downloaders
   - Detailed logging with debug information
   - Progress tracking for long operations
+- Enhanced Poetry configuration
+  - Added local virtualenv settings in `poetry.toml`
+  - Enforced Python version constraints (3.11-3.13)
+  - Configured in-project virtualenv creation
 
 ### Changed
 - Refactored `SpotifyPlaylistExporter`.
@@ -102,6 +106,13 @@ Release dates are in YYYY-MM-DD format.
   - More flexible configuration options
   - Better environment variable support
   - Improved security handling
+- Updated development tooling configuration
+  - Simplified pre-commit hooks configuration
+  - Streamlined Ruff settings in `pyproject.toml`
+  - Updated pytest configuration for better output
+- Modified `.gitignore` to exclude `poetry.lock`
+- Removed deprecated virtualenv settings from `pyproject.toml`
+- Standardized Python version requirements across config files
 
 ### Removed
 - Deprecated `tracklistify/identification.py`.
@@ -122,6 +133,9 @@ Release dates are in YYYY-MM-DD format.
 - Enhanced thread safety in async operations
 - Better handling of file system operations
 - More robust FFmpeg path detection
+- Corrected Poetry virtualenv configuration location
+- Fixed pre-commit hooks formatting
+- Improved pytest configuration parameters
 
 ## [Rate Limiter Enhancements] - 2024-11-25
 ### Added
