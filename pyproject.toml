@@ -14,7 +14,7 @@ repository = "https://github.com/betmoar/tracklistify.git"
 documentation = "https://github.com/betmoar/tracklistify#readme"
 
 # README file(s) are used as the package description
-readme = ["README.md"]
+readme = ["README.md", "docs/CHANGELOG.md", "docs/CONTRIBUTING.md"]
 
 # Keywords (translated to tags on the package index)
 keywords = ["tracklistify", "youtube", "mixcloud", "shazam", "tracklist", "audio", "fingerprinting"]
@@ -25,12 +25,13 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Sound/Audio :: Analysis",
     "Topic :: Utilities",
 ]
 
 [tool.poetry.dependencies]
-python = ">3.11,<3.13"
+python = ">=3.11,<3.14"
 aiohttp = "^3.11.8"
 configparser = "^7.1.0"
 mutagen = "^1.47.0"
@@ -50,11 +51,101 @@ pytest-asyncio = "^0.24.0"
 pre-commit = "^4.0.1"
 ruff = "^0.8.0"
 commitizen = "^4.0.0"
-yt-dlp = "^2024.11.18"
 
 [tool.poetry.scripts]
 tracklistify = "tracklistify.cli:cli"
 
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "pep440"
+version_provider = "poetry"
+update_changelog_on_bump = true
+major_version_zero = true
+changelog_start_rev = "v0.6.8"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q -v"
+testpaths = [
+    "tests"
+]
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".pre-commit-config.yaml",
+    ".ruff_cache",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+include = [
+    "pyproject.toml",
+    "tracklistify/**/*.py",
+    "scripts/**/*.py"
+]
+
+# Match Black
+line-length = 88
+
+# Assume Python 3.11
+target-version = "py311"
+
+[tool.ruff.lint]
+# E and F are for PEP8, W (pycodestyle warnings),
+# I for isort, B for flake8-bugbear, ANN for type hints
+select = ["E", "F", "B"]
+ignore = []
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = ["B"]
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+# Enable auto-formatting of code examples in docstrings. Markdown,
+# reStructuredText code/literal blocks and doctests are all supported.
+#
+# This is currently disabled by default, but it is planned for this
+# to be opt-out in the future.
+docstring-code-format = false
+
+# Set the line length limit used when formatting code snippets in
+# docstrings.
+#
+# This only has an effect when the `docstring-code-format` setting is
+# enabled.
+docstring-code-line-length = "dynamic"

@@ -5,24 +5,21 @@ repos:
     -   id: trailing-whitespace
     -   id: end-of-file-fixer
     -   id: check-yaml
-    #-   id: check-added-large-files
     -   id: debug-statements
     -   id: requirements-txt-fixer
 
--   repo: https://github.com/psf/black-pre-commit-mirror
-    rev: 24.10.0
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
     hooks:
-    -   id: black
-        language_version: python3.11
-
--   repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-    -   id: isort
-        args: ["--profile", "black", "--filter-files"]
+    -   id: ruff
+        types_or: [ python, pyi ]
+        args: [ --fix ]
+    -   id: ruff-format
+        types_or: [ python, pyi ]
 
 -   repo: https://github.com/commitizen-tools/commitizen
     rev: v4.0.0
     hooks:
     -   id: commitizen
-        stages: [commit-msg]
+    -   id: commitizen-branch
+        stages: [pre-push]

@@ -104,7 +104,8 @@ class AsyncApp:
         """Split audio file into overlapping segments for analysis."""
         self.logger.info(f"Splitting audio file: {file_path}")
         self.logger.debug(
-            f"Config values: segment_length={self.config.segment_length}, overlap_duration={self.config.overlap_duration}"
+            f"Config values: segment_length={self.config.segment_length}, "
+            f"overlap_duration={self.config.overlap_duration}"
         )
 
         import os
@@ -215,7 +216,8 @@ class AsyncApp:
                     )
                 else:
                     self.logger.error(
-                        f"Failed to create segment at {params['start_time']}s: Output file is missing or too small"
+                        f"Failed to create segment at {params['start_time']}s: "
+                        f"Output file is missing or too small"
                     )
                     return None
 

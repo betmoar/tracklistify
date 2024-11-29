@@ -46,9 +46,9 @@ def validate_and_clean_url(url: str) -> Optional[str]:
             return None
 
         # Validate YouTube URLs
-        if "youtube.com" in parsed.netloc or "youtu.be" in parsed.netloc:
+        if parsed.hostname in ["youtube.com", "youtu.be"]:
             # Extract video ID
-            if "youtube.com" in parsed.netloc:
+            if parsed.hostname == "youtube.com":
                 video_id = re.search(r"[?&]v=([^&]+)", url)
             else:  # youtu.be
                 video_id = re.search(r"youtu\.be/([^?&]+)", url)
@@ -60,7 +60,7 @@ def validate_and_clean_url(url: str) -> Optional[str]:
             return f"https://www.youtube.com/watch?v={video_id.group(1)}"
 
         # Validate Mixcloud URLs
-        if "mixcloud.com" in parsed.netloc:
+        if parsed.hostname == "mixcloud.com":
             # Remove trailing slash and query parameters
             path = parsed.path.rstrip("/")
             if not path or path == "/":
@@ -122,7 +122,10 @@ def is_mixcloud_url(url: str) -> bool:
 
     try:
         parsed = urlparse(url)
-        return parsed.netloc.endswith("mixcloud.com") and len(parsed.path) > 1
+        host = parsed.hostname
+        return (host == "mixcloud.com" or host.endswith(".mixcloud.com")) and len(
+            parsed.path
+        ) > 1
     except (ValueError, URLError):
         return False
 
@@ -154,7 +157,7 @@ def clean_url(url: str) -> str:
         # Further cleaning logic can be added here
         return parsed.geturl()
     except (ValueError, URLError) as e:
-        raise URLValidationError(f"Invalid URL: {e}")
+        raise URLValidationError(f"Invalid URL: {e}") from e
 
 
 def validate_url(url: str) -> bool:
@@ -186,4 +189,4 @@ def validate_url(url: str) -> bool:
     except URLValidationError:
         raise
     except Exception as e:
-        raise URLValidationError(f"Invalid URL: {str(e)}")
+        raise URLValidationError(f"Invalid URL: {str(e)}") from e
