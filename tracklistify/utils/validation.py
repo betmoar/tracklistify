@@ -46,9 +46,9 @@ def validate_and_clean_url(url: str) -> Optional[str]:
             return None
 
         # Validate YouTube URLs
-        if parsed.hostname in ["youtube.com", "youtu.be"]:
+        if "youtube.com" in parsed.netloc or "youtu.be" in parsed.netloc:
             # Extract video ID
-            if parsed.hostname == "youtube.com":
+            if "youtube.com" in parsed.netloc:
                 video_id = re.search(r"[?&]v=([^&]+)", url)
             else:  # youtu.be
                 video_id = re.search(r"youtu\.be/([^?&]+)", url)
@@ -60,7 +60,7 @@ def validate_and_clean_url(url: str) -> Optional[str]:
             return f"https://www.youtube.com/watch?v={video_id.group(1)}"
 
         # Validate Mixcloud URLs
-        if parsed.hostname == "mixcloud.com":
+        if "mixcloud.com" in parsed.netloc:
             # Remove trailing slash and query parameters
             path = parsed.path.rstrip("/")
             if not path or path == "/":
@@ -122,10 +122,7 @@ def is_mixcloud_url(url: str) -> bool:
 
     try:
         parsed = urlparse(url)
-        host = parsed.hostname
-        return (host == "mixcloud.com" or host.endswith(".mixcloud.com")) and len(
-            parsed.path
-        ) > 1
+        return parsed.netloc.endswith("mixcloud.com") and len(parsed.path) > 1
     except (ValueError, URLError):
         return False
 
