@@ -7,6 +7,12 @@ information is retrieved from the _version.py file if available, otherwise it fa
 back to the package metadata.
 """
 
+# Local/package imports
+from .utils.logger import get_logger
+
+# Configure package-level logger
+package_logger = get_logger(__name__)
+
 
 def get_metadata():
     """

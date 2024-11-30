@@ -15,7 +15,9 @@ from tracklistify.core.types import (
     CacheStorage,
     InvalidationStrategy,
 )
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 T = TypeVar("T")
 

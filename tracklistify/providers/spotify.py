@@ -16,7 +16,9 @@ from tracklistify.providers.base import (
 )
 
 # Local/package imports
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class SpotifyProvider(MetadataProvider):

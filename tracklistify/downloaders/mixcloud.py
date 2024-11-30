@@ -15,8 +15,10 @@ import yt_dlp
 from tracklistify.downloaders.base import Downloader
 
 # Local/package imports
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
 from tracklistify.utils.validation import clean_url
+
+logger = get_logger(__name__)
 
 
 class MixcloudDownloader(Downloader):
