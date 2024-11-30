@@ -20,27 +20,8 @@ logger = get_logger(__name__)
 async def main(args: argparse.Namespace) -> int:
     """Main entry point."""
     try:
-        # Load environment variables first
-        env_path = Path(__file__).parent.parent / ".env"
-        if env_path.exists():
-            logger.info(f"Loading environment from {env_path}")
-            load_dotenv(env_path)
-
-            # Log loaded environment variables for debugging
-            for key, value in os.environ.items():
-                if key.startswith("TRACKLISTIFY_"):
-                    logger.debug(f"Loaded env var: {key}={value}")
-
         # Load configuration
         config = get_config()
-
-        # Setup logging
-        setup_logger(
-            log_level=args.log_level,
-            log_file=args.log_file,
-            verbose=os.getenv("TRACKLISTIFY_VERBOSE", "false").lower() == "true",
-            debug=os.getenv("TRACKLISTIFY_DEBUG", "false").lower() == "true",
-        )
 
         # Create and run application
         app = AsyncApp(config)
@@ -125,6 +106,29 @@ def parse_args() -> argparse.Namespace:
 def cli() -> None:
     """Core CLI execution logic"""
     args = parse_args()
+
+    # Load environment variables first
+    env_path = Path(__file__).parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+
+    # Setup logging
+    setup_logger(
+        log_level=args.log_level,
+        log_file=args.log_file,
+        verbose=os.getenv("TRACKLISTIFY_VERBOSE", "false").lower() == "true",
+        debug=os.getenv("TRACKLISTIFY_DEBUG", "false").lower() == "true",
+    )
+
+    # Log after logger is initialized
+    if env_path.exists():
+        logger.info(f"Loaded environment from {env_path}")
+
+        # Log loaded environment variables for debugging
+        for key, value in os.environ.items():
+            if key.startswith("TRACKLISTIFY_"):
+                logger.debug(f"Loaded env var: {key}={value}")
+
     try:
         exit_code = asyncio.run(main(args))
         sys.exit(exit_code)
