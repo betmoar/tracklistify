@@ -44,12 +44,7 @@ class ColoredFormatter(logging.Formatter):
         return result
 
 
-# Create the logger instance
-logger = logging.getLogger("tracklistify")
-logger.setLevel(logging.INFO)
-
-
-def setup_logger(
+def set_logger(
     log_level: str = "INFO",
     log_file: Optional[Path] = None,
     max_bytes: int = 10_000_000,

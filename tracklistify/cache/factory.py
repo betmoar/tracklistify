@@ -8,6 +8,9 @@ from typing import Optional
 from .base import BaseCache
 from .invalidation import CompositeStrategy, LRUStrategy, SizeStrategy, TTLStrategy
 from .storage import JSONStorage
+from tracklistify.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Global cache instance
 _cache_instance = None

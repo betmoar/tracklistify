@@ -12,8 +12,9 @@ from .config import ConfigError, get_config
 from .core import ApplicationError, AsyncApp
 
 # Local/package imports
-from .utils.logger import get_logger, setup_logger
+from .utils.logger import get_logger, set_logger
 
+# Get the logger for this module
 logger = get_logger(__name__)
 
 
@@ -40,10 +41,10 @@ async def main(args: argparse.Namespace) -> int:
         return 0
 
     except ConfigError as e:
-        logger.error(f"Configuration error: {e}")
+        logger.error(f"Configuration error: {e}", exc_info=True)
         return 1
     except ApplicationError as e:
-        logger.error(f"Application error: {e}")
+        logger.error(f"Application error: {e}", exc_info=True)
         return 1
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
@@ -65,6 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-f",
         "--formats",
+        default="all",
         choices=["json", "markdown", "m3u", "all"],
         help="Output format(s)",
     )
@@ -83,12 +85,14 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--log-level",
+        default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Logging level",
     )
 
     parser.add_argument(
         "--log-file",
+        default=None,
         type=Path,
         help="Log file path",
     )
@@ -96,32 +100,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-v",
         "--verbose",
+        default=False,
         action="store_true",
         help="Enable verbose logging",
+    )
+
+    parser.add_argument(
+        "-d",
+        "--debug",
+        default=False,
+        action="store_true",
+        help="Enable debug logging",
     )
 
     return parser.parse_args()
 
 
-def cli() -> None:
-    """Core CLI execution logic"""
-    args = parse_args()
-
-    # Load environment variables first
-    env_path = Path(__file__).parent.parent / ".env"
+def load_environment_variables(env_path: Path) -> None:
+    """Load environment variables from a file."""
     if env_path.exists():
         load_dotenv(env_path)
-
-    # Setup logging
-    setup_logger(
-        log_level=args.log_level,
-        log_file=args.log_file,
-        verbose=os.getenv("TRACKLISTIFY_VERBOSE", "false").lower() == "true",
-        debug=os.getenv("TRACKLISTIFY_DEBUG", "false").lower() == "true",
-    )
-
-    # Log after logger is initialized
-    if env_path.exists():
         logger.info(f"Loaded environment from {env_path}")
 
         # Log loaded environment variables for debugging
@@ -129,10 +127,31 @@ def cli() -> None:
             if key.startswith("TRACKLISTIFY_"):
                 logger.debug(f"Loaded env var: {key}={value}")
 
+
+def cli() -> None:
+    """Core CLI execution logic"""
+    args = parse_args()
+
+    # Setup logging
+    set_logger(
+        log_level=args.log_level,
+        log_file=args.log_file,
+        verbose=args.verbose,
+        debug=args.debug,
+    )
+
+    # Log at the start of the CLI function
+    logger.info("Starting CLI")
+
+    # Load environment variables first
+    env_path = Path(__file__).parent.parent / ".env"
+    load_environment_variables(env_path)
+
     try:
         exit_code = asyncio.run(main(args))
         sys.exit(exit_code)
     except KeyboardInterrupt:
+        logger.info("Operation cancelled by user")
         print("\nOperation cancelled by user")
         sys.exit(1)
 

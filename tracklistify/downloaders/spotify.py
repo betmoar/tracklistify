@@ -19,10 +19,12 @@ from mutagen.oggvorbis import OggVorbis
 
 # Local/package imports
 from tracklistify.core.exceptions import DownloadError
-from tracklistify.utils.logger import logger
+from tracklistify.utils.logger import get_logger
 from tracklistify.utils.validation import clean_url
 
 from .base import Downloader
+
+logger = get_logger(__name__)
 
 # Environment variable names
 ENV_PREFIX = "TRACKLISTIFY_"

@@ -5,7 +5,7 @@ This module contains utility functions for the tracklistify package.
 """
 
 from .decorators import memoize
-from .logger import get_logger, setup_logger
+from .logger import get_logger, set_logger
 from .rate_limiter import get_rate_limiter
 from .validation import (
     clean_url,
@@ -19,7 +19,7 @@ from .validation import (
 __all__ = [
     "memoize",
     "get_logger",
-    "setup_logger",
+    "set_logger",
     "get_rate_limiter",
     "is_valid_url",
     "is_youtube_url",

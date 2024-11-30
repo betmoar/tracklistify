@@ -23,6 +23,8 @@ from tracklistify.utils.validation import (
     validate_and_clean_url,
 )
 
+logger = get_logger(__name__)
+
 
 class AsyncApp:
     """Main application logic container"""

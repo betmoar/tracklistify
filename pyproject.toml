@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "tracklistify"
-version = "0.6.0"
+version = "0.7.0"
 description = "Automatic tracklist generator for DJ mixes and audio streams"
 
 license = "MIT"
