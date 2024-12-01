@@ -20,6 +20,7 @@ logger = get_logger(__name__)
 
 async def main(args: argparse.Namespace) -> int:
     """Main entry point."""
+    app = None  # Initialize app to None
     try:
         # Load configuration
         config = get_config()
@@ -30,7 +31,7 @@ async def main(args: argparse.Namespace) -> int:
         # Setup signal handlers
         def signal_handler():
             logger.info("Received shutdown signal")
-            app.cleanup()
+            asyncio.create_task(app.cleanup())
 
         for sig in (signal.SIGTERM, signal.SIGINT):
             asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
@@ -100,7 +101,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-v",
         "--verbose",
-        default=False,
+        default=True,
         action="store_true",
         help="Enable verbose logging",
     )

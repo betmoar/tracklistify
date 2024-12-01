@@ -9,138 +9,113 @@ Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 ### Added
-- Introduced `TracklistOutput` class.
-  - Handles tracklist output in various formats.
-- Added `ProgressDisplay` class.
-  - Manages progress display during track identification.
-- Integrated ACRCloud provider.
-  - Supports track identification.
-- Support for additional platforms (Mixcloud, SoundCloud)
-- Advanced error recovery strategies
-- Batch processing for multiple files
-- Progress bar for long operations
-- CLI improvements:
-  - Interactive mode
-  - Configuration wizard
-  - Batch processing options
-- Web interface for easier usage
-- Docker support
-- Additional output formats:
-  - CSV export
-  - XML export
-  - Rekordbox compatible format
-- Created `refactor-step1.md` and `refactor-step2.md` to guide the refactoring process.
-  - `refactor-step1.md` includes an analysis of the existing project structure.
-  - `refactor-step2.md` outlines the proposed new structure with detailed module descriptions.
-- Enhanced error handling system
-  - Structured error logging with context
-  - Error categorization and metrics
-  - Comprehensive stack trace handling
-  - Error reporting utilities
-- Improved rate limiting system
-  - Circuit breaker pattern implementation
-  - Configurable rate limits per provider
-  - Concurrent request management
-- Enhanced download management
-  - Configurable audio quality and format settings
-  - Improved metadata handling
-  - Better error recovery for failed downloads
-- Enhanced cache management system
-  - Implemented `BaseCache` with TTL, LRU, and Size-based invalidation
-  - Added JSON storage backend with compression support
-  - Introduced cache statistics and monitoring
-- Improved downloader implementations
-  - Added Spotify downloader with high-quality audio support
-  - Enhanced YouTube downloader with progress display
-  - Added support for multiple audio formats (MP3, M4A, OGG)
-- Configuration management
-  - Added environment variable support for downloaders
-  - Flexible configuration factory pattern
-  - Security-focused configuration options
-- Advanced error handling and logging
-  - Comprehensive error tracking in downloaders
-  - Detailed logging with debug information
-  - Progress tracking for long operations
-- Enhanced Poetry configuration
-  - Added local virtualenv settings in `poetry.toml`
-  - Enforced Python version constraints (3.11-3.13)
-  - Configured in-project virtualenv creation
+- Core Features
+  - Introduced `TracklistOutput` class for handling tracklist output in various formats
+    - Smart file naming with date, artist, and venue information
+    - Comprehensive JSON export with track statistics
+    - Better error handling for missing metadata
+  - Added `ProgressDisplay` class for managing progress display during track identification
+  - Integrated ACRCloud provider for track identification
+  - Support for additional platforms (Mixcloud, SoundCloud)
+  - Web interface for easier usage
+  - Docker support
+- Downloader System
+  - Factory pattern with `DownloaderFactory` for dynamic downloader creation
+  - Enhanced Spotify downloader
+    - High-quality audio support with configurable formats
+    - Comprehensive metadata tagging (artist, album, cover art)
+    - Automatic temporary file cleanup
+  - Improved YouTube and Mixcloud downloaders
+    - Configurable quality settings
+    - Better error handling for failed downloads
+    - Progress tracking during downloads
+  - Support for multiple audio formats (MP3, M4A, OGG)
+- Configuration & Cache
+  - Secure configuration handling with `SecureConfigLoader`
+  - Environment variable support for all components
+  - Dependency validation system
+  - `BaseCache` with TTL, LRU, and Size-based invalidation
+  - JSON storage backend with compression
+  - Cache statistics and monitoring
+- Development Tools
+  - Enhanced development CLI for debugging
+  - Local virtualenv settings in `poetry.toml`
+  - Python version constraints (3.11-3.13)
+  - In-project virtualenv creation
+- Infrastructure
+  - Rate limiting system with circuit breaker pattern
+  - Async support throughout the application
+  - Comprehensive error tracking and reporting
+- Logging System
+  - Colored console output for different log levels
+  - Rotating file handler with configurable size limits
+  - Centralized logging configuration with ColoredFormatter
 
 ### Changed
-- Refactored `SpotifyPlaylistExporter`.
-  - Now uses `tracklistify.core.track`.
-  - Utilizes `tracklistify.utils.logger`.
-- Improved YouTube downloader.
-  - Sets video title before download.
-- Enhanced `save_output` method.
-  - Better error handling for missing titles.
-- Enhanced progress display:
-  - Single-line progress updates
-  - Color-coded INFO prefix
-  - Improved readability with newlines
-- Improved YouTube downloader:
-  - Environment-based download paths
-  - Automatic temp directory creation
-  - Configurable download locations
-- Modernized event loop handling:
-  - Removed deprecation warnings
-  - Better async cleanup
-  - Proper task cancellation
-- Enhanced interrupt handling:
-  - Graceful Ctrl+C shutdown
-  - Resource cleanup on exit
-  - User-friendly cancellation messages
-- Simplified rate limiter tests to focus on core functionality
-- Temporarily skipped complex timing-dependent tests
-- Enhanced `refactor-step2.md` with a comprehensive structure including `base.py` and `factory.py` for each logical component directory.
-- Added guidance on combining or removing unnecessary files to optimize project structure.
-- Refactored downloader architecture
-  - Introduced factory pattern for downloader creation
+- Architecture
+  - Refactored downloader architecture with factory pattern
   - Improved FFmpeg integration
   - Enhanced metadata handling for audio files
-- Updated cache implementation
-  - More efficient storage mechanisms
-  - Better memory management
-  - Improved thread safety
-- Enhanced configuration system
-  - More flexible configuration options
-  - Better environment variable support
-  - Improved security handling
-- Updated development tooling configuration
+  - Modernized event loop handling
+  - Updated cache implementation for better efficiency
+- Components
+  - Enhanced `SpotifyPlaylistExporter` to use core track module
+  - Improved YouTube downloader with environment-based paths
+  - Enhanced progress display with better formatting
+  - Updated configuration system for flexibility
+- Development
   - Simplified pre-commit hooks configuration
   - Streamlined Ruff settings in `pyproject.toml`
-  - Updated pytest configuration for better output
-- Modified `.gitignore` to exclude `poetry.lock`
-- Removed deprecated virtualenv settings from `pyproject.toml`
-- Standardized Python version requirements across config files
-- Streamlined README.md with updated features and Poetry-based installation
-  - Reorganized features into clear categories
-  - Updated installation instructions to use Poetry
-  - Added comprehensive usage examples
-  - Improved documentation structure
+  - Updated pytest configuration
+  - Standardized Python version requirements
+  - Reorganized documentation structure
+- Enhanced logging system
+  - Moved from individual loggers to centralized configuration
+  - Added ANSI color support for better readability
+  - Improved log rotation and file handling
 
 ### Removed
-- Deprecated `tracklistify/identification.py`.
-- Centralized logging removed `tracklistify/logger.py`.
-- Streamlined output handling removed `tracklistify/output.py`.
+- Legacy Components
+  - Deprecated `tracklistify/identification.py`
+  - Centralized logging from `tracklistify/logger.py`
+  - Old output handling from `tracklistify/output.py`
+- Configuration
+  - Deprecated virtualenv settings from `pyproject.toml`
+- Deprecated `error_logging.py` in favor of new centralized logging system
 
 ### Fixed
-- Corrected YouTube downloader issue.
-  - Ensures title is set before download.
-- Improved title handling in `save_output`.
-  - Provides better fallbacks.
-- Duplicate progress line display
-- Event loop deprecation warnings
-- Temporary file cleanup
-- Interrupt signal handling
-- Rate limiter test reliability issues
-- Improved error handling in cache operations
-- Enhanced thread safety in async operations
-- Better handling of file system operations
-- More robust FFmpeg path detection
-- Corrected Poetry virtualenv configuration location
-- Fixed pre-commit hooks formatting
-- Improved pytest configuration parameters
+- Functionality
+  - YouTube downloader title setting
+  - Progress display duplication
+  - Event loop deprecation warnings
+  - Temporary file cleanup
+  - Interrupt signal handling
+  - Rate limiter reliability
+- Infrastructure
+  - Cache operations error handling
+  - Thread safety in async operations
+  - File system operations
+  - FFmpeg path detection
+  - Poetry virtualenv configuration
+  - Pre-commit hooks formatting
+  - Pytest configuration parameters
+- Improved error message formatting and clarity
+- Enhanced log file rotation handling
+
+### Security
+- Enhanced configuration security handling
+- Improved secret management
+- Better environment variable validation
+- Secure file operations implementation
+- Better sanitization of logged error messages
+
+### Performance
+- Optimized cache operations
+- Improved memory management
+- Enhanced thread safety
+- Better async resource utilization
+- Optimized logging operations with better buffering
+- Improved log rotation efficiency
 
 ## [Rate Limiter Enhancements] - 2024-11-25
 ### Added

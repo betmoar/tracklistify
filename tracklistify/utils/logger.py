@@ -62,7 +62,7 @@ def set_logger(
     logger.setLevel(base_level)  # getattr(logging, log_level.upper())
 
     console_formatter = ColoredFormatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        "%(levelname)s - %(name)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 

@@ -15,13 +15,10 @@ from tracklistify.core.types import AudioSegment
 from tracklistify.downloaders import DownloaderFactory
 from tracklistify.exporters import TracklistOutput
 from tracklistify.providers.factory import create_provider_factory
-from tracklistify.utils.identification import IdentificationManager
 from tracklistify.utils.logger import get_logger
-from tracklistify.utils.validation import (
-    is_mixcloud_url,
-    is_youtube_url,
-    validate_and_clean_url,
-)
+from tracklistify.utils.validation import validate_input
+from tracklistify.utils.identification import IdentificationManager
+
 
 logger = get_logger(__name__)
 
@@ -50,46 +47,57 @@ class AsyncApp:
         self.executor.shutdown(wait=True)
 
     async def process_input(self, input_path: str):
-        self.logger.info(f"Processing input: {input_path}")
+        """Process input URL or file path."""
         try:
-            if is_youtube_url(input_path) or is_mixcloud_url(input_path):
-                url = validate_and_clean_url(input_path)
-                downloader = self.downloader_factory.create_downloader(url)
-                self.logger.info(f"Starting download: {url}")
-                local_path = await downloader.download(url)
-                # Extract title from downloader if available
-                if hasattr(downloader, "title"):
-                    self.original_title = downloader.title
-                else:
-                    # Default to file name without extension
-                    self.original_title = Path(local_path).stem
-            else:
-                local_path = input_path
-                self.original_title = Path(local_path).stem
+            # Validate input URL
+            url = validate_input(input_path)
+            if url is None:
+                raise ValueError("Invalid URL provided")
 
-            # Ensure local_path is correctly handled
-            if isinstance(local_path, Path):
-                local_path = str(local_path)
+            self.logger.info(f"Validated URL: {url}")
+
+            # Create downloader
+            downloader = self.downloader_factory.create_downloader(url)
+            if downloader is None:
+                raise ValueError("Failed to create downloader")
+
+            self.logger.info("Downloading audio...")
+
+            # Download audio file
+            local_path = await downloader.download(url)
+            if local_path is None:
+                raise ValueError("local_path cannot be None")
+
+            self.logger.info(f"Downloaded audio to: {local_path}")
+
+            # Store original title for output
+            self.logger.debug(f"Storing original title: {local_path}")
+            self.original_title = getattr(downloader, "title", Path(local_path).stem)
+
+            self.logger.info("Processing audio...")
 
             # Process the downloaded file
             audio_segments = self.split_audio(local_path)
             if not audio_segments:
                 raise ValueError("No audio segments were created")
 
+            self.logger.info(f"Created {len(audio_segments)} audio segments")
+
+            # Identify tracks in audio segments
+            self.logger.info("Identifying tracks...")
             tracks = await self.identification_manager.identify_tracks(audio_segments)
             if not tracks:
-                self.logger.warning("No tracks were identified in the audio file")
-                return
+                raise ValueError("No tracks were identified in the audio file")
 
-            # Log the identified tracks
-            self.logger.debug(f"Identified tracks: {tracks}")
+            self.logger.info(f"Identified {len(tracks)} tracks")
+            self.logger.debug(f"Tracks: {tracks}")
 
             # Only save if we have identified tracks
+            self.logger.info("Saving output...")
             if len(tracks) > 0:
-                self.logger.info(f"Identified {len(tracks)} tracks, saving output...")
                 await self.save_output(tracks, self.config.output_format)
             else:
-                self.logger.warning(
+                raise ValueError(
                     "No tracks were successfully identified with sufficient confidence"
                 )
 
@@ -113,8 +121,8 @@ class AsyncApp:
         import os
         import subprocess
         from concurrent.futures import ThreadPoolExecutor
-
-        from mutagen import File
+        from pathlib import Path
+        from mutagen._file import File
 
         audio = File(file_path)
         if audio is None:
@@ -123,6 +131,7 @@ class AsyncApp:
 
         try:
             duration = audio.info.length  # Duration in seconds
+
         except AttributeError:
             self.logger.error("Could not determine audio duration")
             return []
@@ -228,6 +237,7 @@ class AsyncApp:
                     f"Failed to create segment at {params['start_time']}s: {e.stderr}"
                 )
                 return None
+
             except Exception as e:
                 self.logger.error(
                     f"Error creating segment at {params['start_time']}s: {e}"
@@ -237,8 +247,13 @@ class AsyncApp:
         # Process segments in parallel using ThreadPoolExecutor
         segments = []
         try:
+            # Ensure os.cpu_count() does not return None
+            cpu_count = os.cpu_count()
+            if cpu_count is None:
+                raise ValueError("os.cpu_count() returned None")
+
             # Use more workers for better parallelization
-            max_workers = min(os.cpu_count() * 2, len(segment_params))
+            max_workers = min(cpu_count * 2, len(segment_params))
             self.logger.debug(f"Processing segments with {max_workers} workers")
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:

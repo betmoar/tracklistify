@@ -3,9 +3,11 @@ YouTube video downloader implementation.
 """
 
 # Standard library imports
+import asyncio
 import os
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 # Third-party imports
 import yt_dlp
@@ -145,7 +147,7 @@ class YouTubeDownloader(Downloader):
             "no_warnings": True,  # Suppress unnecessary warnings
         }
 
-    async def download(self, url: str) -> Path:
+    async def download(self, url: str) -> Optional[str]:
         """Download video from URL.
 
         Args:
@@ -180,18 +182,21 @@ class YouTubeDownloader(Downloader):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # First get video info without downloading
                 logger.debug("Extracting video information...")
-                info = ydl.extract_info(url, download=False)
+                info = await asyncio.to_thread(ydl.extract_info, url, download=True)
+
+                if info is None:
+                    logger.error("Failed to extract video information")
+                    raise ValueError("Failed to extract video information")
 
                 # Store the title immediately after getting info
-                self.title = info.get("title", "Unknown title")
-                duration = info.get("duration", 0)
-
-                # Now download the video
-                info = ydl.extract_info(url, download=True)
                 filename = ydl.prepare_filename(info)
-                output_path = Path(filename).with_suffix(f".{self.format}")
+                output_path = str(Path(filename).with_suffix(f".{self.format}"))
 
-                logger.info(f"Downloaded: {self.title} ({duration}s)")
+                title = info.get("title", "Unknown title")
+                uploader = info.get("uploader", "Unknown artist")
+                duration = info.get("duration", 0)
+                logger.info(f"Downloaded: {title} by {uploader} ({duration}s)")
+                logger.debug(f"Output file: {output_path}")
                 return output_path
 
         except Exception as e:
