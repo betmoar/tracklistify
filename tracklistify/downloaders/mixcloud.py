@@ -16,7 +16,6 @@ from tracklistify.downloaders.base import Downloader
 
 # Local/package imports
 from tracklistify.utils.logger import get_logger
-from tracklistify.utils.validation import clean_url
 
 logger = get_logger(__name__)
 
@@ -70,7 +69,6 @@ class MixcloudDownloader(Downloader):
         """
         try:
             # Clean URL before downloading
-            url = clean_url(url)
             logger.info(f"Starting Mixcloud download: {url}")
             ydl_opts = self.get_ydl_opts()
 
@@ -78,6 +76,11 @@ class MixcloudDownloader(Downloader):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 logger.debug("Extracting mix information...")
                 info = await asyncio.to_thread(ydl.extract_info, url, download=True)
+
+                if info is None:
+                    logger.error("Failed to extract video information")
+                    raise ValueError("Failed to extract video information")
+
                 filename = ydl.prepare_filename(info)
                 output_path = str(Path(filename).with_suffix(f".{self.format}"))
 
