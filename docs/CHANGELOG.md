@@ -96,6 +96,7 @@ Release dates are in YYYY-MM-DD format.
   - Thread safety in async operations
   - File system operations
   - FFmpeg path detection
+  - FFmpeg reliability
   - Poetry virtualenv configuration
   - Pre-commit hooks formatting
   - Pytest configuration parameters

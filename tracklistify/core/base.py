@@ -149,6 +149,7 @@ class AsyncApp:
         base_cmd = [
             "ffmpeg",
             "-hide_banner",
+            "-nostdin",  # Disable stdin processing (can break the shell)
             "-loglevel",
             "error",
             "-i",
