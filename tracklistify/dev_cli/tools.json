@@ -1,0 +1,44 @@
+{
+    "pylint": {
+        "command": "/Users/redux/.pyenv/shims/pylint",
+        "description": "Python code linter",
+        "args": "--rcfile=.pylintrc",
+        "env": {
+            "PYTHONPATH": "."
+        }
+    },
+    "black": {
+        "command": "black",
+        "description": "Python code formatter",
+        "args": "--line-length=88",
+        "env": {
+            "PYTHONPATH": "."
+        }
+    },
+    "mypy": {
+        "command": "mypy",
+        "description": "Static type checker",
+        "args": "--strict",
+        "env": {
+            "PYTHONPATH": ".",
+            "MYPYPATH": "."
+        }
+    },
+    "pytest": {
+        "command": "pytest",
+        "description": "Python test runner",
+        "args": "-v",
+        "env": {
+            "PYTHONPATH": ".",
+            "PYTEST_ADDOPTS": "--color=yes"
+        }
+    },
+    "isort": {
+        "command": "isort",
+        "description": "Python import sorter",
+        "args": "--profile black",
+        "env": {
+            "PYTHONPATH": "."
+        }
+    }
+}

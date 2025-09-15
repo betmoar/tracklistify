@@ -33,6 +33,8 @@ MANIFEST
 *.spec
 
 # Installer logs
+log/
+logs/
 pip-log.txt
 pip-delete-this-directory.txt
 
@@ -43,6 +45,8 @@ htmlcov/
 .coverage
 .coverage.*
 .cache
+.serena
+.claude
 nosetests.xml
 coverage.xml
 *.cover
@@ -119,8 +123,12 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Environment files
 .env
+.env.*
+!.env.example
+
+# Environments
 .venv
 env/
 venv/
@@ -152,14 +160,14 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
-
 # other files and directories
+.ruff_cache/
 .vscode/
 .DS_Store
+poetry.lock
+
+# Project-specific
+.tracklistify/
+examples/
 dev/
+docs/temp/
