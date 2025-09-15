@@ -1,5 +1,5 @@
 """
-YouTube video downloader implementation.
+yt-dlp video downloader implementation.
 """
 
 # Standard library imports
@@ -97,13 +97,13 @@ def progress_hook(d):
     _progress_handler.update(d)
 
 
-class YouTubeDownloader(Downloader):
-    """YouTube video downloader."""
+class YtDlpDownloader(Downloader):
+    """yt-dlp video downloader."""
 
     def __init__(
         self, verbose: bool = False, quality: str = "192", format: str = "mp3"
     ):
-        """Initialize YouTube downloader.
+        """Initialize yt-dlp downloader.
 
         Args:
             verbose: Enable verbose logging
@@ -118,7 +118,7 @@ class YouTubeDownloader(Downloader):
         self._logger = YTDLPLogger()
         self.config = get_config()
         logger.debug(
-            f"Initialized YouTubeDownloader with ffmpeg at: {self.ffmpeg_path}"
+            f"Initialized yt-dlp downloader with ffmpeg at: {self.ffmpeg_path}"
         )
         logger.debug(f"Settings - Quality: {quality}kbps, Format: {format}")
 
@@ -151,7 +151,7 @@ class YouTubeDownloader(Downloader):
         """Download video from URL.
 
         Args:
-            url: YouTube video URL
+            url: yt-dlp video URL
 
         Returns:
             Path to downloaded file
@@ -159,7 +159,7 @@ class YouTubeDownloader(Downloader):
         temp_dir = Path(self.config.temp_dir)
         temp_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Starting YouTube download: {url}")
+        logger.info(f"Starting yt-dlp download: {url}")
 
         ydl_opts = {
             "format": "bestaudio/best",
@@ -173,6 +173,7 @@ class YouTubeDownloader(Downloader):
             "ffmpeg_location": self.ffmpeg_path,
             "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
             "verbose": True,  # Always set to False to control output
+            "quiet": True,
             "logger": self._logger,
             "progress_hooks": [progress_hook],
             "no_warnings": True,  # Suppress unnecessary warnings

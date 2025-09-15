@@ -4,6 +4,6 @@ Audio download functionality.
 
 from .base import Downloader
 from .factory import DownloaderFactory
-from .youtube import YouTubeDownloader
+from .ytdlp import YtDlpDownloader
 
-__all__ = ["Downloader", "DownloaderFactory", "YouTubeDownloader"]
+__all__ = ["Downloader", "DownloaderFactory", "YtDlpDownloader"]

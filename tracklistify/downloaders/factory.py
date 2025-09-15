@@ -8,11 +8,15 @@ from typing import Dict, Optional
 # Local/package imports
 from tracklistify.config import TrackIdentificationConfig, get_config
 from tracklistify.utils.logger import get_logger
-from tracklistify.utils.validation import is_mixcloud_url, is_youtube_url
+from tracklistify.utils.validation import (
+    is_mixcloud_url,
+    is_youtube_url,
+    is_soundcloud_url,
+)
 
 from .base import Downloader
 from .mixcloud import MixcloudDownloader
-from .youtube import YouTubeDownloader
+from .ytdlp import YtDlpDownloader
 
 logger = get_logger(__name__)
 
@@ -47,7 +51,10 @@ class DownloaderFactory:
 
         if is_youtube_url(url):
             logger.debug("URL identified as YouTube")
-            return YouTubeDownloader(**kwargs)
+            return YtDlpDownloader(**kwargs)
+        if is_soundcloud_url(url):
+            logger.debug("URL identified as Soundcloud")
+            return YtDlpDownloader(**kwargs)
         elif is_mixcloud_url(url):
             logger.debug("URL identified as Mixcloud")
             return MixcloudDownloader(**kwargs)

@@ -65,6 +65,26 @@ def is_youtube_url(url: str) -> bool:
     return "youtube.com/watch?v=" in cleaned_url
 
 
+def is_soundcloud_url(url: str) -> bool:
+    """
+    Check if a URL is a valid Soundcloud URL.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        bool: True if URL is a valid Soundcloud URL, False otherwise
+    """
+    if not url:
+        return False
+
+    cleaned_url = validate_input(url)
+    if not cleaned_url:
+        return False
+
+    return "soundcloud.com/" in cleaned_url
+
+
 def is_mixcloud_url(url: str) -> bool:
     """
     Check if a URL is a valid Mixcloud URL.

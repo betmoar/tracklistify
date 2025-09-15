@@ -19,13 +19,11 @@ Base Exceptions:
   - DownloaderError: Base for downloader-specific errors
 
 Provider-Specific Exceptions:
-- ACRCloudError: ACRCloud API specific errors
 - ShazamError: Shazam API specific errors
 - SpotifyError: Spotify API specific errors
 
 Downloader-Specific Exceptions:
-- YouTubeError: YouTube download specific errors
-- SoundCloudError: SoundCloud download specific errors
+- YtDlpError: yt-dlp download specific errors
 """
 
 
@@ -147,20 +145,12 @@ class DownloaderError(TracklistifyError):
         super().__init__(message)
 
 
-class YouTubeError(DownloaderError):
-    """Raised when YouTube download operations fail."""
+class YtDlpError(DownloaderError):
+    """Raised when yt-dlp download operations fail."""
 
     def __init__(self, message: str, video_id: str = None, cause: Exception = None):
         self.video_id = video_id
-        super().__init__(message, service="YouTube", cause=cause)
-
-
-class SoundCloudError(DownloaderError):
-    """Raised when SoundCloud download operations fail."""
-
-    def __init__(self, message: str, track_id: str = None, cause: Exception = None):
-        self.track_id = track_id
-        super().__init__(message, service="SoundCloud", cause=cause)
+        super().__init__(message, service="yt-dlp", cause=cause)
 
 
 class URLValidationError(TracklistifyError):

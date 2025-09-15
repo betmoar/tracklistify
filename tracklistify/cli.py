@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "input",
-        help="Path to audio file or YouTube URL",
+        help="Path to audio file or yt-dlp URL",
     )
 
     parser.add_argument(
