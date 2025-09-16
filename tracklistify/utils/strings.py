@@ -33,6 +33,6 @@ def sanitizer(text: Any, max_len: int = 200) -> str:
 
     # Truncate
     if len(text) > max_len:
-        text = text[: max_len - 1] + "…"
+        text = text[:max_len - 1] + "…"
 
     return text
