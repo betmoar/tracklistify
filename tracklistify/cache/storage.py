@@ -7,10 +7,9 @@ import asyncio
 import hashlib
 import json
 import os
-import time
 import zlib
 from pathlib import Path
-from typing import List, Optional, TypeVar, Union
+from typing import Dict, List, Optional, TypeVar, Union
 
 # Third-party imports
 import aiofiles
@@ -20,6 +19,7 @@ from tracklistify.config.factory import get_config
 # Local/package imports
 from tracklistify.core.types import CacheEntry, CacheStorage
 from tracklistify.utils.logger import get_logger
+from tracklistify.cache.index import CacheIndex
 
 logger = get_logger(__name__)
 
@@ -39,6 +39,8 @@ class JSONStorage(CacheStorage[T]):
         self._cache_dir = Path(cache_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._locks = {}
+        self._index = CacheIndex(cache_dir)
+        self._index_loaded = False
 
     def _get_file_path(self, key: str) -> str:
         """Get file path for key."""
@@ -52,11 +54,26 @@ class JSONStorage(CacheStorage[T]):
             self._locks[key] = asyncio.Lock()
         return self._locks[key]
 
+    async def _ensure_index_loaded(self) -> None:
+        """Ensure the index is loaded."""
+        if not self._index_loaded:
+            await self._index.load()
+            self._index_loaded = True
+
     async def get(self, key: str) -> Optional[CacheEntry[T]]:
         """Get entry from storage."""
         try:
-            file_path = self._get_file_path(key)
+            await self._ensure_index_loaded()
+
+            # Get filename from index for faster lookup
+            filename = await self._index.get_filename(key)
+            if filename is None:
+                return None
+
+            file_path = os.path.join(self._cache_dir, filename)
             if not os.path.exists(file_path):
+                # File missing but in index - remove from index
+                await self._index.remove_entry(key)
                 return None
 
             async with self._get_lock(key):
@@ -68,9 +85,15 @@ class JSONStorage(CacheStorage[T]):
                     if data.startswith(b"\x78\x9c"):  # zlib header
                         data = zlib.decompress(data)
                     entry = json.loads(data.decode("utf-8"))
+
+                    # Update access time in index
+                    await self._index.update_access_time(key)
+
                     return entry
                 except (zlib.error, json.JSONDecodeError) as e:
                     logger.error(f"Error decoding cache entry: {str(e)}")
+                    # Remove corrupted entry from index
+                    await self._index.remove_entry(key)
                     return None
 
         except Exception as e:
@@ -83,7 +106,10 @@ class JSONStorage(CacheStorage[T]):
         """Set entry in storage."""
         temp_path = None
         try:
+            await self._ensure_index_loaded()
+
             file_path = self._get_file_path(key)
+            filename = os.path.basename(file_path)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
             async with self._get_lock(key):
@@ -101,6 +127,11 @@ class JSONStorage(CacheStorage[T]):
 
                 os.replace(temp_path, file_path)
 
+                # Update index
+                metadata = entry.get("metadata", {})
+                metadata["size"] = len(data)
+                await self._index.add_entry(key, filename, metadata)
+
         except Exception as e:
             logger.error(f"Error writing cache entry: {str(e)}")
             if temp_path and os.path.exists(temp_path):
@@ -110,7 +141,14 @@ class JSONStorage(CacheStorage[T]):
     async def delete(self, key: str) -> None:
         """Delete entry from storage."""
         try:
-            file_path = self._get_file_path(key)
+            await self._ensure_index_loaded()
+
+            # Get filename from index
+            filename = await self._index.remove_entry(key)
+            if filename is None:
+                return  # Key not in index
+
+            file_path = os.path.join(self._cache_dir, filename)
             async with self._get_lock(key):
                 if os.path.exists(file_path):
                     os.unlink(file_path)
@@ -121,8 +159,17 @@ class JSONStorage(CacheStorage[T]):
     async def clear(self) -> None:
         """Clear all values from storage."""
         try:
+            await self._ensure_index_loaded()
+
             for path in self._cache_dir.rglob("*.cache"):
                 path.unlink()
+
+            # Clear the index
+            await self._index.clear()
+
+            # Save cleared index
+            await self._index.save()
+
         except OSError as e:
             logger.warning(f"Failed to clear cache: {str(e)}")
 
@@ -140,42 +187,36 @@ class JSONStorage(CacheStorage[T]):
             max_age = config.cache_max_age
 
         count = 0
-        now = time.time()
 
         try:
-            for path in self._cache_dir.rglob("*.cache"):
+            await self._ensure_index_loaded()
+
+            # Get expired keys from index
+            expired_keys = await self._index.cleanup_expired(max_age)
+
+            # Delete expired entries
+            for key in expired_keys:
                 try:
-                    # Read entry to check metadata
-                    entry = json.loads(path.read_bytes().decode("utf-8"))
-                    last_accessed = entry.get("last_accessed")
+                    await self.delete(key)
+                    count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete expired entry {key}: {e}")
 
-                    if last_accessed is None:
-                        # Delete entries without last_accessed timestamp
-                        path.unlink()
-                        count += 1
-                        continue
+            # Verify integrity and clean up orphaned files
+            integrity = await self._index.verify_integrity()
+            for orphaned_file in integrity["orphaned_files"]:
+                try:
+                    orphaned_path = self._cache_dir / orphaned_file
+                    orphaned_path.unlink(missing_ok=True)
+                    count += 1
+                except OSError as e:
+                    logger.warning(f"Failed to delete orphaned file: {e}")
 
-                    # Convert string timestamp to float if needed
-                    if isinstance(last_accessed, str):
-                        from dateutil import parser
-
-                        last_accessed = float(parser.parse(last_accessed).timestamp())
-
-                    # Check if entry is expired
-                    if now - float(last_accessed) > float(max_age):
-                        path.unlink()
-                        count += 1
-                except (OSError, json.JSONDecodeError, ValueError, TypeError):
-                    # Delete invalid entries
-                    try:
-                        path.unlink()
-                        count += 1
-                    except OSError:
-                        continue
-
+            # Save index changes
+            await self._index.save()
             return count
 
-        except OSError as e:
+        except Exception as e:
             logger.warning(f"Failed to cleanup cache: {str(e)}")
             return 0
 
@@ -189,18 +230,19 @@ class JSONStorage(CacheStorage[T]):
         await self.set(key, entry, compression=compression)
 
     async def list_keys(self) -> List[str]:
-        """List all cache keys."""
-        keys = []
+        """List all cache keys efficiently using index."""
         try:
-            for path in self._cache_dir.rglob("*.cache"):
-                # Extract original key from filename (reverse the hash process)
-                # For now, we'll store the original key in metadata
-                try:
-                    entry = json.loads(path.read_bytes().decode("utf-8"))
-                    if "key" in entry:
-                        keys.append(entry["key"])
-                except (OSError, json.JSONDecodeError):
-                    continue
-            return keys
-        except OSError:
-            return keys
+            await self._ensure_index_loaded()
+            return await self._index.list_keys()
+        except Exception as e:
+            logger.error(f"Error listing cache keys: {str(e)}")
+            return []
+
+    async def get_storage_stats(self) -> Dict[str, any]:
+        """Get storage statistics from index."""
+        try:
+            await self._ensure_index_loaded()
+            return await self._index.get_stats()
+        except Exception as e:
+            logger.error(f"Error getting storage stats: {str(e)}")
+            return {"entries": 0, "total_size_bytes": 0, "index_size_bytes": 0}
