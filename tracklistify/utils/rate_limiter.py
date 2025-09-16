@@ -43,7 +43,7 @@ class RateLimitMetrics:
 class ProviderLimits:
     """Rate limits for a specific provider."""
 
-    max_requests_per_minute: int = 20  # Default fallback
+    max_requests_per_minute: int = 25  # Default fallback (matches register_provider)
     max_concurrent_requests: int = 2  # Default fallback
     tokens: int = field(init=False)
     last_update: float = field(default_factory=time.time)
