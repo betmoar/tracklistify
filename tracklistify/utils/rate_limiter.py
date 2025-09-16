@@ -7,10 +7,17 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from threading import Lock, Semaphore
+from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Local/package imports
+
+# Rate limiting constants
+RATE_LIMIT_DETECTION_THRESHOLD_MS = 0.001  # 1ms threshold to detect actual rate limit
+# This threshold distinguishes between:
+# - Normal processing delays (< 1ms): Not counted as rate limiting
+# - Actual rate limiting waits (≥ 1ms): Counted in rate_limited_requests metric
+# The 1ms threshold accounts for typical system call and lock acquisition overhead
 
 
 class CircuitState(Enum):
@@ -42,7 +49,7 @@ class ProviderLimits:
     max_concurrent_requests: int = 1
     tokens: int = field(init=False)
     last_update: float = field(default_factory=time.time)
-    semaphore: Semaphore = field(init=False)
+    semaphore: asyncio.Semaphore = field(init=False)
     lock: Lock = field(default_factory=Lock)
     metrics: RateLimitMetrics = field(default_factory=RateLimitMetrics)
     circuit_state: CircuitState = field(default=CircuitState.CLOSED)
@@ -51,7 +58,7 @@ class ProviderLimits:
 
     def __post_init__(self):
         self.tokens = self.max_requests_per_minute
-        self.semaphore = Semaphore(self.max_concurrent_requests)
+        self.semaphore = asyncio.Semaphore(self.max_concurrent_requests)
 
 
 @dataclass
@@ -73,8 +80,8 @@ class RateLimiter:
     def register_provider(
         self,
         provider: Any,
-        max_requests_per_minute: int = 60,
-        max_concurrent_requests: int = 10,
+        max_requests_per_minute: int = 20,
+        max_concurrent_requests: int = 1,
     ):
         """Register a provider with specific rate limits."""
         self._provider_limits[provider] = ProviderLimits(
@@ -97,9 +104,8 @@ class RateLimiter:
             self.register_provider(provider)
 
         limits = self._provider_limits[provider]
-        limits.metrics.total_requests += 1
 
-        # Check circuit breaker
+        # Check circuit breaker first (don't count rejected requests)
         if limits.circuit_state == CircuitState.OPEN:
             if (
                 limits.circuit_open_time
@@ -112,28 +118,37 @@ class RateLimiter:
 
         # Try to acquire semaphore for concurrent requests
         try:
-            acquired = limits.semaphore.acquire(blocking=False)
-            if not acquired:
-                # Wait with timeout
+            # Try non-blocking acquire first
+            if limits.semaphore.locked():
+                # Wait with timeout - this is concurrency limiting, not rate limiting
                 start_time = time.time()
-                await asyncio.wait_for(
-                    asyncio.to_thread(limits.semaphore.acquire), timeout=timeout
-                )
+                await asyncio.wait_for(limits.semaphore.acquire(), timeout=timeout)
                 wait_time = time.time() - start_time
                 limits.metrics.total_wait_time += wait_time
-                limits.metrics.rate_limit_windows.append((start_time, time.time()))
+                # Note: Don't record semaphore waits as rate limit windows
+                # This is concurrency control, not rate limiting
+            else:
+                await limits.semaphore.acquire()
         except asyncio.TimeoutError:
             return False
 
+        # At this point, we have semaphore access and will process the request
+        limits.metrics.total_requests += 1
+
         # Check rate limiting tokens
         token_wait_start = time.time()
+
         while time.time() - token_wait_start < timeout:
             with limits.lock:
                 self._refill_tokens(limits)
                 if limits.tokens > 0:
                     limits.tokens -= 1
-                    # Record wait time if we had to wait for tokens
-                    if time.time() - token_wait_start > 0.001:
+                    # Record metrics only if we had to wait for tokens (rate limiting)
+                    wait_time = time.time() - token_wait_start
+                    if wait_time > RATE_LIMIT_DETECTION_THRESHOLD_MS:
+                        # Count successful requests that were rate-limited
+                        limits.metrics.rate_limited_requests += 1
+                        limits.metrics.last_rate_limit = time.time()
                         limits.metrics.rate_limit_windows.append(
                             (token_wait_start, time.time())
                         )
@@ -142,8 +157,12 @@ class RateLimiter:
             # Wait a short time before checking again
             await asyncio.sleep(0.01)
 
-        # Timeout exceeded, record the failed window and release semaphore
+        # Timeout exceeded - this is a rate limiting failure
+        # Record the window and update last_rate_limit but don't increment
+        # rate_limited_requests (that's only for successful requests that waited)
+        limits.metrics.last_rate_limit = time.time()
         limits.metrics.rate_limit_windows.append((token_wait_start, time.time()))
+
         limits.semaphore.release()
         return False
 
@@ -220,7 +239,7 @@ class SimpleLimiter:
 
     def __post_init__(self):
         self._lock = Lock()
-        self._semaphore = Semaphore(self.max_concurrent_requests)
+        self._semaphore = asyncio.Semaphore(self.max_concurrent_requests)
         self._tokens = self.max_requests_per_minute
         self._last_refill = time.monotonic()
 
