@@ -77,12 +77,18 @@ class AsyncApp:
                 self.logger.debug(f"yt-dlp metadata keys: {list(metadata.keys())}")
                 self.original_title = sanitizer(metadata.get("title", ""))
                 self.uploader = sanitizer(metadata.get("uploader", ""))
-                self.duration = sanitizer(metadata.get("duration", ""))
+                try:
+                    self.duration = float(metadata.get("duration", 0))
+                except (TypeError, ValueError):
+                    self.duration = 0
             else:
                 self.logger.debug("No metadata available, using fallback values")
                 self.original_title = sanitizer(getattr(downloader, "title", Path(local_path).stem))
                 self.uploader = sanitizer(getattr(downloader, "uploader", "Unknown artist"))
-                self.duration = sanitizer(getattr(downloader, "duration", 0))
+                try:
+                    self.duration = float(getattr(downloader, "duration", 0))
+                except (TypeError, ValueError):
+                    self.duration = 0
 
             self.logger.info("Processing audio...")
 
