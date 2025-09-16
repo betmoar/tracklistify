@@ -109,6 +109,11 @@ class TrackIdentificationConfig(BaseConfig):
     primary_provider: str = field(default="shazam")
     fallback_enabled: bool = field(default=True)
     fallback_providers: List[str] = field(default_factory=list)
+
+    # Global rate limiting settings
+    max_requests_per_minute: int = field(default=25)
+    max_concurrent_requests: int = field(default=2)
+
     cache_enabled: bool = field(default=True)
     cache_ttl: int = field(default=86400)
     cache_max_size: int = field(default=1000000)

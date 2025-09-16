@@ -1,5 +1,5 @@
 """
-Rate limiting functionality for API calls with metrics, circuit breaker, alerts.
+Rate limiting functionality for API calls with metrics, circuit breaker, and alerts.
 """
 
 # Standard library imports
@@ -14,15 +14,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 # Local/package imports
 
 # Rate limiting constants
-RATE_LIMIT_DETECTION_THRESHOLD_MS = 0.001  # 1ms threshold to detect actual rate limit
-# This threshold distinguishes between:
-# - Normal processing delays (< 1ms): Not counted as rate limiting
-# - Actual rate limiting waits (≥ 1ms): Counted in rate_limited_requests metric
-# The 1ms threshold accounts for typical system call and lock acquisition overhead
+# 1ms threshold to detect actual rate limit
+RATE_LIMIT_DETECTION_THRESHOLD_SECONDS = 0.001
 
-# Default rate limit values
-DEFAULT_MAX_REQUESTS_PER_MINUTE = 20
-DEFAULT_MAX_CONCURRENT_REQUESTS = 1
+# Remove the hardcoded constants since they'll come from config
 
 
 class CircuitState(Enum):
@@ -50,8 +45,8 @@ class RateLimitMetrics:
 class ProviderLimits:
     """Rate limits for a specific provider."""
 
-    max_requests_per_minute: int = DEFAULT_MAX_REQUESTS_PER_MINUTE
-    max_concurrent_requests: int = DEFAULT_MAX_CONCURRENT_REQUESTS
+    max_requests_per_minute: int = 20  # Default fallback
+    max_concurrent_requests: int = 2  # Default fallback
     tokens: int = field(init=False)
     last_update: float = field(default_factory=time.time)
     semaphore: asyncio.Semaphore = field(init=False)
@@ -77,18 +72,33 @@ class RateLimiterConfig:
 class RateLimiter:
     """Advanced rate limiter with provider management, circuit breaker, metrics."""
 
-    def __init__(self):
+    def __init__(self, config=None):
         self._provider_limits: Dict[Any, ProviderLimits] = {}
         self._alert_callbacks: List[Callable[[str], None]] = []
         self._config = RateLimiterConfig()
+        self._global_config = config
 
     def register_provider(
         self,
         provider: Any,
-        max_requests_per_minute: int = 20,
-        max_concurrent_requests: int = 1,
+        max_requests_per_minute: int = None,
+        max_concurrent_requests: int = None,
     ):
         """Register a provider with specific rate limits."""
+        # Use provided values, or fall back to global config, or use defaults
+        if max_requests_per_minute is None:
+            max_requests_per_minute = (
+                getattr(self._global_config, "max_requests_per_minute", 20)
+                if self._global_config
+                else 20
+            )
+        if max_concurrent_requests is None:
+            max_concurrent_requests = (
+                getattr(self._global_config, "max_concurrent_requests", 2)
+                if self._global_config
+                else 2
+            )
+
         self._provider_limits[provider] = ProviderLimits(
             max_requests_per_minute=max_requests_per_minute,
             max_concurrent_requests=max_concurrent_requests,
@@ -124,7 +134,7 @@ class RateLimiter:
         # Try to acquire semaphore for concurrent requests
         try:
             # Try non-blocking acquire first
-            if limits.semaphore.locked():
+            if limits.semaphore._value == 0:
                 # Wait with timeout - this is concurrency limiting, not rate limiting
                 start_time = time.time()
                 await asyncio.wait_for(limits.semaphore.acquire(), timeout=timeout)
@@ -150,7 +160,7 @@ class RateLimiter:
                     limits.tokens -= 1
                     # Record metrics only if we had to wait for tokens (rate limiting)
                     wait_time = time.time() - token_wait_start
-                    if wait_time >= RATE_LIMIT_DETECTION_THRESHOLD_MS:
+                    if wait_time >= RATE_LIMIT_DETECTION_THRESHOLD_SECONDS:
                         # Count successful requests that were rate-limited
                         limits.metrics.rate_limited_requests += 1
                         limits.metrics.last_rate_limit = time.time()
