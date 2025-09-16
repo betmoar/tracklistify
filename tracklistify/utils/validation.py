@@ -59,6 +59,12 @@ def validate_input(input_path: str) -> Optional[Tuple[str, bool]]:
 def is_youtube_url(url: str) -> bool:
     """
     Check if a URL is a valid YouTube URL.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        bool: True if URL is a valid YouTube URL, False otherwise
     """
     if not url:
         return False
@@ -72,12 +78,20 @@ def is_youtube_url(url: str) -> bool:
         return False
 
     host = urlparse(validated).netloc.lower()
-    return ("youtube.com" in host) or ("youtu.be" in host)
+    # Fix: Use exact domain matching instead of substring check
+    return host in ("youtube.com", "www.youtube.com", "youtu.be", "www.youtu.be") or \
+           host.endswith(".youtube.com")
 
 
 def is_soundcloud_url(url: str) -> bool:
     """
     Check if a URL is a valid Soundcloud URL.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        bool: True if URL is a valid Soundcloud URL, False otherwise
     """
     if not url:
         return False
@@ -91,12 +105,20 @@ def is_soundcloud_url(url: str) -> bool:
         return False
 
     host = urlparse(validated).netloc.lower()
-    return host.endswith("soundcloud.com")
+    # Fix: Use exact domain matching
+    return host in ("soundcloud.com", "www.soundcloud.com") or \
+           host.endswith(".soundcloud.com")
 
 
 def is_mixcloud_url(url: str) -> bool:
     """
     Check if a URL is a valid Mixcloud URL.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        bool: True if URL is a valid Mixcloud URL, False otherwise
     """
     if not url:
         return False
@@ -110,4 +132,6 @@ def is_mixcloud_url(url: str) -> bool:
         return False
 
     host = urlparse(validated).netloc.lower()
-    return host.endswith("mixcloud.com")
+    # Fix: Use exact domain matching
+    return host in ("mixcloud.com", "www.mixcloud.com") or \
+           host.endswith(".mixcloud.com")
