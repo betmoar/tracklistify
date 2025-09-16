@@ -13,9 +13,6 @@ logger = get_logger(__name__)
 class ProjectRootError(Exception):
     """Raised when project root cannot be determined."""
 
-    pass
-
-
 @lru_cache(maxsize=1)
 def get_project_root() -> Path:
     """Get project root directory with multiple fallback strategies.
