@@ -50,15 +50,18 @@ class AsyncApp:
         """Process input URL or file path."""
         try:
             # Validate input (URL or local file path)
-            validated_path = validate_input(input_path)
-            if validated_path is None:
+            validated_result = validate_input(input_path)
+            if validated_result is None:
                 raise ValueError("Invalid URL or file path provided")
 
+            validated_path, is_local_file = validated_result
             self.logger.info(f"Validated input: {validated_path}")
 
-            # Check if it's a local file or URL
-            if Path(validated_path).exists():
+            if is_local_file:
                 # Local file processing
+                if not Path(validated_path).exists():
+                    raise FileNotFoundError(f"Local file not found: {validated_path}")
+
                 local_path = validated_path
                 self.logger.info(f"Processing local file: {local_path}")
 
@@ -69,18 +72,13 @@ class AsyncApp:
                 self.duration = 0
             else:
                 # URL processing - download the file
-                # Create downloader
                 downloader = self.downloader_factory.create_downloader(validated_path)
                 if downloader is None:
                     raise ValueError("Failed to create downloader")
-
                 self.logger.info("Downloading audio...")
-
-                # Download audio file
                 local_path = await downloader.download(validated_path)
                 if local_path is None:
                     raise ValueError("local_path cannot be None")
-
                 self.logger.info(f"Downloaded audio to: {local_path}")
 
                 # Store metadata for output
