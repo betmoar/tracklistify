@@ -9,7 +9,7 @@ import pytest
 
 # Local/package imports
 from tracklistify.providers.base import TrackIdentificationProvider
-from tracklistify.rate_limiter import (
+from tracklistify.utils.rate_limiter import (
     RateLimiter,
 )
 
@@ -20,8 +20,14 @@ class MockProvider(TrackIdentificationProvider):
     def __init__(self):
         super().__init__()
 
-    async def identify_track(self, audio_path):
+    async def identify_track(self, audio_segment):
         return None
+
+    async def enrich_metadata(self, track_info):
+        return track_info
+
+    async def close(self):
+        pass
 
 
 @pytest.fixture
@@ -33,7 +39,7 @@ def rate_limiter():
 @pytest.fixture
 def mock_provider():
     """Create a mock provider instance."""
-    return MockProvider
+    return MockProvider()
 
 
 class TestRateLimiter:
@@ -43,13 +49,16 @@ class TestRateLimiter:
     async def test_basic_rate_limiting(self, rate_limiter, mock_provider):
         """Test basic rate limiting functionality."""
         # Configure rate limiter with 2 requests per minute
-        rate_limiter.register_provider(mock_provider, max_requests_per_minute=2)
+        # Set concurrent requests to 2 to test token-based limiting only
+        rate_limiter.register_provider(
+            mock_provider, max_requests_per_minute=2, max_concurrent_requests=2
+        )
 
-        # First two requests should succeed
+        # First two requests should succeed (consume both tokens)
         assert await rate_limiter.acquire(mock_provider)
         assert await rate_limiter.acquire(mock_provider)
 
-        # Third request should fail immediately
+        # Third request should fail immediately (no tokens left)
         assert not await rate_limiter.acquire(mock_provider, timeout=0.001)
 
     @pytest.mark.asyncio
@@ -67,7 +76,6 @@ class TestRateLimiter:
         # Release and cleanup
         rate_limiter.release(mock_provider)
 
-    @pytest.mark.skip(reason="Needs fixing - timing issues")
     @pytest.mark.asyncio
     async def test_metrics_tracking(self, rate_limiter, mock_provider):
         """Test metrics collection."""
@@ -76,7 +84,9 @@ class TestRateLimiter:
 
         # Make some requests
         assert await rate_limiter.acquire(mock_provider)  # Success
+        rate_limiter.release(mock_provider)
         assert await rate_limiter.acquire(mock_provider)  # Success
+        rate_limiter.release(mock_provider)
         assert not await rate_limiter.acquire(mock_provider, timeout=0.001)  # Fail
 
         # Check metrics
@@ -86,7 +96,6 @@ class TestRateLimiter:
             metrics["rate_limited_requests"] == 0
         )  # Only counts requests that wait and succeed
 
-    @pytest.mark.skip(reason="Needs fixing - timing issues")
     @pytest.mark.asyncio
     async def test_circuit_breaker(self, rate_limiter, mock_provider):
         """Test circuit breaker functionality."""
@@ -107,8 +116,8 @@ class TestRateLimiter:
 
         # Circuit should be half-open, request should succeed
         assert await rate_limiter.acquire(mock_provider)
+        rate_limiter.release(mock_provider)
 
-    @pytest.mark.skip(reason="Needs fixing - timing issues")
     def test_alert_system(self, rate_limiter, mock_provider):
         """Test alert callback system."""
         # Set up mock callback
@@ -126,7 +135,6 @@ class TestRateLimiter:
         mock_callback.assert_called_once()
         assert "Circuit breaker opened" in mock_callback.call_args[0][0]
 
-    @pytest.mark.skip(reason="Needs fixing - timing issues")
     @pytest.mark.asyncio
     async def test_cleanup(self, rate_limiter, mock_provider):
         """Test resource cleanup."""
@@ -137,11 +145,17 @@ class TestRateLimiter:
         assert await rate_limiter.acquire(mock_provider)
         assert await rate_limiter.acquire(mock_provider)
 
+        # Third request should fail immediately
+        assert not await rate_limiter.acquire(mock_provider, timeout=0.001)
+
         # Release should restore slots
         rate_limiter.release(mock_provider)
         rate_limiter.release(mock_provider)
 
-    @pytest.mark.skip(reason="Needs fixing - timing issues")
+        # Now should be able to acquire again
+        assert await rate_limiter.acquire(mock_provider)
+        rate_limiter.release(mock_provider)
+
     def test_provider_registration(self, rate_limiter, mock_provider):
         """Test provider registration with custom limits."""
         # Register provider with custom limits
@@ -157,19 +171,21 @@ class TestRateLimiter:
             limits.tokens == 30
         )  # Initial tokens should match max_requests_per_minute
 
-    @pytest.mark.skip(reason="Needs fixing - timing issues")
     @pytest.mark.asyncio
     async def test_rate_limit_windows(self, rate_limiter, mock_provider):
         """Test rate limit window tracking."""
         try:
             # Configure rate limiter with 1 request per minute
-            rate_limiter.register_provider(mock_provider, max_requests_per_minute=1)
+            # Set concurrent requests to 2 to avoid concurrency blocking
+            rate_limiter.register_provider(
+                mock_provider, max_requests_per_minute=1, max_concurrent_requests=2
+            )
             limits = rate_limiter._provider_limits[mock_provider]
 
-            # First request should succeed
+            # First request should succeed (consumes the only token)
             assert await rate_limiter.acquire(mock_provider)
 
-            # Second request should fail immediately
+            # Second request should fail due to no tokens (and record a window)
             assert not await rate_limiter.acquire(mock_provider, timeout=0.001)
 
             # Verify rate limit windows exist
