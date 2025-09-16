@@ -41,8 +41,6 @@ class Track:
         if not other.config:
             other.config = self.config
 
-        time_threshold = self.config.time_threshold
-
         # Normalize strings for comparison
         def normalize(s: str) -> str:
             return re.sub(r"[^\w\s]", "", s.lower())
@@ -52,21 +50,12 @@ class Track:
         other_song = normalize(other.song_name)
         other_artist = normalize(other.artist)
 
-        # Check for exact matches first
+        # Check for exact matches of both song and artist
         if this_song == other_song and this_artist == other_artist:
             return True
 
-        # Use time_threshold to compare time_in_mix
-        def time_to_seconds(time_str: str) -> int:
-            h, m, s = map(int, time_str.split(":"))
-            return h * 3600 + m * 60 + s
-
-        this_time = time_to_seconds(self.time_in_mix)
-        other_time = time_to_seconds(other.time_in_mix)
-
-        if abs(this_time - other_time) <= time_threshold:
-            return True
-
+        # Tracks are NOT similar if they have different songs or artists
+        # regardless of time proximity
         return False
 
     def __init__(
