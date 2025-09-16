@@ -142,7 +142,6 @@ class CacheMetadata(TypedDict, total=False):
     size: int
     hits: int
     ttl: Optional[int]
-    compressed: bool
     access_count: int
     compression: bool
 

@@ -96,7 +96,7 @@ class BaseCache(Generic[T]):
                     await self._storage.set(
                         key,
                         updated_entry,
-                        compression=updated_entry["metadata"].get("compressed", False),
+                        compression=updated_entry["metadata"].get("compression", False),
                     )
                     entry = (
                         updated_entry  # Use the updated entry for returning the value
@@ -137,7 +137,7 @@ class BaseCache(Generic[T]):
                     "created": time.time(),
                     "last_accessed": time.time(),
                     "ttl": ttl,
-                    "compressed": compression,
+                    "compression": compression,
                     "size": len(json.dumps(value)),
                 },
             }
