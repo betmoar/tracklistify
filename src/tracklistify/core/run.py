@@ -4,7 +4,7 @@ import asyncio
 import signal
 import sys
 
-from .utils.project import get_project_root
+from tracklistify.utils.project import get_project_root
 
 # Global variables for cleanup
 _cleanup_tasks = set()
