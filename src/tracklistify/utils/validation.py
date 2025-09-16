@@ -79,8 +79,12 @@ def is_youtube_url(url: str) -> bool:
 
     host = urlparse(validated).netloc.lower()
     # Fix: Use exact domain matching instead of substring check
-    return host in ("youtube.com", "www.youtube.com", "youtu.be", "www.youtu.be") or \
-           host.endswith(".youtube.com")
+    return host in (
+        "youtube.com",
+        "www.youtube.com",
+        "youtu.be",
+        "www.youtu.be",
+    ) or host.endswith(".youtube.com")
 
 
 def is_soundcloud_url(url: str) -> bool:
@@ -106,8 +110,9 @@ def is_soundcloud_url(url: str) -> bool:
 
     host = urlparse(validated).netloc.lower()
     # Fix: Use exact domain matching
-    return host in ("soundcloud.com", "www.soundcloud.com") or \
-           host.endswith(".soundcloud.com")
+    return host in ("soundcloud.com", "www.soundcloud.com") or host.endswith(
+        ".soundcloud.com"
+    )
 
 
 def is_mixcloud_url(url: str) -> bool:
@@ -133,5 +138,6 @@ def is_mixcloud_url(url: str) -> bool:
 
     host = urlparse(validated).netloc.lower()
     # Fix: Use exact domain matching
-    return host in ("mixcloud.com", "www.mixcloud.com") or \
-           host.endswith(".mixcloud.com")
+    return host in ("mixcloud.com", "www.mixcloud.com") or host.endswith(
+        ".mixcloud.com"
+    )

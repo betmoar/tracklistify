@@ -1,24 +1,17 @@
-[tool.poetry]
+[build-system]
+requires = ["uv_build>=0.8.15,<0.9.0"]
+build-backend = "uv_build"
+
+[project]
 name = "tracklistify"
 version = "0.7.0"
 description = "Automatic tracklist generator for DJ mixes and audio streams"
-
-license = "MIT"
-
+readme = "README.md"
 authors = [
-    "betmoar <betmoar@mailsecure.me>"
+    { name = "betmoar", email = "<betmoar@mailsecure.me>" }
 ]
-
-homepage = "https://github.com/betmoar/tracklistify"
-repository = "https://github.com/betmoar/tracklistify.git"
-documentation = "https://github.com/betmoar/tracklistify#readme"
-
-# README file(s) are used as the package description
-readme = ["README.md", "docs/CHANGELOG.md", "docs/CONTRIBUTING.md"]
-
-# Keywords (translated to tags on the package index)
+license = "MIT"
 keywords = ["tracklistify", "youtube", "mixcloud", "shazam", "tracklist", "audio", "fingerprinting"]
-
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
@@ -29,37 +22,45 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Analysis",
     "Topic :: Utilities",
 ]
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "aiohttp>=3.11.8",
+    "configparser>=7.1.0",
+    "mutagen>=1.47.0",
+    "pydub>=0.25.1",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.3",
+    "yt-dlp>=2024.11.18",
+    "shazamio>=0.8.1",
+    "click>=8.1.7",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.11,<3.14"
-aiohttp = "^3.11.8"
-configparser = "^7.1.0"
-mutagen = "^1.47.0"
-pydub = "^0.25.1"
-python-dotenv = "^1.0.1"
-requests = "^2.32.3"
-yt-dlp = "^2024.11.18"
-shazamio = { git = "https://github.com/shazamio/shazamio.git" }
-shazamio-core = { git = "https://github.com/shazamio/shazamio-core.git" }
-pyacrcloud = { git = "https://github.com/acrcloud/acrcloud_sdk_python.git" }
-click = "^8.1.7"
+[tool.uv.sources]
+# shazamio = { git = "https://github.com/shazamio/shazamio.git" }
+# shazamio-core = { git = "https://github.com/shazamio/shazamio-core.git" }
+# pyacrcloud = { git = "https://github.com/acrcloud/acrcloud_sdk_python.git" }
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.3"
-pytest-cov = "^6.0.0"
-pytest-mock = "^3.14.0"
-pytest-asyncio = "^0.24.0"
-pre-commit = "^4.0.1"
-ruff = "^0.8.0"
-commitizen = "^4.0.0"
-pylint = "^3.3.1"
-pipdeptree = "^2.24.0"
-sphinx = "^8.1.3"
-vulture = "^2.13"
+[dependency-groups]
+dev = [
+    "pytest>=8.3.3",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+    "pytest-httpx>=0.21.0",
+    "pre-commit>=4.0.1",
+    "ruff>=0.8.0",
+    "commitizen>=4.0.0",
+    "pylint>=3.3.1",
+    "vulture>=2.13",
+]
 
-[tool.poetry.scripts]
+[project.scripts]
 tracklistify = "tracklistify.cli:cli"
-dev = "tracklistify.dev:dev"
+
+[project.urls]
+homepage = "https://github.com/betmoar/tracklistify"
+repository = "https://github.com/betmoar/tracklistify.git"
+documentation = "https://github.com/betmoar/tracklistify#readme"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
@@ -70,10 +71,6 @@ update_changelog_on_bump = true
 major_version_zero = true
 changelog_start_rev = "v0.6.8"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = "-ra -q -v"
@@ -83,9 +80,7 @@ testpaths = [
 
 [tool.coverage.run]
 # Only measure our package code, not tests
-source = [
-    "tracklistify"
-]
+source = ["src"]
 # Additionally, omit any test paths that might sneak in
 omit = [
     "tests/*",
