@@ -4,11 +4,10 @@ Rate limiting functionality for API calls with metrics, circuit breaker, and ale
 
 # Standard library imports
 import asyncio
-import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from threading import Lock
+from threading import Lock, Semaphore
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Local/package imports
@@ -282,7 +281,7 @@ class SimpleLimiter:
 
     def __post_init__(self):
         self._lock = Lock()
-        self._semaphore = threading.Semaphore(self.max_concurrent_requests)
+        self._semaphore = Semaphore(self.max_concurrent_requests)
         self._tokens = self.max_requests_per_minute
         self._last_refill = time.monotonic()
 
