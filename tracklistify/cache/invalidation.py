@@ -7,7 +7,7 @@ import copy
 import json
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Generic, List, Optional, TypeVar
 
 # Local/package imports
@@ -53,8 +53,6 @@ class TTLStrategy(InvalidationStrategy[T]):
     """Time-based invalidation strategy."""
 
     def __init__(self, default_ttl: Optional[int] = None):
-        from datetime import timedelta
-
         # Handle both int (seconds) and timedelta objects
         if isinstance(default_ttl, timedelta):
             self.default_ttl = int(default_ttl.total_seconds())
