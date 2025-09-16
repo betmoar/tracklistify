@@ -12,12 +12,11 @@ from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Local/package imports
+from ..config import get_config
 
 # Rate limiting constants
 # 1ms threshold to detect actual rate limit
 RATE_LIMIT_DETECTION_THRESHOLD_SECONDS = 0.001
-
-# Remove the hardcoded constants since they'll come from config
 
 
 class CircuitState(Enum):
@@ -61,22 +60,14 @@ class ProviderLimits:
         self.semaphore = asyncio.Semaphore(self.max_concurrent_requests)
 
 
-@dataclass
-class RateLimiterConfig:
-    """Configuration for the rate limiter."""
-
-    circuit_breaker_threshold: int = 5
-    circuit_breaker_reset_timeout: float = 60.0
-
-
 class RateLimiter:
     """Advanced rate limiter with provider management, circuit breaker, metrics."""
 
     def __init__(self, config=None):
         self._provider_limits: Dict[Any, ProviderLimits] = {}
         self._alert_callbacks: List[Callable[[str], None]] = []
-        self._config = RateLimiterConfig()
-        self._global_config = config
+        # Use provided config or get global config
+        self._config = config or get_config()
 
     def register_provider(
         self,
@@ -85,23 +76,47 @@ class RateLimiter:
         max_concurrent_requests: int = None,
     ):
         """Register a provider with specific rate limits."""
-        # Use provided values, or fall back to global config, or use defaults
-        if max_requests_per_minute is None:
-            max_requests_per_minute = (
-                getattr(self._global_config, "max_requests_per_minute", 20)
-                if self._global_config
-                else 20
-            )
-        if max_concurrent_requests is None:
-            max_concurrent_requests = (
-                getattr(self._global_config, "max_concurrent_requests", 2)
-                if self._global_config
-                else 2
-            )
+        # Use provided values, or fall back to config values based on provider
+        if max_requests_per_minute is None or max_concurrent_requests is None:
+            provider_str = str(provider).lower()
+
+            # Get provider-specific limits from config
+            if provider_str == "shazam":
+                rpm = max_requests_per_minute or getattr(
+                    self._config, "shazam_max_rpm", 25
+                )
+                concurrent = max_concurrent_requests or getattr(
+                    self._config, "shazam_max_concurrent", 1
+                )
+            elif provider_str == "acrcloud":
+                rpm = max_requests_per_minute or getattr(
+                    self._config, "acrcloud_max_rpm", 30
+                )
+                concurrent = max_concurrent_requests or getattr(
+                    self._config, "acrcloud_max_concurrent", 5
+                )
+            elif provider_str == "spotify":
+                rpm = max_requests_per_minute or getattr(
+                    self._config, "spotify_max_rpm", 120
+                )
+                concurrent = max_concurrent_requests or getattr(
+                    self._config, "spotify_max_concurrent", 20
+                )
+            else:
+                # Fall back to global config or defaults
+                rpm = max_requests_per_minute or getattr(
+                    self._config, "max_requests_per_minute", 25
+                )
+                concurrent = max_concurrent_requests or getattr(
+                    self._config, "max_concurrent_requests", 2
+                )
+        else:
+            rpm = max_requests_per_minute
+            concurrent = max_concurrent_requests
 
         self._provider_limits[provider] = ProviderLimits(
-            max_requests_per_minute=max_requests_per_minute,
-            max_concurrent_requests=max_concurrent_requests,
+            max_requests_per_minute=rpm,
+            max_concurrent_requests=concurrent,
         )
 
     def register_alert_callback(self, callback: Callable[[str], None]):
@@ -121,11 +136,14 @@ class RateLimiter:
         limits = self._provider_limits[provider]
 
         # Check circuit breaker first (don't count rejected requests)
-        if limits.circuit_state == CircuitState.OPEN:
+        circuit_breaker_enabled = getattr(self._config, "circuit_breaker_enabled", True)
+        if circuit_breaker_enabled and limits.circuit_state == CircuitState.OPEN:
+            circuit_reset_timeout = getattr(
+                self._config, "circuit_breaker_reset_timeout", 60.0
+            )
             if (
                 limits.circuit_open_time
-                and time.time() - limits.circuit_open_time
-                > self._config.circuit_breaker_reset_timeout
+                and time.time() - limits.circuit_open_time > circuit_reset_timeout
             ):
                 limits.circuit_state = CircuitState.HALF_OPEN
             else:
@@ -134,7 +152,7 @@ class RateLimiter:
         # Try to acquire semaphore for concurrent requests
         try:
             # Try non-blocking acquire first
-            if limits.semaphore._value == 0:
+            if limits.semaphore.locked():
                 # Wait with timeout - this is concurrency limiting, not rate limiting
                 start_time = time.time()
                 await asyncio.wait_for(limits.semaphore.acquire(), timeout=timeout)
@@ -149,6 +167,11 @@ class RateLimiter:
 
         # At this point, we have semaphore access and will process the request
         limits.metrics.total_requests += 1
+
+        # Check if rate limiting is enabled
+        rate_limit_enabled = getattr(self._config, "rate_limit_enabled", True)
+        if not rate_limit_enabled:
+            return True
 
         # Check rate limiting tokens
         token_wait_start = time.time()
@@ -205,6 +228,10 @@ class RateLimiter:
             return
 
         limits = self._provider_limits[provider]
+        circuit_breaker_enabled = getattr(self._config, "circuit_breaker_enabled", True)
+
+        if not circuit_breaker_enabled:
+            return
 
         if success:
             limits.consecutive_failures = 0
@@ -212,8 +239,9 @@ class RateLimiter:
                 limits.circuit_state = CircuitState.CLOSED
         else:
             limits.consecutive_failures += 1
+            circuit_threshold = getattr(self._config, "circuit_breaker_threshold", 5)
             if (
-                limits.consecutive_failures >= self._config.circuit_breaker_threshold
+                limits.consecutive_failures >= circuit_threshold
                 and limits.circuit_state == CircuitState.CLOSED
             ):
                 limits.circuit_state = CircuitState.OPEN
@@ -280,7 +308,6 @@ class SimpleLimiter:
 
 
 # Singleton instance
-_rate_limiter_instance = None
 _global_rate_limiter = None
 
 
@@ -292,8 +319,11 @@ def get_global_rate_limiter() -> RateLimiter:
     return _global_rate_limiter
 
 
-def get_rate_limiter(provider: str, config) -> SimpleLimiter:
+def get_rate_limiter(provider: str, config=None) -> SimpleLimiter:
     """Get rate limiter for the specified provider."""
+    if config is None:
+        config = get_config()
+
     if provider == "shazam":
         return SimpleLimiter(
             max_requests_per_minute=config.shazam_max_rpm,
@@ -303,6 +333,11 @@ def get_rate_limiter(provider: str, config) -> SimpleLimiter:
         return SimpleLimiter(
             max_requests_per_minute=config.acrcloud_max_rpm,
             max_concurrent_requests=config.acrcloud_max_concurrent,
+        )
+    elif provider == "spotify":
+        return SimpleLimiter(
+            max_requests_per_minute=getattr(config, "spotify_max_rpm", 120),
+            max_concurrent_requests=getattr(config, "spotify_max_concurrent", 20),
         )
     else:
         raise ValueError(f"Unknown provider: {provider}")
