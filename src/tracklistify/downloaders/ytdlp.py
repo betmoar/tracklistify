@@ -202,7 +202,9 @@ class YtDlpDownloader(Downloader):
                 self.title = info.get("title", "Unknown title")
                 self.uploader = info.get("uploader", "Unknown artist")
                 self.duration = info.get("duration", 0)
-                logger.info(f"Downloaded: {self.title} by {self.uploader} ({self.duration}s)")
+                logger.info(
+                    f"Downloaded: {self.title} by {self.uploader} ({self.duration}s)"
+                )
                 logger.debug(f"Output file: {output_path}")
                 return output_path
 

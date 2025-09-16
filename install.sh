@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script name: install-deps.sh
+# Script name: install.sh
 # Description: Check system dependencies for Tracklistify
 
 # Configuration
@@ -57,10 +57,10 @@ check_python() {
 check_system_deps() {
     local missing_deps=()
 
-    # Check for poetry
+    # Check for uv
     if ! command -v poetry &> /dev/null; then
-        echo "Poetry is not installed."
-        missing_deps+=("poetry")
+        echo "uv is not installed."
+        missing_deps+=("uv")
     fi
 
     # Check for ffmpeg
@@ -101,11 +101,11 @@ install_package() {
 
     if [ "$1" == "--dev" ]; then
         print_status "Installing in development mode with dev dependencies..."
-        poetry install --with dev
-        poetry run pre-commit install
+        uv sync --all-packages
+        uv run pre-commit install
     else
         print_status "Installing in default mode..."
-        poetry install
+        uv sync
     fi
 }
 
@@ -126,7 +126,7 @@ main() {
     echo " "
     echo "1. Edit .env with your credentials"
     echo "2. Activate the virtual environment:"
-    echo "   poetry shell"
+    echo "   source $VENV_DIR/bin/activate"
     echo "3. Run Tracklistify:"
     echo "   tracklistify <command>"
 }

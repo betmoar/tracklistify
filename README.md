@@ -17,14 +17,14 @@ A powerful and flexible automatic tracklist generator for DJ mixes and audio str
 
 ## Key Features
 
-- 🎵 **Multi-Provider Track Identification**
+### 🎵 **Multi-Provider Track Identification**
 
   - Shazam and ACRCloud integration
   - Smart provider fallback system
   - High accuracy with confidence scoring
   - Support for multiple platforms (YouTube, Mixcloud, SoundCloud)
 
-- 📊 **Versatile Output Formats**
+### 📊 **Versatile Output Formats**
 
   - JSON with detailed metadata
   - Markdown formatted tracklists
@@ -32,7 +32,7 @@ A powerful and flexible automatic tracklist generator for DJ mixes and audio str
   - CSV and XML exports
   - Rekordbox compatible format
 
-- 🚀 **Advanced Processing**
+### 🚀 **Advanced Processing**
 
   - Automatic format conversion
   - Batch processing for multiple files
@@ -40,7 +40,8 @@ A powerful and flexible automatic tracklist generator for DJ mixes and audio str
   - Progress tracking with detailed status
   - Configurable audio quality settings
 
-- ⚙️ **Robust Architecture**
+### ⚙️ **Robust Architecture**
+
   - Asynchronous processing
   - Smart rate limiting
   - Advanced error recovery
@@ -52,37 +53,42 @@ A powerful and flexible automatic tracklist generator for DJ mixes and audio str
 - Python 3.11 or higher
 - ffmpeg
 - git
-- Poetry (package manager)
+- uv (package and project manager)
+
+### Important Note:
+
+- Tracklistify is managed by uv, so you will need to install it.
+- Follow the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for your platform.
 
 ## Quick Start
 
-1. **Installation**
+### **1. Installation**
 
    ```bash
    # Clone the repository
    git clone https://github.com/betmoar/tracklistify.git
    cd tracklistify
 
-   # Install dependencies using Poetry
-   poetry install
+   # Install dependencies using uv
+   uv sync
    ```
 
-2. **Configuration**
+### **2. Configuration**
 
    ```bash
    # Copy example environment file
    cp .env.example .env
    ```
 
-3. **Basic Usage**
+### **3. Basic Usage**
 
    ```bash
    # Identify tracks in a file or URL
-   poetry run tracklistify <input>
+   uv run tracklistify <input>
 
    # Examples:
-   poetry run tracklistify path/to/mix.mp3
-   poetry run tracklistify https://youtube.com/watch?v=example
+   tracklistify path/to/mix.mp3
+   tracklistify https://youtube.com/watch?v=example
    ```
 
 ## Advanced Usage
@@ -91,35 +97,34 @@ A powerful and flexible automatic tracklist generator for DJ mixes and audio str
 
 ```bash
 # Specify output format
-poetry run tracklistify -f json input.mp3    # JSON output
-poetry run tracklistify -f markdown input.mp3 # Markdown output
-poetry run tracklistify -f m3u input.mp3     # M3U playlist
-poetry run tracklistify -f csv input.mp3     # CSV export
-poetry run tracklistify -f all input.mp3     # Generate all formats
+tracklistify -f json input.mp3    # JSON output
+tracklistify -f markdown input.mp3 # Markdown output
+tracklistify -f m3u input.mp3     # M3U playlist
+tracklistify -f csv input.mp3     # CSV export
+tracklistify -f all input.mp3     # Generate all formats
 ```
 
 ### Batch Processing
 
 ```bash
 # Process multiple files
-poetry run tracklistify -b path/to/folder/*.mp3
+tracklistify -b path/to/folder/*.mp3
 
 # With specific output format
-poetry run tracklistify -b -f json path/to/folder/*.mp3
+tracklistify -b -f json path/to/folder/*.mp3
 ```
 
 ### Additional Options
 
 ```bash
 # Show progress with detailed status
-poetry run tracklistify --progress input.mp3
+tracklistify --progress input.mp3
 
 # Specify provider
-poetry run tracklistify --provider shazam input.mp3
-poetry run tracklistify --provider acrcloud input.mp3
+tracklistify --provider shazam input.mp3
 
 # Set output directory
-poetry run tracklistify -o path/to/output input.mp3
+tracklistify -o path/to/output input.mp3
 ```
 
 ## Contributing
