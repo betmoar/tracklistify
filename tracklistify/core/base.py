@@ -18,6 +18,7 @@ from tracklistify.providers.factory import create_provider_factory
 from tracklistify.utils.logger import get_logger
 from tracklistify.utils.validation import validate_input
 from tracklistify.utils.identification import IdentificationManager
+from tracklistify.utils.strings import sanitizer
 
 
 logger = get_logger(__name__)
@@ -70,9 +71,18 @@ class AsyncApp:
 
             self.logger.info(f"Downloaded audio to: {local_path}")
 
-            # Store original title for output
-            self.logger.debug(f"Storing original title: {local_path}")
-            self.original_title = getattr(downloader, "title", Path(local_path).stem)
+            # Store metadata for output
+            metadata = getattr(downloader, "get_last_metadata", lambda: None)()
+            if metadata:
+                self.logger.debug(f"yt-dlp metadata keys: {list(metadata.keys())}")
+                self.original_title = sanitizer(metadata.get("title", ""))
+                self.uploader = sanitizer(metadata.get("uploader", ""))
+                self.duration = sanitizer(metadata.get("duration", ""))
+            else:
+                self.logger.debug("No metadata available, using fallback values")
+                self.original_title = sanitizer(getattr(downloader, "title", Path(local_path).stem))
+                self.uploader = sanitizer(getattr(downloader, "uploader", "Unknown artist"))
+                self.duration = sanitizer(getattr(downloader, "duration", 0))
 
             self.logger.info("Processing audio...")
 
