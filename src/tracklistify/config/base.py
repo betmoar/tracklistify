@@ -15,11 +15,13 @@ from .validation import ConfigValidator, PathRequirement, PathRule
 class BaseConfig:
     """Base configuration class."""
 
+    project_root = get_root()
+
     # Directories
-    log_dir: Path = field(default=lambda: get_root() / ".tracklistify/log")
-    temp_dir: Path = field(default=lambda: get_root() / ".tracklistify/temp")
-    cache_dir: Path = field(default=lambda: get_root() / ".tracklistify/cache")
-    output_dir: Path = field(default=lambda: get_root() / ".tracklistify/output")
+    log_dir: Path = field(default=project_root / ".tracklistify/log")
+    temp_dir: Path = field(default=project_root / ".tracklistify/temp")
+    cache_dir: Path = field(default=project_root / ".tracklistify/cache")
+    output_dir: Path = field(default=project_root / ".tracklistify/output")
 
     # Log settings
     verbose: bool = field(default=False)

@@ -19,7 +19,9 @@ def get_root() -> Path:
     """
     # Environment variable override
     if root_env := os.getenv("TRACKLISTIFY_PROJECT_ROOT"):
-        return Path(root_env).resolve()
+        root_path = Path(root_env).resolve()
+        if root_path.exists():
+            return root_path
 
     # Walk up from this file to find pyproject.toml
     current = Path(__file__).resolve()
