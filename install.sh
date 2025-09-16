@@ -58,7 +58,7 @@ check_system_deps() {
     local missing_deps=()
 
     # Check for uv
-    if ! command -v poetry &> /dev/null; then
+    if ! command -v uv &> /dev/null; then
         echo "uv is not installed."
         missing_deps+=("uv")
     fi
