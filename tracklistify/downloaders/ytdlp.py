@@ -117,6 +117,8 @@ class YtDlpDownloader(Downloader):
         self.title = None
         self._logger = YTDLPLogger()
         self.config = get_config()
+        # Store the last extracted metadata from yt-dlp
+        self.last_metadata = None
         logger.debug(
             f"Initialized yt-dlp downloader with ffmpeg at: {self.ffmpeg_path}"
         )
@@ -189,14 +191,18 @@ class YtDlpDownloader(Downloader):
                     logger.error("Failed to extract video information")
                     raise ValueError("Failed to extract video information")
 
-                # Store the title immediately after getting info
+                # Persist full metadata for later access
+                self.last_metadata = info
+
+                # Prepare output path
                 filename = ydl.prepare_filename(info)
                 output_path = str(Path(filename).with_suffix(f".{self.format}"))
 
-                title = info.get("title", "Unknown title")
-                uploader = info.get("uploader", "Unknown artist")
-                duration = info.get("duration", 0)
-                logger.info(f"Downloaded: {title} by {uploader} ({duration}s)")
+                # Set instance variables for external use
+                self.title = info.get("title", "Unknown title")
+                self.uploader = info.get("uploader", "Unknown artist")
+                self.duration = info.get("duration", 0)
+                logger.info(f"Downloaded: {self.title} by {self.uploader} ({self.duration}s)")
                 logger.debug(f"Output file: {output_path}")
                 return output_path
 
@@ -206,3 +212,7 @@ class YtDlpDownloader(Downloader):
             else:
                 logger.error(f"Download failed: {e}")
             raise
+
+    def get_last_metadata(self) -> Optional[dict]:
+        """Expose the full yt-dlp info dict from the most recent download."""
+        return self.last_metadata

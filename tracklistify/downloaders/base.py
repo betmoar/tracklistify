@@ -6,7 +6,7 @@ Base downloader interface and common utilities.
 import os
 import shutil
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Dict
 
 # Local/package imports
 
@@ -18,6 +18,15 @@ class Downloader(ABC):
     async def download(self, url: str) -> Optional[str]:
         """Download audio from URL."""
         pass
+
+    def get_last_metadata(self) -> Optional[Dict]:
+        """Return the most recent metadata captured during a download, if any.
+
+        Subclasses can set an internal attribute to store metadata obtained
+        during the download process (e.g., from an API response) and expose it
+        through this method. The default implementation returns None.
+        """
+        return None
 
     @staticmethod
     def get_ffmpeg_path() -> str:
