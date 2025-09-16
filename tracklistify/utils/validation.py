@@ -3,10 +3,9 @@ Input validation utilities for Tracklistify.
 """
 
 # Standard library imports
-from typing import Optional
-
-# Third-party imports
-from yt_dlp import YoutubeDL, DownloadError
+from pathlib import Path
+from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 # Local/package imports
 from .logger import get_logger
@@ -14,35 +13,47 @@ from .logger import get_logger
 logger = get_logger(__name__)
 
 
-def validate_input(url: str) -> Optional[str]:
+def validate_input(input_path: str) -> Optional[Tuple[str, bool]]:
     """
-    Validate and clean a URL using yt-dlp.
-
-    Args:
-        url: Input URL to validate and clean
+    Validate input as either a URL or a local file path.
 
     Returns:
-        Cleaned URL if valid, None if invalid
+        (validated_path, is_local_file) on success, or None if invalid.
+        - validated_path: normalized absolute path for local files, or the original URL.
+        - is_local_file: True if local file, False if URL.
     """
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "force_generic_extractor": True,
-    }
-
-    try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            if info_dict is not None:
-                logger.info(f"Extracted info from URL: {info_dict.get('webpage_url')}")
-                return info_dict.get("webpage_url", None)
-            else:
-                logger.error("Failed to extract info from URL")
-                return None
-
-    except DownloadError as e:
-        logger.error(f"URL validation failed: {e}")
+    if not input_path or not isinstance(input_path, str):
         return None
+
+    s = input_path.strip()
+    if not s:
+        return None
+
+    parsed = urlparse(s)
+
+    # URL case (http/https)
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return s, False
+
+    # file:// URL -> treat as local file
+    if parsed.scheme == "file":
+        local = Path(parsed.path).expanduser()
+        if local.exists() and local.is_file():
+            try:
+                return str(local.resolve(strict=True)), True
+            except Exception:
+                return str(local), True
+        return None
+
+    # Local file path
+    p = Path(s).expanduser()
+    if p.exists() and p.is_file():
+        try:
+            return str(p.resolve(strict=True)), True
+        except Exception:
+            return str(p), True
+
+    return None
 
 
 def is_youtube_url(url: str) -> bool:
@@ -58,11 +69,18 @@ def is_youtube_url(url: str) -> bool:
     if not url:
         return False
 
-    cleaned_url = validate_input(url)
-    if not cleaned_url:
+    result = validate_input(url)
+    if not result:
         return False
 
-    return "youtube.com/watch?v=" in cleaned_url
+    validated, is_local = result
+    if is_local:
+        return False
+
+    host = urlparse(validated).netloc.lower()
+    # Fix: Use exact domain matching instead of substring check
+    return host in ("youtube.com", "www.youtube.com", "youtu.be", "www.youtu.be") or \
+           host.endswith(".youtube.com")
 
 
 def is_soundcloud_url(url: str) -> bool:
@@ -78,11 +96,18 @@ def is_soundcloud_url(url: str) -> bool:
     if not url:
         return False
 
-    cleaned_url = validate_input(url)
-    if not cleaned_url:
+    result = validate_input(url)
+    if not result:
         return False
 
-    return "soundcloud.com/" in cleaned_url
+    validated, is_local = result
+    if is_local:
+        return False
+
+    host = urlparse(validated).netloc.lower()
+    # Fix: Use exact domain matching
+    return host in ("soundcloud.com", "www.soundcloud.com") or \
+           host.endswith(".soundcloud.com")
 
 
 def is_mixcloud_url(url: str) -> bool:
@@ -98,8 +123,15 @@ def is_mixcloud_url(url: str) -> bool:
     if not url:
         return False
 
-    cleaned_url = validate_input(url)
-    if not cleaned_url:
+    result = validate_input(url)
+    if not result:
         return False
 
-    return "mixcloud.com/" in cleaned_url
+    validated, is_local = result
+    if is_local:
+        return False
+
+    host = urlparse(validated).netloc.lower()
+    # Fix: Use exact domain matching
+    return host in ("mixcloud.com", "www.mixcloud.com") or \
+           host.endswith(".mixcloud.com")

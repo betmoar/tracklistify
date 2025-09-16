@@ -15,11 +15,10 @@ from tracklistify.core.types import AudioSegment
 from tracklistify.downloaders import DownloaderFactory
 from tracklistify.exporters import TracklistOutput
 from tracklistify.providers.factory import create_provider_factory
-from tracklistify.utils.logger import get_logger
-from tracklistify.utils.validation import validate_input
 from tracklistify.utils.identification import IdentificationManager
+from tracklistify.utils.logger import get_logger
 from tracklistify.utils.strings import sanitizer
-
+from tracklistify.utils.validation import validate_input
 
 logger = get_logger(__name__)
 
@@ -50,45 +49,60 @@ class AsyncApp:
     async def process_input(self, input_path: str):
         """Process input URL or file path."""
         try:
-            # Validate input URL
-            url = validate_input(input_path)
-            if url is None:
-                raise ValueError("Invalid URL provided")
+            # Validate input (URL or local file path)
+            validated_result = validate_input(input_path)
+            if validated_result is None:
+                raise ValueError("Invalid URL or file path provided")
 
-            self.logger.info(f"Validated URL: {url}")
+            validated_path, is_local_file = validated_result
+            self.logger.info(f"Validated input: {validated_path}")
 
-            # Create downloader
-            downloader = self.downloader_factory.create_downloader(url)
-            if downloader is None:
-                raise ValueError("Failed to create downloader")
+            if is_local_file:
+                # Local file processing
+                if not Path(validated_path).exists():
+                    raise FileNotFoundError(f"Local file not found: {validated_path}")
 
-            self.logger.info("Downloading audio...")
+                local_path = validated_path
+                self.logger.info(f"Processing local file: {local_path}")
 
-            # Download audio file
-            local_path = await downloader.download(url)
-            if local_path is None:
-                raise ValueError("local_path cannot be None")
-
-            self.logger.info(f"Downloaded audio to: {local_path}")
-
-            # Store metadata for output
-            metadata = getattr(downloader, "get_last_metadata", lambda: None)()
-            if metadata:
-                self.logger.debug(f"yt-dlp metadata keys: {list(metadata.keys())}")
-                self.original_title = sanitizer(metadata.get("title", ""))
-                self.uploader = sanitizer(metadata.get("uploader", ""))
-                try:
-                    self.duration = float(metadata.get("duration", 0))
-                except (TypeError, ValueError):
-                    self.duration = 0
+                # Set metadata from file name
+                file_stem = Path(local_path).stem
+                self.original_title = sanitizer(file_stem)
+                self.uploader = "Unknown artist"
+                self.duration = 0
             else:
-                self.logger.debug("No metadata available, using fallback values")
-                self.original_title = sanitizer(getattr(downloader, "title", Path(local_path).stem))
-                self.uploader = sanitizer(getattr(downloader, "uploader", "Unknown artist"))
-                try:
-                    self.duration = float(getattr(downloader, "duration", 0))
-                except (TypeError, ValueError):
-                    self.duration = 0
+                # URL processing - download the file
+                downloader = self.downloader_factory.create_downloader(validated_path)
+                if downloader is None:
+                    raise ValueError("Failed to create downloader")
+                self.logger.info("Downloading audio...")
+                local_path = await downloader.download(validated_path)
+                if local_path is None:
+                    raise ValueError("local_path cannot be None")
+                self.logger.info(f"Downloaded audio to: {local_path}")
+
+                # Store metadata for output
+                metadata = getattr(downloader, "get_last_metadata", lambda: None)()
+                if metadata:
+                    self.logger.debug(f"yt-dlp metadata keys: {list(metadata.keys())}")
+                    self.original_title = sanitizer(metadata.get("title", ""))
+                    self.uploader = sanitizer(metadata.get("uploader", ""))
+                    try:
+                        self.duration = float(metadata.get("duration", 0))
+                    except (TypeError, ValueError):
+                        self.duration = 0
+                else:
+                    self.logger.debug("No metadata available, using fallback values")
+                    self.original_title = sanitizer(
+                        getattr(downloader, "title", Path(local_path).stem)
+                    )
+                    self.uploader = sanitizer(
+                        getattr(downloader, "uploader", "Unknown artist")
+                    )
+                    try:
+                        self.duration = float(getattr(downloader, "duration", 0))
+                    except (TypeError, ValueError):
+                        self.duration = 0
 
             self.logger.info("Processing audio...")
 
@@ -103,7 +117,18 @@ class AsyncApp:
             self.logger.info("Identifying tracks...")
             tracks = await self.identification_manager.identify_tracks(audio_segments)
             if not tracks:
-                raise ValueError("No tracks were identified in the audio file")
+                context = {
+                    "segments_created": len(audio_segments),
+                    "input_path": validated_path,
+                    "file_duration": getattr(self, "duration", "unknown"),
+                }
+                raise TrackIdentificationError(
+                    f"No tracks were identified in the audio file. "
+                    f"Created {len(audio_segments)} segments but no matches found. "
+                    f"This could be due to poor audio quality, instrumental music, "
+                    f"or unsupported audio content.",
+                    context=context,
+                )
 
             self.logger.info(f"Identified {len(tracks)} tracks")
             self.logger.debug(f"Tracks: {tracks}")
@@ -138,6 +163,7 @@ class AsyncApp:
         import subprocess
         from concurrent.futures import ThreadPoolExecutor
         from pathlib import Path
+
         from mutagen._file import File
 
         audio = File(file_path)
@@ -393,3 +419,11 @@ class ApplicationError(Exception):
     """Base application error."""
 
     pass
+
+
+class TrackIdentificationError(ApplicationError):
+    """Raised when track identification fails or produces no results."""
+
+    def __init__(self, message: str, context: dict = None):
+        super().__init__(message)
+        self.context = context or {}
