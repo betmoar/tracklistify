@@ -6,7 +6,7 @@ Input validation utilities for Tracklistify.
 from typing import Optional
 
 # Third-party imports
-from yt_dlp import YoutubeDL, DownloadError
+from yt_dlp import DownloadError, YoutubeDL
 
 # Local/package imports
 from .logger import get_logger
@@ -14,16 +14,24 @@ from .logger import get_logger
 logger = get_logger(__name__)
 
 
-def validate_input(url: str) -> Optional[str]:
+def validate_input(input_path: str) -> Optional[str]:
     """
-    Validate and clean a URL using yt-dlp.
+    Validate and clean a URL or local file path.
 
     Args:
-        url: Input URL to validate and clean
+        input_path: Input URL or local file path to validate
 
     Returns:
-        Cleaned URL if valid, None if invalid
+        Cleaned URL or validated file path if valid, None if invalid
     """
+    from pathlib import Path
+
+    # First check if it's a local file path
+    if Path(input_path).exists():
+        logger.info(f"Validated local file path: {input_path}")
+        return input_path
+
+    # If not a local file, try to validate as URL using yt-dlp
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -32,7 +40,7 @@ def validate_input(url: str) -> Optional[str]:
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
+            info_dict = ydl.extract_info(input_path, download=False)
             if info_dict is not None:
                 logger.info(f"Extracted info from URL: {info_dict.get('webpage_url')}")
                 return info_dict.get("webpage_url", None)
