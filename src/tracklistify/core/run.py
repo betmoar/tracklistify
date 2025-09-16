@@ -4,7 +4,7 @@ import asyncio
 import signal
 import sys
 
-from tracklistify.utils.project import get_project_root
+from tracklistify.config import get_root
 
 # Global variables for cleanup
 _cleanup_tasks = set()
@@ -12,11 +12,11 @@ _cleanup_tasks = set()
 
 def setup_environment():
     """Setup the Python path and environment variables."""
-    env_file = get_project_root() / ".env"
-    if not env_file.exists() and (get_project_root() / ".env.example").exists():
+    env_path = get_root() / ".env"
+    if not env_path.exists() and (get_root() / ".env.example").exists():
         print("Creating .env from .env.example...")
-        with open(get_project_root() / ".env.example") as f:
-            with open(env_file, "w") as env:
+        with open(get_root() / ".env.example") as f:
+            with open(env_path, "w") as env:
                 env.write(f.read())
         print("Please edit .env with your credentials")
         sys.exit(1)

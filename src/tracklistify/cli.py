@@ -8,12 +8,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .config import ConfigError, get_config
+from .config import ConfigError, get_config, get_root
 from .core import ApplicationError, AsyncApp
 
 # Local/package imports
 from .utils.logger import get_logger, set_logger
-from .utils.project import get_project_root
 
 # Get the logger for this module
 logger = get_logger(__name__)
@@ -146,8 +145,8 @@ def cli() -> None:
     logger.info("Starting CLI")
 
     # Load environment variables first
-    env_file = get_project_root() / ".env"
-    load_environment_variables(env_file)
+    env_path = get_root() / ".env"
+    load_environment_variables(env_path)
 
     try:
         exit_code = asyncio.run(main(args))

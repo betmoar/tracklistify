@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List
 
 # Local imports
+from .paths import get_root
 from .validation import ConfigValidator, PathRequirement, PathRule
 
 
@@ -14,10 +15,13 @@ from .validation import ConfigValidator, PathRequirement, PathRule
 class BaseConfig:
     """Base configuration class."""
 
-    output_dir: Path = field(default=Path(".tracklistify/output"))
-    cache_dir: Path = field(default=Path(".tracklistify/cache"))
-    temp_dir: Path = field(default=Path(".tracklistify/temp"))
-    log_dir: Path = field(default=Path(".tracklistify/log"))
+    # Directories
+    log_dir: Path = field(default=lambda: get_root() / ".tracklistify/log")
+    temp_dir: Path = field(default=lambda: get_root() / ".tracklistify/temp")
+    cache_dir: Path = field(default=lambda: get_root() / ".tracklistify/cache")
+    output_dir: Path = field(default=lambda: get_root() / ".tracklistify/output")
+
+    # Log settings
     verbose: bool = field(default=False)
     debug: bool = field(default=False)
 
@@ -61,8 +65,12 @@ class BaseConfig:
                         # Handle boolean values
                         value = env_value.lower() in ("true", "1", "yes", "on")
                     elif field_type == Path:
-                        # Handle paths
-                        value = Path(os.path.expanduser(env_value))
+                        # Handle paths - resolve relative paths relative to project root
+                        path = Path(os.path.expanduser(env_value))
+                        if not path.is_absolute():
+                            # Relative path - resolve relative to project root
+                            path = get_root() / path
+                        value = path
                     elif field_type == List[str]:
                         # Handle string lists (comma-separated)
                         value = [s.strip() for s in env_value.split(",") if s.strip()]
@@ -101,35 +109,51 @@ class TrackIdentificationConfig(BaseConfig):
     # Base config fields are inherited
 
     # Track identification specific fields
-    segment_length: int = field(default=30)
-    overlap_duration: int = field(default=10)
+    segment_length: int = field(default=60)
     min_confidence: float = field(default=0.5)
-    time_threshold: float = field(default=60.0)
+    time_threshold: float = field(default=30.0)
     max_duplicates: int = field(default=2)
+    overlap_duration: int = field(default=10)
+    overlap_strategy: str = field(default="weighted")
+    min_segment_length: int = field(default=10)
+
+    # Provider settings
     primary_provider: str = field(default="shazam")
-    fallback_enabled: bool = field(default=True)
+    fallback_enabled: bool = field(default=False)
     fallback_providers: List[str] = field(default_factory=list)
 
-    # Global rate limiting settings
-    max_requests_per_minute: int = field(default=25)
-    max_concurrent_requests: int = field(default=2)
-
+    # Caching settings
     cache_enabled: bool = field(default=True)
-    cache_ttl: int = field(default=86400)
-    cache_max_size: int = field(default=1000000)
+    cache_ttl: int = field(default=3600)
+    cache_max_size: int = field(default=1000)
     cache_storage_format: str = field(default="json")
     cache_compression_enabled: bool = field(default=True)
     cache_compression_level: int = field(default=6)
     cache_cleanup_enabled: bool = field(default=True)
     cache_cleanup_interval: int = field(default=3600)
-    cache_max_age: int = field(default=604800)
+    cache_max_age: int = field(default=86400)
     cache_min_free_space: int = field(default=104857600)
+
+    # Rate limiting settings
+    max_requests_per_minute: int = field(default=25)
+    max_concurrent_requests: int = field(default=2)
+
+    # ACRCloud settings
     acrcloud_max_rpm: int = field(default=300)
     acrcloud_max_concurrent: int = field(default=10)
+
+    # Shazam settings
     shazam_max_rpm: int = field(default=25)
     shazam_max_concurrent: int = field(default=1)
     shazam_cooldown_seconds: float = field(default=2.25)
+
+    # Output formats
     output_format: str = field(default="json")
+
+    # Downloader settings
+    download_quality: str = field(default="192")
+    download_format: str = field(default="mp3")
+    download_max_retries: int = field(default=3)
 
     def __post_init__(self):
         """Initialize configuration after dataclass creation."""
