@@ -314,8 +314,8 @@ def get_global_rate_limiter() -> RateLimiter:
     return _global_rate_limiter
 
 
-def get_rate_limiter(provider: str, config=None) -> SimpleLimiter:
-    """Get rate limiter for the specified provider."""
+def get_simple_rate_limiter(provider: str, config=None) -> SimpleLimiter:
+    """Get legacy rate limiter for the specified provider."""
     if config is None:
         config = get_config()
 
