@@ -10,7 +10,7 @@ import os
 import time
 import zlib
 from pathlib import Path
-from typing import Optional, TypeVar, Union
+from typing import List, Optional, TypeVar, Union
 
 # Third-party imports
 import aiofiles
@@ -81,6 +81,7 @@ class JSONStorage(CacheStorage[T]):
         self, key: str, entry: CacheEntry[T], compression: bool = False
     ) -> None:
         """Set entry in storage."""
+        temp_path = None
         try:
             file_path = self._get_file_path(key)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -102,7 +103,7 @@ class JSONStorage(CacheStorage[T]):
 
         except Exception as e:
             logger.error(f"Error writing cache entry: {str(e)}")
-            if os.path.exists(temp_path):
+            if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
             raise
 
@@ -186,3 +187,20 @@ class JSONStorage(CacheStorage[T]):
         """Write entry to storage."""
         compression = entry["metadata"].get("compression", False)
         await self.set(key, entry, compression=compression)
+
+    async def list_keys(self) -> List[str]:
+        """List all cache keys."""
+        keys = []
+        try:
+            for path in self._cache_dir.rglob("*.cache"):
+                # Extract original key from filename (reverse the hash process)
+                # For now, we'll store the original key in metadata
+                try:
+                    entry = json.loads(path.read_bytes().decode("utf-8"))
+                    if "key" in entry:
+                        keys.append(entry["key"])
+                except (OSError, json.JSONDecodeError):
+                    continue
+            return keys
+        except OSError:
+            return keys

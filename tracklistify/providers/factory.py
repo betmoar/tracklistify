@@ -15,6 +15,13 @@ def create_provider_factory() -> "ProviderFactory":
     return _provider_factory
 
 
+def clear_provider_cache():
+    """Clear the cached providers to force recreation with updated implementations."""
+    global _provider_factory
+    if _provider_factory is not None:
+        _provider_factory.clear_cache()
+
+
 class ProviderFactory:
     """Factory class to manage identification providers."""
 
@@ -45,3 +52,7 @@ class ProviderFactory:
         """Close all providers."""
         for provider in self.providers.values():
             await provider.close()  # Make sure to await the coroutine
+
+    def clear_cache(self):
+        """Clear the provider cache to force recreation of providers."""
+        self.providers.clear()

@@ -53,7 +53,13 @@ class TTLStrategy(InvalidationStrategy[T]):
     """Time-based invalidation strategy."""
 
     def __init__(self, default_ttl: Optional[int] = None):
-        self.default_ttl = default_ttl
+        from datetime import timedelta
+
+        # Handle both int (seconds) and timedelta objects
+        if isinstance(default_ttl, timedelta):
+            self.default_ttl = int(default_ttl.total_seconds())
+        else:
+            self.default_ttl = default_ttl
 
     async def is_valid(self, entry: CacheEntry[T]) -> bool:
         """Check if entry is still valid based on TTL."""
@@ -83,11 +89,16 @@ class TTLStrategy(InvalidationStrategy[T]):
 
     async def cleanup(self, storage: CacheStorage[T]) -> None:
         """Clean up expired entries."""
-        await storage.cleanup()
+        # TTL cleanup is handled by storage.cleanup() with max_age parameter
+        # Don't call it here to avoid aggressive cleanup
+        pass
 
     def should_invalidate(self, entry: CacheEntry[Any]) -> bool:
         """Check if entry should be invalidated based on TTL."""
         try:
+            if self.default_ttl is None:
+                return False
+
             metadata = entry["metadata"]
             created_at = metadata.get("created_at")
             if not created_at:
@@ -101,14 +112,22 @@ class TTLStrategy(InvalidationStrategy[T]):
             current_time = datetime.now()
             age = current_time - created_time
 
+            # Convert default_ttl to timedelta if it's an integer (seconds)
+            from datetime import timedelta
+
+            if isinstance(self.default_ttl, int):
+                ttl = timedelta(seconds=self.default_ttl)
+            else:
+                ttl = self.default_ttl
+
             logger.debug(
                 (
                     f"TTL check: current={current_time}, created={created_time}, "
-                    f"age={age}, ttl={self.default_ttl}"
+                    f"age={age}, ttl={ttl}"
                 )
             )
 
-            return age > self.default_ttl
+            return age > ttl
 
         except Exception as e:
             logger.error(f"Error in TTL invalidation check: {str(e)}")
@@ -198,7 +217,8 @@ class LRUStrategy(InvalidationStrategy[T]):
     async def cleanup(self, storage: CacheStorage[T]) -> None:
         """Clean up expired entries."""
         try:
-            # Implement cleanup if needed
+            # LRU cleanup would need to track access patterns
+            # For now, avoid calling generic cleanup to prevent removing valid entries
             pass
         except Exception as e:
             logger.error(f"Error in LRU cleanup: {str(e)}")
@@ -280,10 +300,14 @@ class SizeStrategy(InvalidationStrategy[T]):
 
     async def cleanup(self, storage: CacheStorage[T]) -> None:
         """Clean up large entries."""
-        await storage.cleanup()
+        # Size-based cleanup would need custom logic to identify large entries
+        # For now, don't call generic storage cleanup to avoid removing valid entries
+        pass
 
     def should_invalidate(self, entry: CacheEntry[Any]) -> bool:
         """Check if entry should be invalidated based on size."""
+        if self.max_size is None:
+            return False
         size = entry["metadata"].get("size", len(json.dumps(entry["value"])))
         return size > self.max_size
 
@@ -330,17 +354,8 @@ class CompositeStrategy(InvalidationStrategy[T]):
     async def cleanup(self, storage: CacheStorage[T]) -> None:
         """Clean up expired entries based on all strategies."""
         try:
-            # Get all keys
-            keys = await storage.list_keys()
-
-            # Check each key
-            for key in keys:
-                entry = await storage.read(key)
-                if entry is not None and self.should_invalidate(entry):
-                    logger.debug(f"Cleaning up key {key} due to composite invalidation")
-                    await storage.delete(key)
-
-            # Run cleanup for each strategy
+            # For now, just run cleanup for each strategy without key iteration
+            # since list_keys implementation is not complete
             for strategy in self.strategies:
                 await strategy.cleanup(storage)
         except Exception as e:
