@@ -81,6 +81,26 @@ testpaths = [
     "tests"
 ]
 
+[tool.coverage.run]
+# Only measure our package code, not tests
+source = [
+    "tracklistify"
+]
+# Additionally, omit any test paths that might sneak in
+omit = [
+    "tests/*",
+    "**/tests/*",
+    "**/dev_cli/*",
+]
+
+[tool.coverage.report]
+# Ensure tests are omitted from reporting as well
+omit = [
+    "tests/*",
+    "**/tests/*",
+    "**/dev*",
+]
+
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
 exclude = [

@@ -19,8 +19,9 @@ from tracklistify.cache.invalidation import (
     TTLStrategy,
 )
 from tracklistify.cache.storage import JSONStorage
+from tracklistify.cache.index import CacheIndex
 from tracklistify.config import get_config
-from tracklistify.types import CacheEntry
+from tracklistify.core.types import CacheEntry
 
 # Test data
 TEST_DATA = {
@@ -155,7 +156,7 @@ async def test_cache_size_invalidation(temp_cache_dir: Path):
 @pytest.mark.asyncio
 async def test_cache_compression(cache: BaseCache[Dict[str, Any]]):
     """Test cache compression functionality."""
-    key = "compressed_key"
+    key = "compression_key"
     value = {"data": "x" * 1000}  # Large value to benefit from compression
 
     # Set with compression
@@ -290,13 +291,13 @@ async def test_compression_handling(tmp_path):
 
     # Test with compression
     entry = CacheEntry(
-        key="compressed",
+        key="compression",
         value="test_value" * 1000,  # Large value to benefit from compression
         metadata={"compression": True, "created_at": datetime.now().isoformat()},
     )
 
-    await storage.write("compressed", entry)
-    result = await storage.read("compressed")
+    await storage.write("compression", entry)
+    result = await storage.read("compression")
     assert result is not None
     assert result["value"] == entry["value"]
 
@@ -311,3 +312,184 @@ async def test_compression_handling(tmp_path):
     result = await storage.read("uncompressed")
     assert result is not None
     assert result["value"] == entry["value"]
+
+
+@pytest.mark.asyncio
+async def test_cache_index_functionality(tmp_path):
+    """Test cache index operations."""
+    index = CacheIndex(tmp_path)
+
+    # Test adding entries
+    await index.add_entry("test1", "hash1.cache", {"size": 100, "created": time.time()})
+    await index.add_entry("test2", "hash2.cache", {"size": 200, "created": time.time()})
+
+    # Test getting filename
+    filename = await index.get_filename("test1")
+    assert filename == "hash1.cache"
+
+    # Test listing keys
+    keys = await index.list_keys()
+    assert "test1" in keys
+    assert "test2" in keys
+    assert len(keys) == 2
+
+    # Test removing entry
+    removed_filename = await index.remove_entry("test1")
+    assert removed_filename == "hash1.cache"
+
+    keys = await index.list_keys()
+    assert "test1" not in keys
+    assert len(keys) == 1
+
+
+@pytest.mark.asyncio
+async def test_cache_index_persistence(tmp_path):
+    """Test cache index persistence across instances."""
+    # Create first index instance and add entries
+    index1 = CacheIndex(tmp_path)
+    await index1.add_entry(
+        "persistent", "hash.cache", {"size": 50, "created": time.time()}
+    )
+    await index1.save()
+
+    # Create second index instance and load
+    index2 = CacheIndex(tmp_path)
+    await index2.load()
+
+    # Verify data persisted
+    filename = await index2.get_filename("persistent")
+    assert filename == "hash.cache"
+
+    keys = await index2.list_keys()
+    assert "persistent" in keys
+
+
+@pytest.mark.asyncio
+async def test_cache_index_rebuild(tmp_path):
+    """Test cache index rebuild functionality."""
+    # First create cache files without using storage to avoid circular dependency
+    cache_dir = tmp_path
+
+    # Create cache files manually
+    import hashlib
+    import json
+
+    entry1 = {
+        "key": "rebuild1",
+        "value": "value1",
+        "metadata": {"created": time.time(), "size": 100},
+    }
+    entry2 = {
+        "key": "rebuild2",
+        "value": "value2",
+        "metadata": {"created": time.time(), "size": 200},
+    }
+
+    # Write cache files directly
+    for entry in [entry1, entry2]:
+        hashed_key = hashlib.sha256(entry["key"].encode()).hexdigest()
+        cache_file = cache_dir / f"{hashed_key}.cache"
+        cache_file.write_text(json.dumps(entry))
+
+    # Create new index instance (should rebuild from cache files)
+    index = CacheIndex(tmp_path)
+    await index.load()
+
+    # Verify index was rebuilt correctly
+    keys = await index.list_keys()
+    assert "rebuild1" in keys
+    assert "rebuild2" in keys
+    assert len(keys) == 2
+
+
+@pytest.mark.asyncio
+async def test_storage_index_integration(tmp_path):
+    """Test storage and index integration."""
+    storage = JSONStorage(tmp_path)
+
+    # Test set and get with index
+    entry = CacheEntry(
+        key="integration",
+        value={"data": "test"},
+        metadata={"created": time.time(), "size": 100},
+    )
+
+    await storage.set("integration", entry)
+    result = await storage.get("integration")
+
+    assert result is not None
+    assert result["value"] == entry["value"]
+
+    # Test list_keys uses index
+    keys = await storage.list_keys()
+    assert "integration" in keys
+
+    # Test delete removes from index
+    await storage.delete("integration")
+    keys = await storage.list_keys()
+    assert "integration" not in keys
+
+
+@pytest.mark.asyncio
+async def test_index_cleanup_expired(tmp_path):
+    """Test index cleanup of expired entries."""
+    index = CacheIndex(tmp_path)
+
+    # Add entries with different access times
+    old_time = time.time() - 3600  # 1 hour ago
+    recent_time = time.time() - 60  # 1 minute ago
+
+    await index.add_entry("old", "old.cache", {"last_accessed": old_time, "size": 100})
+    await index.add_entry(
+        "recent", "recent.cache", {"last_accessed": recent_time, "size": 100}
+    )
+
+    # Test cleanup with 30 minute max age
+    expired_keys = await index.cleanup_expired(1800)
+
+    assert "old" in expired_keys
+    assert "recent" not in expired_keys
+
+
+@pytest.mark.asyncio
+async def test_index_stats(tmp_path):
+    """Test index statistics."""
+    index = CacheIndex(tmp_path)
+
+    await index.add_entry("stats1", "s1.cache", {"size": 100, "created": time.time()})
+    await index.add_entry("stats2", "s2.cache", {"size": 200, "created": time.time()})
+
+    stats = await index.get_stats()
+
+    assert stats["entries"] == 2
+    assert stats["total_size_bytes"] == 300
+    assert "index_size_bytes" in stats
+
+
+@pytest.mark.asyncio
+async def test_storage_performance_improvement(tmp_path):
+    """Test that list_keys performance is improved with index."""
+    storage = JSONStorage(tmp_path)
+
+    # Create multiple entries
+    num_entries = 50
+    for i in range(num_entries):
+        entry = CacheEntry(
+            key=f"perf_test_{i}",
+            value=f"value_{i}",
+            metadata={"created": time.time(), "size": 10},
+        )
+        await storage.set(f"perf_test_{i}", entry)
+
+    # Measure time for list_keys (should be fast with index)
+    start_time = time.time()
+    keys = await storage.list_keys()
+    elapsed = time.time() - start_time
+
+    # With index, this should be very fast (< 0.1 seconds even for many entries)
+    assert len(keys) == num_entries
+    assert elapsed < 1.0  # Should be much faster, but allowing generous margin
+
+    # Verify all keys are present
+    for i in range(num_entries):
+        assert f"perf_test_{i}" in keys

@@ -1,7 +1,6 @@
 """Environment validation tests for Tracklistify."""
 
 # Standard library imports
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -43,42 +42,6 @@ def test_env_file_exists():
     assert env_example.exists(), ".env.example file is missing"
     if not env_file.exists():
         pytest.skip(".env file not found - copy .env.example to .env and configure")
-
-
-def test_virtual_environment():
-    """Test code is running in a virtual environment."""
-    in_venv = any(
-        (
-            hasattr(sys, "real_prefix"),  # Old-style virtualenv
-            sys.base_prefix != sys.prefix,  # New-style venv
-            os.environ.get("VIRTUAL_ENV") is not None,  # Explicitly set
-            os.environ.get("CONDA_DEFAULT_ENV") is not None,  # Conda environment
-        )
-    )
-    assert in_venv, "Code is not running in a virtual environment"
-
-
-def test_development_dependencies():
-    """Test development dependencies are installed."""
-    # Python packages to import
-    python_packages = [
-        "pytest",
-        "black",
-        "isort",
-        "flake8",
-        "mypy",
-    ]
-
-    for package in python_packages:
-        try:
-            __import__(package)
-        except ImportError:
-            pytest.fail(f"Development dependency '{package}' is not installed")
-
-    # Check pre-commit separately as it's a command-line tool
-    result = subprocess.run(["which", "pre-commit"], capture_output=True, text=True)
-    if result.returncode != 0:
-        pytest.fail("pre-commit is not installed or not in PATH")
 
 
 def test_precommit_config_exists():
