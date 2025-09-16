@@ -4,6 +4,7 @@ Rate limiting functionality for API calls with metrics, circuit breaker, alerts.
 
 # Standard library imports
 import asyncio
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -18,6 +19,10 @@ RATE_LIMIT_DETECTION_THRESHOLD_MS = 0.001  # 1ms threshold to detect actual rate
 # - Normal processing delays (< 1ms): Not counted as rate limiting
 # - Actual rate limiting waits (≥ 1ms): Counted in rate_limited_requests metric
 # The 1ms threshold accounts for typical system call and lock acquisition overhead
+
+# Default rate limit values
+DEFAULT_MAX_REQUESTS_PER_MINUTE = 20
+DEFAULT_MAX_CONCURRENT_REQUESTS = 1
 
 
 class CircuitState(Enum):
@@ -45,8 +50,8 @@ class RateLimitMetrics:
 class ProviderLimits:
     """Rate limits for a specific provider."""
 
-    max_requests_per_minute: int = 20
-    max_concurrent_requests: int = 1
+    max_requests_per_minute: int = DEFAULT_MAX_REQUESTS_PER_MINUTE
+    max_concurrent_requests: int = DEFAULT_MAX_CONCURRENT_REQUESTS
     tokens: int = field(init=False)
     last_update: float = field(default_factory=time.time)
     semaphore: asyncio.Semaphore = field(init=False)
@@ -145,7 +150,7 @@ class RateLimiter:
                     limits.tokens -= 1
                     # Record metrics only if we had to wait for tokens (rate limiting)
                     wait_time = time.time() - token_wait_start
-                    if wait_time > RATE_LIMIT_DETECTION_THRESHOLD_MS:
+                    if wait_time >= RATE_LIMIT_DETECTION_THRESHOLD_MS:
                         # Count successful requests that were rate-limited
                         limits.metrics.rate_limited_requests += 1
                         limits.metrics.last_rate_limit = time.time()
@@ -239,7 +244,7 @@ class SimpleLimiter:
 
     def __post_init__(self):
         self._lock = Lock()
-        self._semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+        self._semaphore = threading.Semaphore(self.max_concurrent_requests)
         self._tokens = self.max_requests_per_minute
         self._last_refill = time.monotonic()
 
