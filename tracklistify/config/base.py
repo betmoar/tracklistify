@@ -121,8 +121,9 @@ class TrackIdentificationConfig(BaseConfig):
     cache_min_free_space: int = field(default=104857600)
     acrcloud_max_rpm: int = field(default=300)
     acrcloud_max_concurrent: int = field(default=10)
-    shazam_max_rpm: int = field(default=100)
-    shazam_max_concurrent: int = field(default=5)
+    shazam_max_rpm: int = field(default=25)
+    shazam_max_concurrent: int = field(default=1)
+    shazam_cooldown_seconds: float = field(default=2.25)
     output_format: str = field(default="json")
 
     def __post_init__(self):
