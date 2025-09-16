@@ -1,6 +1,7 @@
 """Shazam track identification provider using shazamio."""
 
 # Standard library imports
+import asyncio
 from typing import Any, Dict, Optional
 
 # Third-party imports
@@ -23,6 +24,7 @@ class ShazamProvider(TrackIdentificationProvider):
     async def identify_track(self, audio_segment) -> Optional[Dict[str, Any]]:
         """Identify track from an audio segment."""
         try:
+            await asyncio.sleep(2.25)
             logger.info(f"Identifying segment at {audio_segment.start_time}s")
 
             # Ensure the audio file path is valid
