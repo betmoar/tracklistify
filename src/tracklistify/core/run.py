@@ -1,9 +1,10 @@
-#!/usr/bin/env python3
+"""Main entry point for Tracklistify."""
 
 import asyncio
 import signal
 import sys
-from pathlib import Path
+
+from tracklistify.utils.project import get_project_root
 
 # Global variables for cleanup
 _cleanup_tasks = set()
@@ -11,15 +12,10 @@ _cleanup_tasks = set()
 
 def setup_environment():
     """Setup the Python path and environment variables."""
-    # Add the parent directory to Python path so tracklistify can be imported
-    current_dir = Path(__file__).parent.absolute()
-    sys.path.append(str(current_dir))
-
-    # Load environment variables from .env file if it exists
-    env_file = current_dir / ".env"
-    if not env_file.exists() and (current_dir / ".env.example").exists():
+    env_file = get_project_root() / ".env"
+    if not env_file.exists() and (get_project_root() / ".env.example").exists():
         print("Creating .env from .env.example...")
-        with open(current_dir / ".env.example") as f:
+        with open(get_project_root() / ".env.example") as f:
             with open(env_file, "w") as env:
                 env.write(f.read())
         print("Please edit .env with your credentials")

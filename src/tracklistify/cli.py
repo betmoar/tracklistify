@@ -13,6 +13,7 @@ from .core import ApplicationError, AsyncApp
 
 # Local/package imports
 from .utils.logger import get_logger, set_logger
+from .utils.project import get_project_root
 
 # Get the logger for this module
 logger = get_logger(__name__)
@@ -145,8 +146,8 @@ def cli() -> None:
     logger.info("Starting CLI")
 
     # Load environment variables first
-    env_path = Path(__file__).parent.parent / ".env"
-    load_environment_variables(env_path)
+    env_file = get_project_root() / ".env"
+    load_environment_variables(env_file)
 
     try:
         exit_code = asyncio.run(main(args))
