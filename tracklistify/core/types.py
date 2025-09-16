@@ -7,10 +7,8 @@ This module defines all type definitions used throughout the application, includ
 - Comprehensive type hints and documentation
 """
 
-from dataclasses import dataclass
-from datetime import datetime
-
 # Standard library imports
+from dataclasses import dataclass
 from pathlib import Path
 from typing import (
     AsyncIterator,
@@ -133,39 +131,84 @@ class DownloadProgress(TypedDict):
 
 
 # Cache types
-class CacheMetadata:
+class CacheMetadata(TypedDict, total=False):
     """Cache entry metadata."""
 
-    created_at: datetime
-    accessed_at: datetime
+    created_at: str
+    created: float
+    last_accessed: float
+    accessed_at: Optional[str]
     size: int
     hits: int
+    ttl: Optional[int]
+    access_count: int
+    compression: bool
 
 
-class CacheEntry(Generic[T]):
-    """Cache entry with metadata."""
+class CacheEntry(Dict, Generic[T]):
+    """Cache entry with metadata that maintains dict interface."""
 
-    value: T
-    metadata: CacheMetadata
+    def __init__(self, key: str, value: T, metadata: CacheMetadata):
+        """Initialize cache entry."""
+        super().__init__()
+        self["key"] = key
+        self["value"] = value
+        self["metadata"] = metadata
+
+    @property
+    def key(self) -> str:
+        """Get cache key."""
+        return self["key"]
+
+    @key.setter
+    def key(self, value: str) -> None:
+        """Set cache key."""
+        self["key"] = value
+
+    @property
+    def value(self) -> T:
+        """Get cache value."""
+        return self["value"]
+
+    @value.setter
+    def value(self, value: T) -> None:
+        """Set cache value."""
+        self["value"] = value
+
+    @property
+    def metadata(self) -> CacheMetadata:
+        """Get cache metadata."""
+        return self["metadata"]
+
+    @metadata.setter
+    def metadata(self, value: CacheMetadata) -> None:
+        """Set cache metadata."""
+        self["metadata"] = value
 
 
 class CacheStorage(Protocol[T]):
     """Cache storage protocol."""
 
-    def get(self, key: str) -> Optional[CacheEntry[T]]: ...
-    def set(self, key: str, value: T) -> None: ...
-    def delete(self, key: str) -> None: ...
-    def clear(self) -> None: ...
+    async def get(self, key: str) -> Optional[CacheEntry[T]]: ...
+    async def set(
+        self, key: str, entry: CacheEntry[T], compression: bool = False
+    ) -> None: ...
+    async def delete(self, key: str) -> None: ...
+    async def clear(self) -> None: ...
+    async def cleanup(self, max_age: Optional[int] = None) -> int: ...
+    async def read(self, key: str) -> Optional[CacheEntry[T]]: ...
+    async def write(self, key: str, entry: CacheEntry[T]) -> None: ...
+    async def list_keys(self) -> List[str]: ...
     def contains(self, key: str) -> bool: ...
 
 
 class InvalidationStrategy(Protocol):
     """Cache invalidation strategy protocol."""
 
+    async def is_valid(self, entry: CacheEntry) -> bool: ...
+    async def update_metadata(self, entry: CacheEntry) -> CacheEntry: ...
+    async def cleanup(self, storage: CacheStorage) -> None: ...
     def should_invalidate(self, entry: CacheEntry) -> bool: ...
-    def on_access(self, entry: CacheEntry) -> None: ...
-    def on_add(self, entry: CacheEntry) -> None: ...
-    def on_remove(self, entry: CacheEntry) -> None: ...
 
 
 class Cache(Protocol[T]):

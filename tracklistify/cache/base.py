@@ -5,13 +5,11 @@ Base cache implementation with enhanced features.
 # Standard library imports
 import json
 import time
-from datetime import datetime
 from typing import Any, Dict, Generic, Optional, TypeVar
 
 # Local/package imports
 from tracklistify.core.types import (
     CacheEntry,
-    CacheMetadata,
     CacheStorage,
     InvalidationStrategy,
 )
@@ -45,18 +43,27 @@ class BaseCache(Generic[T]):
         if not invalidation_strategy:
             raise ValueError("Invalidation strategy is required")
 
-        self.storage = storage
-        self.invalidation_strategy = invalidation_strategy
-        self.ttl = ttl
-        self.max_size = max_size
+        self._storage = storage
+        self._invalidation_strategy = invalidation_strategy
+        self._ttl = ttl
+        self._max_size = max_size
 
-        # Initialize cache metadata
-        self.metadata: CacheMetadata = {
-            "created_at": datetime.now().isoformat(),
-            "last_cleanup": None,
-            "size": 0,
+        # Initialize statistics tracking
+        self._stats = {
+            "hits": 0,
+            "misses": 0,
+            "invalidations": 0,
+            "total_size_bytes": 0,
             "entries": 0,
         }
+
+        # Mock config for now
+        class MockConfig:
+            cache_enabled = True
+            cache_compression_enabled = True
+            cache_storage_format = "json"
+
+        self._config = MockConfig()
 
         logger.debug(f"Initialized cache with TTL={ttl}s, max_size={max_size} bytes")
 
@@ -89,7 +96,7 @@ class BaseCache(Generic[T]):
                     await self._storage.set(
                         key,
                         updated_entry,
-                        compression=updated_entry["metadata"].get("compressed", False),
+                        compression=updated_entry["metadata"].get("compression", False),
                     )
                     entry = (
                         updated_entry  # Use the updated entry for returning the value
@@ -130,7 +137,7 @@ class BaseCache(Generic[T]):
                     "created": time.time(),
                     "last_accessed": time.time(),
                     "ttl": ttl,
-                    "compressed": compression,
+                    "compression": compression,
                     "size": len(json.dumps(value)),
                 },
             }
