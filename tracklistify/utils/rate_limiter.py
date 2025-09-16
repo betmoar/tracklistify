@@ -150,17 +150,13 @@ class RateLimiter:
 
         # Try to acquire semaphore for concurrent requests
         try:
-            # Try non-blocking acquire first
-            if limits.semaphore._value == 0:
-                # Wait with timeout - this is concurrency limiting, not rate limiting
-                start_time = time.time()
-                await asyncio.wait_for(limits.semaphore.acquire(), timeout=timeout)
-                wait_time = time.time() - start_time
-                limits.metrics.total_wait_time += wait_time
-                # Note: Don't record semaphore waits as rate limit windows
-                # This is concurrency control, not rate limiting
-            else:
-                await limits.semaphore.acquire()
+            # Always attempt to acquire the semaphore with a timeout
+            start_time = time.time()
+            await asyncio.wait_for(limits.semaphore.acquire(), timeout=timeout)
+            wait_time = time.time() - start_time
+            limits.metrics.total_wait_time += wait_time
+            # Note: Don't record semaphore waits as rate limit windows
+            # This is concurrency control, not rate limiting
         except asyncio.TimeoutError:
             return False
 
