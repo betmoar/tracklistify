@@ -14,15 +14,17 @@ from typing import Dict, List, Optional, TypeVar, Union
 # Third-party imports
 import aiofiles
 
+from tracklistify.cache.index import CacheIndex
 from tracklistify.config.factory import get_config
 
 # Local/package imports
 from tracklistify.core.types import CacheEntry, CacheStorage
 from tracklistify.utils.logger import get_logger
-from tracklistify.cache.index import CacheIndex
 
 logger = get_logger(__name__)
 
+# Magic bytes for compression detection
+ZLIB_HEADER = b"\x78\x9c"
 
 T = TypeVar("T")
 
@@ -82,7 +84,7 @@ class JSONStorage(CacheStorage[T]):
 
                 # Handle compression
                 try:
-                    if data.startswith(b"\x78\x9c"):  # zlib header
+                    if data.startswith(ZLIB_HEADER):
                         data = zlib.decompress(data)
                     entry = json.loads(data.decode("utf-8"))
 
@@ -126,6 +128,7 @@ class JSONStorage(CacheStorage[T]):
                     os.fsync(f.fileno())
 
                 os.replace(temp_path, file_path)
+                temp_path = None  # Clear after successful move
 
                 # Update index
                 metadata = entry.get("metadata", {})
@@ -134,8 +137,12 @@ class JSONStorage(CacheStorage[T]):
 
         except Exception as e:
             logger.error(f"Error writing cache entry: {str(e)}")
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
+            # Clean up temp file only if it was created and still exists
+            if temp_path is not None and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass  # Ignore cleanup errors
             raise
 
     async def delete(self, key: str) -> None:

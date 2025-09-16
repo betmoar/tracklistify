@@ -7,9 +7,8 @@ This module defines all type definitions used throughout the application, includ
 - Comprehensive type hints and documentation
 """
 
-from dataclasses import dataclass
-
 # Standard library imports
+from dataclasses import dataclass
 from pathlib import Path
 from typing import (
     AsyncIterator,
@@ -146,12 +145,45 @@ class CacheMetadata(TypedDict, total=False):
     compression: bool
 
 
-class CacheEntry(TypedDict, Generic[T]):
-    """Cache entry with metadata."""
+class CacheEntry(Dict, Generic[T]):
+    """Cache entry with metadata that maintains dict interface."""
 
-    key: str
-    value: T
-    metadata: CacheMetadata
+    def __init__(self, key: str, value: T, metadata: CacheMetadata):
+        """Initialize cache entry."""
+        super().__init__()
+        self["key"] = key
+        self["value"] = value
+        self["metadata"] = metadata
+
+    @property
+    def key(self) -> str:
+        """Get cache key."""
+        return self["key"]
+
+    @key.setter
+    def key(self, value: str) -> None:
+        """Set cache key."""
+        self["key"] = value
+
+    @property
+    def value(self) -> T:
+        """Get cache value."""
+        return self["value"]
+
+    @value.setter
+    def value(self, value: T) -> None:
+        """Set cache value."""
+        self["value"] = value
+
+    @property
+    def metadata(self) -> CacheMetadata:
+        """Get cache metadata."""
+        return self["metadata"]
+
+    @metadata.setter
+    def metadata(self, value: CacheMetadata) -> None:
+        """Set cache metadata."""
+        self["metadata"] = value
 
 
 class CacheStorage(Protocol[T]):

@@ -17,6 +17,9 @@ from tracklistify.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Magic bytes for compression detection
+ZLIB_HEADER = b"\x78\x9c"
+
 T = TypeVar("T")
 
 
@@ -235,7 +238,7 @@ class CacheIndex:
                         data = await f.read()
 
                     # Handle compressed files
-                    if data.startswith(b"\x78\x9c"):  # zlib header
+                    if data.startswith(ZLIB_HEADER):
                         import zlib
 
                         data = zlib.decompress(data)

@@ -110,9 +110,6 @@ class TTLStrategy(InvalidationStrategy[T]):
             current_time = datetime.now()
             age = current_time - created_time
 
-            # Convert default_ttl to timedelta if it's an integer (seconds)
-            from datetime import timedelta
-
             if isinstance(self.default_ttl, int):
                 ttl = timedelta(seconds=self.default_ttl)
             else:
