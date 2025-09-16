@@ -11,6 +11,7 @@ from tracklistify.providers.base import TrackIdentificationProvider
 
 # Local/package imports
 from tracklistify.utils.logger import get_logger
+from tracklistify.config.factory import get_config
 
 logger = get_logger(__name__)
 
@@ -20,11 +21,18 @@ class ShazamProvider(TrackIdentificationProvider):
 
     def __init__(self):
         self.shazam = Shazam()
+        self._config = get_config()
 
     async def identify_track(self, audio_segment) -> Optional[Dict[str, Any]]:
         """Identify track from an audio segment."""
         try:
-            await asyncio.sleep(2.25)
+            # Brief cooldown to avoid hammering upstream between calls
+            try:
+                cooldown = float(getattr(self._config, "shazam_cooldown_seconds", 2.25))
+            except Exception:
+                cooldown = 2.25
+            if cooldown and cooldown > 0:
+                await asyncio.sleep(cooldown)
             logger.info(f"Identifying segment at {audio_segment.start_time}s")
 
             # Ensure the audio file path is valid
