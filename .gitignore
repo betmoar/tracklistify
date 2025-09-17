@@ -164,6 +164,7 @@ cython_debug/
 .ruff_cache/
 .vscode/
 .DS_Store
+copilot*
 poetry.lock
 
 # Project-specific
@@ -171,3 +172,4 @@ poetry.lock
 examples/
 dev/
 docs/temp/
+coverage.json
