@@ -12,9 +12,9 @@ from typing import Optional
 # Third-party imports
 import yt_dlp
 
-from tracklistify.downloaders.base import Downloader
-
 # Local/package imports
+from tracklistify.core.exceptions import DownloadError
+from tracklistify.downloaders.base import Downloader
 from tracklistify.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -58,14 +58,17 @@ class MixcloudDownloader(Downloader):
             "verbose": self.verbose,
         }
 
-    async def download(self, url: str) -> Optional[str]:
+    async def download(self, url: str) -> str:
         """Asynchronously download audio from Mixcloud URL.
 
         Args:
             url: Mixcloud track URL
 
         Returns:
-            str: Path to downloaded audio file, or None if download failed
+            str: Path to downloaded audio file
+
+        Raises:
+            DownloadError: If download fails for any reason
         """
         try:
             # Clean URL before downloading
@@ -79,7 +82,7 @@ class MixcloudDownloader(Downloader):
 
                 if info is None:
                     logger.error("Failed to extract video information")
-                    raise ValueError("Failed to extract video information")
+                    raise DownloadError("Failed to extract video information", url=url)
 
                 filename = ydl.prepare_filename(info)
                 output_path = str(Path(filename).with_suffix(f".{self.format}"))
@@ -91,14 +94,20 @@ class MixcloudDownloader(Downloader):
                 logger.debug(f"Output file: {output_path}")
                 return output_path
 
+        except DownloadError:
+            # Re-raise DownloadError without wrapping
+            raise
         except Exception as e:
             error_msg = str(e).lower()
             if "not found" in error_msg or "404" in error_msg:
                 logger.error(f"Mix not found: {url}")
+                raise DownloadError(f"Mix not found: {url}", url=url, cause=e) from e
             elif "private" in error_msg:
                 logger.error(f"Cannot download private mix: {url}")
+                raise DownloadError(f"Cannot download private mix: {url}", url=url, cause=e) from e
             elif "premium" in error_msg:
                 logger.error(f"Cannot download premium content: {url}")
+                raise DownloadError(f"Cannot download premium content: {url}", url=url, cause=e) from e
             else:
                 logger.error(f"Failed to download {url}: {str(e)}")
-            return None
+                raise DownloadError(f"Download failed: {str(e)}", url=url, cause=e) from e
