@@ -7,7 +7,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from threading import Lock, Semaphore
+from threading import Lock as ThreadingLock, Semaphore as ThreadingSemaphore
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Local/package imports
@@ -41,22 +41,46 @@ class RateLimitMetrics:
 
 @dataclass
 class ProviderLimits:
-    """Rate limits for a specific provider."""
+    """Rate limits for a specific provider.
+
+    Uses asyncio.Lock instead of threading.Lock to avoid blocking the event loop.
+    Async primitives are lazily initialized to support creation outside async context.
+    """
 
     max_requests_per_minute: int = 25  # Default fallback (matches Shazam default)
     max_concurrent_requests: int = 1  # Default fallback (matches Shazam default)
     tokens: int = field(init=False)
-    last_update: float = field(default_factory=time.time)
-    semaphore: asyncio.Semaphore = field(init=False)
-    lock: Lock = field(default_factory=Lock)
+    last_update: float = field(default_factory=time.monotonic)  # Use monotonic for elapsed time
+    semaphore: Optional[asyncio.Semaphore] = field(init=False, default=None)
+    lock: Optional[asyncio.Lock] = field(init=False, default=None)  # Changed from threading.Lock
     metrics: RateLimitMetrics = field(default_factory=RateLimitMetrics)
     circuit_state: CircuitState = field(default=CircuitState.CLOSED)
     circuit_open_time: Optional[float] = None
     consecutive_failures: int = 0
 
     def __post_init__(self):
+        """Initialize fields after dataclass creation."""
         self.tokens = self.max_requests_per_minute
-        self.semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+        # Try to create async primitives if event loop is running
+        try:
+            asyncio.get_running_loop()
+            self.semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+            self.lock = asyncio.Lock()
+        except RuntimeError:
+            # No event loop running, defer creation
+            self.semaphore = None
+            self.lock = None
+
+    def ensure_async_primitives(self):
+        """Ensure async primitives are created.
+
+        Call this method when you need to use the lock or semaphore
+        from within an async context.
+        """
+        if self.semaphore is None:
+            self.semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+        if self.lock is None:
+            self.lock = asyncio.Lock()
 
 
 class RateLimiter:
@@ -128,11 +152,24 @@ class RateLimiter:
             callback(message)
 
     async def acquire(self, provider: Any, timeout: float = 30.0) -> bool:
-        """Acquire permission to make a request."""
+        """Acquire permission to make a request.
+
+        Uses asyncio.Lock to avoid blocking the event loop.
+
+        Args:
+            provider: Provider to acquire token for
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if token acquired, False if timeout or circuit open
+        """
         if provider not in self._provider_limits:
             self.register_provider(provider)
 
         limits = self._provider_limits[provider]
+
+        # Ensure async primitives are created (handles lazy initialization)
+        limits.ensure_async_primitives()
 
         # Check circuit breaker first (don't count rejected requests)
         circuit_breaker_enabled = getattr(self._config, "circuit_breaker_enabled", True)
@@ -142,7 +179,7 @@ class RateLimiter:
             )
             if (
                 limits.circuit_open_time
-                and time.time() - limits.circuit_open_time > circuit_reset_timeout
+                and time.monotonic() - limits.circuit_open_time > circuit_reset_timeout
             ):
                 limits.circuit_state = CircuitState.HALF_OPEN
             else:
@@ -151,9 +188,9 @@ class RateLimiter:
         # Try to acquire semaphore for concurrent requests
         try:
             # Always attempt to acquire the semaphore with a timeout
-            start_time = time.time()
+            start_time = time.monotonic()
             await asyncio.wait_for(limits.semaphore.acquire(), timeout=timeout)
-            wait_time = time.time() - start_time
+            wait_time = time.monotonic() - start_time
             limits.metrics.total_wait_time += wait_time
             # Note: Don't record semaphore waits as rate limit windows
             # This is concurrency control, not rate limiting
@@ -169,21 +206,21 @@ class RateLimiter:
             return True
 
         # Check rate limiting tokens
-        token_wait_start = time.time()
+        token_wait_start = time.monotonic()
 
-        while time.time() - token_wait_start < timeout:
-            with limits.lock:
+        while time.monotonic() - token_wait_start < timeout:
+            async with limits.lock:  # ASYNC lock - doesn't block event loop!
                 self._refill_tokens(limits)
                 if limits.tokens > 0:
                     limits.tokens -= 1
                     # Record metrics only if we had to wait for tokens (rate limiting)
-                    wait_time = time.time() - token_wait_start
+                    wait_time = time.monotonic() - token_wait_start
                     if wait_time >= RATE_LIMIT_DETECTION_THRESHOLD_SECONDS:
                         # Count successful requests that were rate-limited
                         limits.metrics.rate_limited_requests += 1
-                        limits.metrics.last_rate_limit = time.time()
+                        limits.metrics.last_rate_limit = time.monotonic()
                         limits.metrics.rate_limit_windows.append(
-                            (token_wait_start, time.time())
+                            (token_wait_start, time.monotonic())
                         )
                     return True
 
@@ -193,8 +230,8 @@ class RateLimiter:
         # Timeout exceeded - this is a rate limiting failure
         # Record the window and update last_rate_limit but don't increment
         # rate_limited_requests (that's only for successful requests that waited)
-        limits.metrics.last_rate_limit = time.time()
-        limits.metrics.rate_limit_windows.append((token_wait_start, time.time()))
+        limits.metrics.last_rate_limit = time.monotonic()
+        limits.metrics.rate_limit_windows.append((token_wait_start, time.monotonic()))
 
         limits.semaphore.release()
         return False
@@ -203,11 +240,12 @@ class RateLimiter:
         """Release a concurrent request slot."""
         if provider in self._provider_limits:
             limits = self._provider_limits[provider]
-            limits.semaphore.release()
+            if limits.semaphore is not None:
+                limits.semaphore.release()
 
     def _refill_tokens(self, limits: ProviderLimits):
-        """Refill rate limiting tokens."""
-        now = time.time()
+        """Refill rate limiting tokens based on elapsed time."""
+        now = time.monotonic()  # Use monotonic for elapsed time calculations
         elapsed = now - limits.last_update
         if elapsed >= 1.0:  # Refill every second
             tokens_to_add = int(elapsed * (limits.max_requests_per_minute / 60))
@@ -240,9 +278,9 @@ class RateLimiter:
                 and limits.circuit_state == CircuitState.CLOSED
             ):
                 limits.circuit_state = CircuitState.OPEN
-                limits.circuit_open_time = time.time()
+                limits.circuit_open_time = time.monotonic()  # Use monotonic
                 limits.metrics.circuit_trips += 1
-                limits.metrics.last_circuit_trip = time.time()
+                limits.metrics.last_circuit_trip = time.monotonic()  # Use monotonic
                 self._send_alert(
                     message=f"Circuit breaker opened for provider {provider} "
                     f"after {limits.consecutive_failures} failures"
