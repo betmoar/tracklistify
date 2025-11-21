@@ -98,14 +98,39 @@ class BaseConfig:
                         f"Invalid value for {env_key}: {env_value} - {str(e)}"
                     ) from e
 
-    def _setup_validation(self):
-        """Set up validation rules."""
-        # Rest of validation setup...
+    def _setup_validation(self) -> None:
+        """Set up validation rules for configuration fields.
+
+        This is a template method that subclasses should override to add
+        their specific validation rules. Called automatically during
+        __post_init__.
+
+        Subclasses should call super()._setup_validation() first, then
+        add their own rules using self._validator.
+
+        Example:
+            def _setup_validation(self):
+                super()._setup_validation()
+                self._validator.add_range_rule("my_field", 0, 100)
+        """
+        # Base class has no validation rules to set up
+        # Subclasses override this to add their specific rules
 
     def _validate(self) -> None:
-        """Validate configuration values."""
-        # Add any base validation here
-        pass
+        """Validate all configuration values against defined rules.
+
+        This is a template method that subclasses can override to add
+        custom validation logic beyond the declarative rules.
+        Called automatically during __post_init__ after _setup_validation.
+
+        Subclasses should call super()._validate() first, then add
+        any additional validation that can't be expressed as rules.
+
+        Raises:
+            ValueError: If any configuration value is invalid.
+        """
+        # Base class validation is handled by _validator
+        # Subclasses can override to add custom validation logic
 
 
 @dataclass
