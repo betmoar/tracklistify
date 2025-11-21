@@ -84,35 +84,15 @@ class SpotifyPlaylistExporter:
             raise ExportError(f"Failed to export playlist: {str(e)}") from e
 
     async def _create_playlist(self, name: str) -> str:
-        """Create a new Spotify playlist."""
-        endpoint = f"{self.spotify.API_BASE}/me/playlists"
-
-        data = {"name": name, "description": "Created by Tracklistify", "public": True}
-
-        async with self.spotify._session.post(
-            endpoint, headers=await self.spotify._get_auth_headers(), json=data
-        ) as response:
-            if response.status == 201:
-                playlist = await response.json()
-                return playlist["id"]
-            else:
-                raise ExportError(f"Failed to create playlist: {response.status}")
+        """Create a new Spotify playlist using SpotifyProvider's public API."""
+        try:
+            return await self.spotify.create_playlist(name)
+        except Exception as e:
+            raise ExportError(f"Failed to create playlist: {e}") from e
 
     async def _add_tracks_to_playlist(self, playlist_id: str, track_ids: List[str]):
-        """Add tracks to a Spotify playlist."""
-        endpoint = f"{self.spotify.API_BASE}/playlists/{playlist_id}/tracks"
-
-        # Spotify API limits: max 100 tracks per request
-        for i in range(0, len(track_ids), 100):
-            batch = track_ids[i : i + 100]
-            uris = [f"spotify:track:{track_id}" for track_id in batch]
-
-            async with self.spotify._session.post(
-                endpoint,
-                headers=await self.spotify._get_auth_headers(),
-                json={"uris": uris},
-            ) as response:
-                if response.status != 201:
-                    raise ExportError(
-                        f"Failed to add tracks to playlist: {response.status}"
-                    )
+        """Add tracks to a Spotify playlist using SpotifyProvider's public API."""
+        try:
+            await self.spotify.add_tracks_to_playlist(playlist_id, track_ids)
+        except Exception as e:
+            raise ExportError(f"Failed to add tracks to playlist: {e}") from e

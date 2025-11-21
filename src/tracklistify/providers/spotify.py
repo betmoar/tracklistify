@@ -196,3 +196,54 @@ class SpotifyProvider(MetadataProvider):
         except Exception as e:
             logger.error(f"Spotify track details error: {e}")
             raise
+
+    async def create_playlist(
+        self,
+        name: str,
+        description: str = "Created by Tracklistify",
+        public: bool = True,
+    ) -> str:
+        """Create a new Spotify playlist.
+
+        Args:
+            name: Playlist name
+            description: Playlist description
+            public: Whether the playlist should be public
+
+        Returns:
+            Playlist ID
+
+        Raises:
+            ProviderError: If playlist creation fails
+        """
+        data = {"name": name, "description": description, "public": public}
+
+        try:
+            response = await self._api_request("POST", "me/playlists", json=data)
+            return response["id"]
+        except Exception as e:
+            raise ProviderError(f"Failed to create playlist: {e}") from e
+
+    async def add_tracks_to_playlist(
+        self, playlist_id: str, track_ids: List[str]
+    ) -> None:
+        """Add tracks to a Spotify playlist.
+
+        Args:
+            playlist_id: Spotify playlist ID
+            track_ids: List of Spotify track IDs to add
+
+        Raises:
+            ProviderError: If adding tracks fails
+        """
+        # Spotify API limits: max 100 tracks per request
+        for i in range(0, len(track_ids), 100):
+            batch = track_ids[i : i + 100]
+            uris = [f"spotify:track:{track_id}" for track_id in batch]
+
+            try:
+                await self._api_request(
+                    "POST", f"playlists/{playlist_id}/tracks", json={"uris": uris}
+                )
+            except Exception as e:
+                raise ProviderError(f"Failed to add tracks to playlist: {e}") from e
