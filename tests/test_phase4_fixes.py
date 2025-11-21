@@ -33,11 +33,16 @@ class TestMemoizeHashStability:
             if isinstance(node, ast.Assign):
                 for target in node.targets:
                     if isinstance(target, ast.Name) and target.id == "key":
-                        # Check if it uses hash() function directly
+                        # Check if it uses built-in hash() function directly
                         source_segment = ast.get_source_segment(content, node)
-                        if source_segment and "hash(" in source_segment:
-                            # Check if it's using hashlib (stable) not built-in hash
-                            if "hashlib" not in source_segment:
+                        if source_segment:
+                            # Check for built-in hash() - pattern: "hash(" but NOT "_hash(" or "stable_hash("
+                            # The built-in hash appears as just "hash(" without underscore prefix
+                            import re
+
+                            # Match "hash(" not preceded by underscore or letter
+                            builtin_hash_pattern = r"(?<![_a-zA-Z])hash\("
+                            if re.search(builtin_hash_pattern, source_segment):
                                 pytest.fail(
                                     f"Memoize key uses unstable built-in hash(): {source_segment}"
                                 )

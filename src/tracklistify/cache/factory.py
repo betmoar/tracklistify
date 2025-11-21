@@ -1,6 +1,7 @@
 # tracklistify/cache/factory.py
 
 # Standard library imports
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -12,8 +13,9 @@ from tracklistify.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Global cache instance
+# Global cache instance with thread-safe access
 _cache_instance = None
+_cache_lock = threading.Lock()
 
 
 def create_cache(
@@ -32,10 +34,34 @@ def create_cache(
 
 
 def get_cache() -> BaseCache:
-    """Get global cache instance."""
+    """Get global cache instance.
+
+    This function is thread-safe using double-checked locking pattern.
+    Multiple threads can safely call this function concurrently.
+
+    Returns:
+        BaseCache: The global cache instance.
+    """
     global _cache_instance
 
-    if _cache_instance is None:
-        _cache_instance = create_cache()
+    # Fast path: instance already exists
+    if _cache_instance is not None:
+        return _cache_instance
+
+    # Slow path: need to create instance (thread-safe)
+    with _cache_lock:
+        # Double-check inside lock
+        if _cache_instance is None:
+            _cache_instance = create_cache()
 
     return _cache_instance
+
+
+def clear_cache() -> None:
+    """Clear global cache instance.
+
+    This function is thread-safe.
+    """
+    global _cache_instance
+    with _cache_lock:
+        _cache_instance = None

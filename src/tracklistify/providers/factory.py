@@ -1,25 +1,48 @@
 """Provider factory for creating track identification providers."""
 
 # Standard library imports
+import threading
 
 # Local imports
 
 _provider_factory = None
+_provider_lock = threading.Lock()
 
 
 def create_provider_factory() -> "ProviderFactory":
-    """Create and return a provider factory instance."""
+    """Create and return a provider factory instance.
+
+    This function is thread-safe using double-checked locking pattern.
+    Multiple threads can safely call this function concurrently.
+
+    Returns:
+        ProviderFactory: The global provider factory instance.
+    """
     global _provider_factory
-    if _provider_factory is None:
-        _provider_factory = ProviderFactory()
+
+    # Fast path: instance already exists
+    if _provider_factory is not None:
+        return _provider_factory
+
+    # Slow path: need to create instance (thread-safe)
+    with _provider_lock:
+        # Double-check inside lock
+        if _provider_factory is None:
+            _provider_factory = ProviderFactory()
+
     return _provider_factory
 
 
 def clear_provider_cache():
-    """Clear the cached providers to force recreation with updated implementations."""
+    """Clear the cached providers to force recreation with updated implementations.
+
+    This function is thread-safe.
+    """
     global _provider_factory
-    if _provider_factory is not None:
-        _provider_factory.clear_cache()
+    with _provider_lock:
+        if _provider_factory is not None:
+            _provider_factory.clear_cache()
+            _provider_factory = None
 
 
 class ProviderFactory:

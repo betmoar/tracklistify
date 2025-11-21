@@ -308,7 +308,15 @@ class RateLimiter:
 # Legacy support for the simple RateLimiter
 @dataclass
 class SimpleLimiter:
-    """Simple rate limiter implementation."""
+    """Simple synchronous rate limiter implementation.
+
+    IMPORTANT: This is a legacy, blocking implementation using threading primitives.
+    It should NOT be used in async contexts as it will block the event loop.
+
+    For async code, use the main RateLimiter class which uses asyncio primitives.
+
+    This class is kept for backward compatibility with synchronous code paths.
+    """
 
     max_requests_per_minute: int
     max_concurrent_requests: int

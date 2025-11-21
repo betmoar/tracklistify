@@ -4,22 +4,44 @@ Decorators for function optimization and caching.
 
 # Standard library imports
 import functools
+import hashlib
 import time
 from threading import Lock
 from typing import Any, Callable, Dict, Optional, TypeVar, cast
 
 # Local/package imports
-from tracklistify.cache import get_cache
+# Import kept for module load order (affects circular import resolution)
+from tracklistify.cache import get_cache  # noqa: F401
 
 T = TypeVar("T")
+
+
+def _stable_hash(data: str) -> str:
+    """Create a stable hash from string data.
+
+    Uses SHA-256 for deterministic hashing across Python runs.
+    Unlike built-in hash(), this is stable and has very low collision risk.
+
+    Args:
+        data: String to hash
+
+    Returns:
+        Hexadecimal hash string (first 16 chars for reasonable key length)
+    """
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()[:16]
 
 
 def memoize(ttl: Optional[int] = None) -> Callable:
     """
     Memoize decorator that caches function results.
 
+    Uses stable SHA-256 hashing for cache keys to ensure consistency
+    across Python runs and prevent hash collisions.
+
+    Note: Uses in-memory cache since BaseCache is async.
+
     Args:
-        ttl: Time to live in seconds. If None, uses default cache TTL
+        ttl: Time to live in seconds (currently unused, reserved for future)
 
     Returns:
         Decorated function with memoization
@@ -42,21 +64,22 @@ def memoize(ttl: Optional[int] = None) -> Callable:
             "avg_computation_time_ms": 0,
             "total_calls": 0,
         }
+        # In-memory cache for sync access (BaseCache is async)
+        _local_cache: Dict[str, Any] = {}
 
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T:
-            # Create cache key from function arguments
-            key = f"{prefix}_{hash(str(args) + str(sorted(kwargs.items())))}"
-            cache = get_cache()
+            # Create cache key from function arguments using stable hash
+            args_str = str(args) + str(sorted(kwargs.items()))
+            key = f"{prefix}_{_stable_hash(args_str)}"
 
-            # Try to get from cache
-            cached_result = cache.get(key)
-            if cached_result is not None:
+            # Use local in-memory cache (sync-compatible)
+            if key in _local_cache:
                 with stats_lock:
                     stats["hits"] += 1
                     stats["total_calls"] += 1
                     stats["total_time_saved_ms"] += stats["avg_computation_time_ms"]
-                return cast(T, cached_result["result"])
+                return cast(T, _local_cache[key]["result"])
 
             # Compute result if not in cache
             with stats_lock:
@@ -74,9 +97,9 @@ def memoize(ttl: Optional[int] = None) -> Callable:
                     + computation_time
                 ) / stats["total_calls"]
 
-            # Cache the result
+            # Cache the result in local memory
             cache_data = {"result": result, "computation_time_ms": computation_time}
-            cache.set(key, cache_data)
+            _local_cache[key] = cache_data
 
             return result
 
@@ -94,8 +117,19 @@ def memoize(ttl: Optional[int] = None) -> Callable:
                     "module": func.__module__,
                 }
 
-        # Attach stats getter to the wrapper function
+        def clear_cache() -> None:
+            """Clear the memoization cache for this function."""
+            _local_cache.clear()
+            with stats_lock:
+                stats["hits"] = 0
+                stats["misses"] = 0
+                stats["total_calls"] = 0
+                stats["total_time_saved_ms"] = 0
+                stats["avg_computation_time_ms"] = 0
+
+        # Attach stats getter and clear function to the wrapper
         wrapper.get_stats = get_stats  # type: ignore
+        wrapper.clear_cache = clear_cache  # type: ignore
         return wrapper
 
     return decorator
