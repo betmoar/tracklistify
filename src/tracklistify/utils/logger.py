@@ -52,14 +52,32 @@ def set_logger(
     verbose: bool = False,
     debug: bool = False,
 ) -> logging.Logger:
-    """Configure and return a logger instance."""
+    """Configure and return a logger instance.
+
+    This function can be called multiple times safely. Existing handlers
+    will be removed before adding new ones to prevent duplicate log messages.
+
+    Args:
+        log_level: Base log level string (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        log_file: Optional path to log file for file-based logging
+        max_bytes: Maximum size of log file before rotation (default: 10MB)
+        backup_count: Number of backup log files to keep (default: 5)
+        verbose: Enable verbose output (sets INFO level)
+        debug: Enable debug output (sets DEBUG level)
+
+    Returns:
+        Configured root logger instance
+    """
     logger = logging.getLogger()
+
+    # Clear existing handlers to prevent duplicates on reconfiguration
+    logger.handlers.clear()
 
     # Set base level
     base_level = (
         logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
     )
-    logger.setLevel(base_level)  # getattr(logging, log_level.upper())
+    logger.setLevel(base_level)
 
     console_formatter = ColoredFormatter(
         "%(levelname)s - %(name)s - %(message)s",
