@@ -204,21 +204,31 @@ class IdentificationManager:
                     logger.debug("Provider returned None for track identification")
                     continue
 
-                # Extract track metadata
-                metadata = track_info.get("metadata", {}).get("music", [{}])[0]
-                if not metadata:
+                # Extract track metadata with safe array access
+                music_list = track_info.get("metadata", {}).get("music", [])
+                if not music_list:
                     logger.error("No track metadata found in provider response")
+                    continue
+                metadata = music_list[0] if music_list else {}
+                if not metadata:
+                    logger.error("Empty track metadata in provider response")
                     continue
 
                 # Format time in mix with proper zero-padding
                 time_in_mix = format_seconds_to_hhmmss(int(segment.start_time))
 
+                # Safely extract artist name with default
+                artists_list = metadata.get("artists", [])
+                artist_name = (
+                    artists_list[0].get("name", "Unknown Artist")
+                    if artists_list
+                    else "Unknown Artist"
+                )
+
                 try:
                     track = Track(
                         song_name=metadata.get("title", "Unknown Title"),
-                        artist=metadata.get("artists", [{}])[0].get(
-                            "name", "Unknown Artist"
-                        ),
+                        artist=artist_name,
                         time_in_mix=time_in_mix,
                         confidence=float(
                             metadata.get("score", 100.0)
