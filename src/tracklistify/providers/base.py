@@ -37,7 +37,7 @@ class TrackIdentificationProvider(ABC):
         pass
 
     @abstractmethod
-    async def close(self):
+    async def close(self) -> None:
         """Cleanup resources."""
         pass
 

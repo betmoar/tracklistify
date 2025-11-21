@@ -203,7 +203,7 @@ class SpotifyDownloader(Downloader):
         logger.debug(f"Settings - Quality: {quality}, Format: {format}")
         logger.debug(f"Directories - Output: {self.output_dir}, Temp: {self.temp_dir}")
 
-    async def _ensure_session(self):
+    async def _ensure_session(self) -> None:
         """Ensure aiohttp session exists with cookies."""
         if self._session is None:
             self._session = aiohttp.ClientSession(cookies=self._cookies)
@@ -247,7 +247,7 @@ class SpotifyDownloader(Downloader):
         """Clean filename by removing illegal characters."""
         return re.sub(ILLEGAL_CHARS_REGEX, ILLEGAL_CHARS_REPLACEMENT, filename)
 
-    def _set_metadata(self, file_path: str, metadata: Dict[str, Any]):
+    def _set_metadata(self, file_path: str, metadata: Dict[str, Any]) -> None:
         """Set audio file metadata tags."""
         if self.format == AudioFormat.M4A:
             audio = MP4(file_path)
@@ -383,7 +383,7 @@ class SpotifyDownloader(Downloader):
         except Exception as e:
             raise DownloadError(f"Failed to download from Spotify: {str(e)}") from e
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the downloader session."""
         if self._session:
             await self._session.close()

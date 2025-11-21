@@ -33,7 +33,7 @@ def create_provider_factory() -> "ProviderFactory":
     return _provider_factory
 
 
-def clear_provider_cache():
+def clear_provider_cache() -> None:
     """Clear the cached providers to force recreation with updated implementations.
 
     This function is thread-safe.
@@ -48,7 +48,7 @@ def clear_provider_cache():
 class ProviderFactory:
     """Factory class to manage identification providers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the provider factory."""
         self.providers = {}
 
@@ -71,11 +71,11 @@ class ProviderFactory:
             self.providers[provider_name] = provider
             return provider
 
-    async def close_all(self):
+    async def close_all(self) -> None:
         """Close all providers."""
         for provider in self.providers.values():
             await provider.close()  # Make sure to await the coroutine
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """Clear the provider cache to force recreation of providers."""
         self.providers.clear()

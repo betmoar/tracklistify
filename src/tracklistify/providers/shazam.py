@@ -94,8 +94,7 @@ class ShazamProvider(TrackIdentificationProvider):
         # Implement any additional metadata enrichment if necessary
         return track_info
 
-    async def close(self):
+    async def close(self) -> None:
         """Cleanup resources."""
         # Shazam object does not have a close method; nothing to clean up
         logger.debug("ShazamProvider cleanup called, no resources to close.")
-        pass

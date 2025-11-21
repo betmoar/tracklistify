@@ -402,8 +402,8 @@ class AsyncApp:
             if self.config.debug:
                 self.logger.error(traceback.format_exc())
 
-    async def cleanup(self):
-        """Cleanup resources"""
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
         try:
             # Clean up temp directory
             temp_dir = Path(self.config.temp_dir)
@@ -446,6 +446,6 @@ class AsyncApp:
         except Exception as e:
             self.logger.warning(f"Error cleaning up identification manager: {e}")
 
-    async def close(self):
+    async def close(self) -> None:
         """Cleanup resources."""
         await self.cleanup()
