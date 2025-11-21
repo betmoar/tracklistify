@@ -57,13 +57,10 @@ class BaseCache(Generic[T]):
             "entries": 0,
         }
 
-        # Mock config for now
-        class MockConfig:
-            cache_enabled = True
-            cache_compression_enabled = True
-            cache_storage_format = "json"
+        # Use real configuration (lazy import to avoid circular dependency)
+        from tracklistify.config.factory import get_config
 
-        self._config = MockConfig()
+        self._config = get_config()
 
         logger.debug(f"Initialized cache with TTL={ttl}s, max_size={max_size} bytes")
 

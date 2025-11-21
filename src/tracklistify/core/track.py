@@ -113,16 +113,6 @@ class Track:
             logger.error(f"Invalid time format: {self.time_in_mix}")
             return 0
 
-    def some_method(self):
-        from tracklistify.config.factory import get_config
-
-        config = get_config()
-        # Example usage of config
-        time_threshold = config.time_threshold
-        max_duplicates = config.max_duplicates
-        # Use these variables as needed
-        print(f"Time threshold: {time_threshold}, Max duplicates: {max_duplicates}")
-
 
 class TrackMatcher:
     """Handles track matching and merging."""
@@ -238,63 +228,33 @@ class TrackMatcher:
         Raises:
             TrackIdentificationError: If track identification fails
         """
-        try:
-            # Validate audio file
-            if not audio_file.exists():
-                raise FileNotFoundError(f"Audio file not found: {audio_file}")
-            if audio_file.stat().st_size == 0:
-                raise ValueError(f"Audio file is empty: {audio_file}")
+        # Validate audio file
+        if not audio_file.exists():
+            raise FileNotFoundError(f"Audio file not found: {audio_file}")
+        if audio_file.stat().st_size == 0:
+            raise ValueError(f"Audio file is empty: {audio_file}")
 
-            # Clear any existing tracks
-            self.tracks = []
+        # Clear any existing tracks
+        self.tracks = []
 
-            # Mock track identification for our test file
-            if audio_file.name == "test_mix.mp3":
-                # Add some test tracks
-                self.add_track(
-                    Track(
-                        song_name="Test Track 1",
-                        artist="Test Artist 1",
-                        time_in_mix="00:00:00",
-                        confidence=90.0,
-                    )
-                )
-                self.add_track(
-                    Track(
-                        song_name="Test Track 2",
-                        artist="Test Artist 2",
-                        time_in_mix="00:00:30",
-                        confidence=85.0,
-                    )
-                )
-            else:
-                # Validate audio format (basic check)
-                with open(audio_file, "rb") as f:
-                    header = f.read(4)
-                    if not header.startswith(b"ID3") and not header.startswith(
-                        b"\xff\xfb"
-                    ):
-                        raise ValueError(f"Invalid MP3 file format: {audio_file}")
+        # Validate audio format (basic check)
+        with open(audio_file, "rb") as f:
+            header = f.read(4)
+            if not header.startswith(b"ID3") and not header.startswith(b"\xff\xfb"):
+                raise ValueError(f"Invalid MP3 file format: {audio_file}")
 
-                # TODO: Implement actual track identification using ACRCloud
-                # This would involve:
-                # 1. Splitting audio into segments
-                # 2. Sending each segment to ACRCloud
-                # 3. Processing responses
-                # 4. Creating Track objects
-                raise NotImplementedError(
-                    "Real track identification not implemented yet"
-                )
+        # Note: This method is a legacy stub. For actual track identification,
+        # use IdentificationManager from tracklistify.utils.identification
+        logger.warning(
+            "TrackMatcher.identify_tracks is deprecated. "
+            "Use IdentificationManager.identify_tracks instead."
+        )
 
-            # Sort tracks by timestamp before merging
-            self.tracks.sort(key=lambda t: t.time_to_seconds())
+        # Sort tracks by timestamp before merging
+        self.tracks.sort(key=lambda t: t.time_to_seconds())
 
-            # Merge similar tracks and return
-            return self.merge_nearby_tracks()
-
-        except Exception as e:
-            logger.error(f"Failed to process audio file: {e}")
-            raise TrackIdentificationError(f"Failed to process audio file: {e}") from e
+        # Merge similar tracks and return
+        return self.merge_nearby_tracks()
 
     def _create_track_group(self, track: Track) -> List[Track]:
         """Initialize a new track group with a single track."""
