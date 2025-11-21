@@ -34,6 +34,66 @@ SENSITIVE_FIELDS = {
     "SPOTIFY_CLIENT_SECRET",
 }
 
+# Sensitive field patterns for environment variables
+SENSITIVE_PATTERNS = [
+    "password", "passwd", "pwd",
+    "secret", "token", "key",
+    "api_key", "apikey",
+    "access_key", "access_secret",
+    "client_secret", "client_id",
+    "auth", "credential",
+]
+
+
+def is_sensitive_key(key: str) -> bool:
+    """Check if environment variable key is sensitive.
+
+    Args:
+        key: Environment variable name
+
+    Returns:
+        True if key appears to contain sensitive data
+
+    Examples:
+        >>> is_sensitive_key("TRACKLISTIFY_API_KEY")
+        True
+        >>> is_sensitive_key("TRACKLISTIFY_DEBUG")
+        False
+    """
+    key_lower = key.lower()
+    return any(pattern in key_lower for pattern in SENSITIVE_PATTERNS)
+
+
+def mask_sensitive_value(key: str, value: str) -> str:
+    """Mask sensitive values for logging.
+
+    Shows first 3 and last 3 characters for sensitive values,
+    masking the middle with asterisks.
+
+    Args:
+        key: Environment variable or field name
+        value: Value to potentially mask
+
+    Returns:
+        Masked value if sensitive, original value if not
+
+    Examples:
+        >>> mask_sensitive_value("TRACKLISTIFY_API_KEY", "secret123456")
+        'sec*****456'
+        >>> mask_sensitive_value("TRACKLISTIFY_DEBUG", "true")
+        'true'
+        >>> mask_sensitive_value("TRACKLISTIFY_PASSWORD", "short")
+        '***'
+    """
+    if not is_sensitive_key(key):
+        return value
+
+    if not value or len(value) < 8:
+        return "***"
+
+    # Show first 3 and last 3 characters
+    return f"{value[:3]}*****{value[-3:]}"
+
 
 class EncryptionError(Exception):
     """Raised when encryption/decryption fails."""
@@ -57,8 +117,10 @@ def secure_hash(value: str) -> str:
     return hashlib.blake2b(value.encode()).hexdigest()
 
 
-def mask_sensitive_value(value: str) -> str:
+def mask_sensitive_value_old(value: str) -> str:
     """
+    OLD VERSION - Deprecated. Use mask_sensitive_value(key, value) instead.
+
     Mask a sensitive value, showing only the first character for short strings
     or first three characters for longer strings.
 
@@ -291,7 +353,7 @@ class SecureString:
 
     def __str__(self) -> str:
         """Return masked string representation."""
-        return mask_sensitive_value(self.get())
+        return mask_sensitive_value("secure_value", self.get())
 
 
 class SecureConfigError(Exception):
@@ -336,7 +398,7 @@ def mask_sensitive_data(data: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(value, dict):
             masked[key] = mask_sensitive_data(value)
         elif isinstance(value, str) and is_sensitive_field(key):
-            masked[key] = mask_sensitive_value(value)
+            masked[key] = mask_sensitive_value(key, value)
         else:
             masked[key] = value
     return masked

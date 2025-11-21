@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .config import ConfigError, get_config, get_root
+from .config.security import mask_sensitive_value
 from .core import ApplicationError, AsyncApp
 
 # Local/package imports
@@ -123,10 +124,12 @@ def load_environment_variables(env_path: Path) -> None:
         load_dotenv(env_path)
         logger.info(f"Loaded environment from {env_path}")
 
-        # Log loaded environment variables for debugging
+        # Log loaded environment variables for debugging (mask sensitive values)
         for key, value in os.environ.items():
             if key.startswith("TRACKLISTIFY_"):
-                logger.debug(f"Loaded env var: {key}={value}")
+                # Mask sensitive values to prevent credential exposure
+                display_value = mask_sensitive_value(key, value)
+                logger.debug(f"Loaded env var: {key}={display_value}")
 
 
 def cli() -> None:

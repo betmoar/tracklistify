@@ -282,10 +282,12 @@ def test_sensitive_field_detection():
 
 
 def test_sensitive_value_masking():
-    """Test sensitive value masking."""
-    assert mask_sensitive_value("password123") == "pas*****"
-    assert mask_sensitive_value("key") == "k**"
-    assert mask_sensitive_value("") == ""
+    """Test sensitive value masking (updated for new API)."""
+    # Updated to use new two-argument API
+    assert mask_sensitive_value("password", "password123") == "pas*****123"
+    assert mask_sensitive_value("key", "secret_key") == "sec*****key"
+    assert mask_sensitive_value("key", "key") == "***"
+    assert mask_sensitive_value("password", "") == "***"
 
     data = {
         "username": "user",

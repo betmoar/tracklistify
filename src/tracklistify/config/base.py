@@ -80,9 +80,13 @@ class BaseConfig:
                         # Handle numeric types
                         try:
                             value = field_type(env_value)
-                        except ValueError:
-                            # Try evaluating numeric expressions
-                            value = field_type(eval(env_value))
+                        except ValueError as e:
+                            # Do NOT use eval() - security vulnerability!
+                            # Only accept valid numeric strings
+                            raise ValueError(
+                                f"Invalid {field_type.__name__} value for {env_key}: {env_value}. "
+                                f"Expected a valid {field_type.__name__}."
+                            ) from e
                     else:
                         # Handle other types
                         value = field_type(env_value)
