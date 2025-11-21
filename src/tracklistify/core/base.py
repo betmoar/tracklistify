@@ -3,10 +3,16 @@
 # Standard library imports
 import asyncio
 import concurrent.futures
+import os
+import shutil
+import subprocess
 import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import List
+
+# Third-party imports
+from mutagen._file import File
 
 # Local/package imports
 from tracklistify.config.factory import get_config
@@ -194,13 +200,6 @@ class AsyncApp:
             f"Config values: segment_length={self.config.segment_length}, "
             f"overlap_duration={self.config.overlap_duration}"
         )
-
-        import os
-        import subprocess
-        from concurrent.futures import ThreadPoolExecutor
-        from pathlib import Path
-
-        from mutagen._file import File
 
         audio = File(file_path)
         if audio is None:
@@ -415,8 +414,6 @@ class AsyncApp:
                             file.unlink()
                             self.logger.debug(f"Removed temporary file: {file}")
                         elif file.is_dir():
-                            import shutil
-
                             shutil.rmtree(file)
                             self.logger.debug(f"Removed temporary directory: {file}")
                     except Exception as e:
@@ -425,8 +422,6 @@ class AsyncApp:
                 # Try to remove the directory itself
                 try:
                     # Use rmtree instead of rmdir to handle any remaining files
-                    import shutil
-
                     shutil.rmtree(temp_dir)
                     self.logger.debug("Removed temporary directory")
                 except Exception as e:

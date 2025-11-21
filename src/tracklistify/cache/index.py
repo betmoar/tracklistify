@@ -6,6 +6,7 @@ Cache index management for efficient key-to-filename mapping.
 import asyncio
 import json
 import time
+import zlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
@@ -239,8 +240,6 @@ class CacheIndex:
 
                     # Handle compressed files
                     if data.startswith(ZLIB_HEADER):
-                        import zlib
-
                         data = zlib.decompress(data)
 
                     entry = json.loads(data.decode("utf-8"))
