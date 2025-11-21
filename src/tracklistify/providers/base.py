@@ -24,7 +24,13 @@ __all__ = [
 
 
 class TrackIdentificationProvider(ABC):
-    """Abstract base class for track identification providers."""
+    """Abstract base class for track identification providers.
+
+    Supports async context manager protocol for proper resource cleanup:
+
+        async with SomeProvider() as provider:
+            result = await provider.identify_track(segment)
+    """
 
     @abstractmethod
     async def identify_track(self, audio_segment) -> Optional[Dict[str, Any]]:
@@ -41,9 +47,20 @@ class TrackIdentificationProvider(ABC):
         """Cleanup resources."""
         pass
 
+    async def __aenter__(self) -> "TrackIdentificationProvider":
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit async context manager, ensuring cleanup."""
+        await self.close()
+
 
 class MetadataProvider(ABC):
-    """Base interface for metadata providers."""
+    """Base interface for metadata providers.
+
+    Supports async context manager protocol for proper resource cleanup.
+    """
 
     @abstractmethod
     async def enrich_metadata(self, track_info: Dict) -> Dict:
@@ -92,3 +109,11 @@ class MetadataProvider(ABC):
     async def close(self) -> None:
         """Close the provider's resources."""
         pass
+
+    async def __aenter__(self) -> "MetadataProvider":
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit async context manager, ensuring cleanup."""
+        await self.close()
