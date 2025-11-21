@@ -106,7 +106,7 @@ class ProgressDisplay:
             >>> display.total_segments
             10
         """
-        self.start_time = time.time()
+        self.start_time = time.monotonic()
         self.current_segment = 0
         self.total_segments = total
         logger.info(f"Starting identification of {total} segments")
@@ -129,7 +129,7 @@ class ProgressDisplay:
         # Calculate progress
         if self.total_segments > 0:
             progress = current / self.total_segments
-            elapsed = time.time() - self.start_time if self.start_time else 0
+            elapsed = time.monotonic() - self.start_time if self.start_time else 0
 
             # Create progress bar
             bar = create_progress_bar(progress, width=30)
@@ -157,7 +157,7 @@ class ProgressDisplay:
             >>> display.complete()
         """
         if self.start_time:
-            elapsed = time.time() - self.start_time
+            elapsed = time.monotonic() - self.start_time
             elapsed_str = format_duration(elapsed)
 
             # Move to next line and show completion

@@ -86,9 +86,9 @@ def memoize(ttl: Optional[int] = None) -> Callable:
                 stats["misses"] += 1
                 stats["total_calls"] += 1
 
-            start_time = time.time()
+            start_time = time.monotonic()
             result = func(*args, **kwargs)
-            computation_time = (time.time() - start_time) * 1000  # Convert to ms
+            computation_time = (time.monotonic() - start_time) * 1000  # Convert to ms
 
             # Update average computation time
             with stats_lock:
