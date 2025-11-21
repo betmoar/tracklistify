@@ -33,6 +33,12 @@ class TracklistifyError(Exception):
     pass
 
 
+class ApplicationError(TracklistifyError):
+    """Base application error for general application failures."""
+
+    pass
+
+
 class APIError(TracklistifyError):
     """Raised when an API request fails."""
 
@@ -67,11 +73,18 @@ class AudioProcessingError(TracklistifyError):
 
 
 class TrackIdentificationError(TracklistifyError):
-    """Raised when track identification fails."""
+    """Raised when track identification fails or produces no results."""
 
-    def __init__(self, message: str, segment: int = None, cause: Exception = None):
+    def __init__(
+        self,
+        message: str,
+        segment: int = None,
+        cause: Exception = None,
+        context: dict = None,
+    ):
         self.segment = segment
         self.cause = cause
+        self.context = context or {}
         super().__init__(message)
 
 
@@ -172,6 +185,21 @@ class AuthenticationError(TracklistifyError):
         self.service = service
         self.cause = cause
         super().__init__(message)
+
+
+class RateLimitError(ProviderError):
+    """Raised when provider rate limit is exceeded."""
+
+    def __init__(self, message: str, provider: str = None, retry_after: float = None):
+        self.retry_after = retry_after
+        super().__init__(message, provider=provider)
+
+
+class IdentificationError(ProviderError):
+    """Raised when track identification fails."""
+
+    def __init__(self, message: str, provider: str = None, cause: Exception = None):
+        super().__init__(message, provider=provider, cause=cause)
 
 
 class ExportError(TracklistifyError):

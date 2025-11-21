@@ -6,6 +6,11 @@ from typing import Dict, Type, TypeVar
 # Local imports
 from .base import BaseConfig, TrackIdentificationConfig
 
+# Import ConfigError from canonical location for re-export
+from tracklistify.core.exceptions import ConfigError
+
+__all__ = ["ConfigFactory", "get_config", "clear_config", "ConfigError"]
+
 T = TypeVar("T", bound=BaseConfig)
 
 
@@ -57,9 +62,3 @@ def get_config(force_refresh: bool = False) -> TrackIdentificationConfig:
 def clear_config() -> None:
     """Clear global configuration instance."""
     ConfigFactory.clear_cache()
-
-
-class ConfigError(Exception):
-    """Configuration related errors."""
-
-    pass

@@ -10,6 +10,7 @@ from typing import List
 
 # Local/package imports
 from tracklistify.config.factory import get_config
+from tracklistify.core.exceptions import ApplicationError, TrackIdentificationError
 from tracklistify.core.track import Track
 from tracklistify.core.types import AudioSegment
 from tracklistify.downloaders import DownloaderFactory
@@ -448,17 +449,3 @@ class AsyncApp:
     async def close(self):
         """Cleanup resources."""
         await self.cleanup()
-
-
-class ApplicationError(Exception):
-    """Base application error."""
-
-    pass
-
-
-class TrackIdentificationError(ApplicationError):
-    """Raised when track identification fails or produces no results."""
-
-    def __init__(self, message: str, context: dict = None):
-        super().__init__(message)
-        self.context = context or {}

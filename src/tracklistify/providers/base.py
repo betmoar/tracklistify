@@ -4,29 +4,23 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
+# Import exceptions from canonical location
+from tracklistify.core.exceptions import (
+    AuthenticationError,
+    IdentificationError,
+    ProviderError,
+    RateLimitError,
+)
 
-class ProviderError(Exception):
-    """Base class for provider-related errors."""
-
-    pass
-
-
-class AuthenticationError(ProviderError):
-    """Raised when provider authentication fails."""
-
-    pass
-
-
-class RateLimitError(ProviderError):
-    """Raised when provider rate limit is exceeded."""
-
-    pass
-
-
-class IdentificationError(ProviderError):
-    """Raised when track identification fails."""
-
-    pass
+# Re-export for backward compatibility
+__all__ = [
+    "AuthenticationError",
+    "IdentificationError",
+    "ProviderError",
+    "RateLimitError",
+    "TrackIdentificationProvider",
+    "MetadataProvider",
+]
 
 
 class TrackIdentificationProvider(ABC):
