@@ -62,6 +62,26 @@ class TestCLIParsing:
         assert args.provider == "shazam"
         assert args.no_fallback is True
 
+    def test_verbose_default_false(self):
+        """Test --verbose default is False (Issue #9)."""
+        args = parse_args(["test.mp3"])
+        assert args.verbose is False, "verbose should default to False"
+
+    def test_verbose_flag_sets_true(self):
+        """Test --verbose flag sets True."""
+        args = parse_args(["test.mp3", "-v"])
+        assert args.verbose is True
+
+    def test_debug_default_false(self):
+        """Test --debug default is False."""
+        args = parse_args(["test.mp3"])
+        assert args.debug is False
+
+    def test_debug_flag_sets_true(self):
+        """Test --debug flag sets True."""
+        args = parse_args(["test.mp3", "-d"])
+        assert args.debug is True
+
 
 @pytest.mark.asyncio
 class TestCLIArgumentPassing:
