@@ -46,9 +46,42 @@ class AsyncApp:
         self.shutdown_event.set()
         self.executor.shutdown(wait=True)
 
-    async def process_input(self, input_path: str):
-        """Process input URL or file path."""
+    async def process_input(
+        self,
+        input_path: str,
+        formats: str = None,
+        provider: str = None,
+        fallback_enabled: bool = None,
+    ):
+        """Process input URL or file path.
+
+        Args:
+            input_path: Path to audio file or URL to download
+            formats: Output format(s) - overrides config if provided
+            provider: Primary provider name - overrides config if provided
+            fallback_enabled: Enable/disable fallback - overrides config if provided
+        """
         try:
+            # Apply CLI argument overrides to config
+            if provider is not None:
+                self.logger.info(f"Overriding primary provider: {provider}")
+                self.config.primary_provider = provider
+                # Recreate identification manager with updated config
+                self.identification_manager = IdentificationManager(
+                    config=self.config, provider_factory=self.provider_factory
+                )
+
+            if fallback_enabled is not None:
+                self.logger.info(f"Overriding fallback_enabled: {fallback_enabled}")
+                self.config.fallback_enabled = fallback_enabled
+
+            # Store formats for output (used in save_output)
+            if formats is not None:
+                self.logger.info(f"Output formats: {formats}")
+                self._output_formats = formats
+            else:
+                self._output_formats = "all"
+
             # Validate input (URL or local file path)
             validated_result = validate_input(input_path)
             if validated_result is None:
@@ -136,7 +169,9 @@ class AsyncApp:
             # Only save if we have identified tracks
             self.logger.info("Saving output...")
             if len(tracks) > 0:
-                await self.save_output(tracks, self.config.output_format)
+                # Use _output_formats if set by CLI, otherwise fall back to config
+                output_format = getattr(self, '_output_formats', self.config.output_format)
+                await self.save_output(tracks, output_format)
             else:
                 raise ValueError(
                     "No tracks were successfully identified with sufficient confidence"

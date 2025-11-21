@@ -20,7 +20,14 @@ logger = get_logger(__name__)
 
 
 async def main(args: argparse.Namespace) -> int:
-    """Main entry point."""
+    """Main entry point.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
     app = None  # Initialize app to None
     try:
         # Load configuration
@@ -37,8 +44,13 @@ async def main(args: argparse.Namespace) -> int:
         for sig in (signal.SIGTERM, signal.SIGINT):
             asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
 
-        # Sample items for processing
-        await app.process_input(args.input)
+        # Process input with CLI argument overrides
+        await app.process_input(
+            args.input,
+            formats=args.formats,
+            provider=args.provider,
+            fallback_enabled=not args.no_fallback,  # Invert --no-fallback flag
+        )
 
         return 0
 
@@ -56,8 +68,15 @@ async def main(args: argparse.Namespace) -> int:
             await app.close()
 
 
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
+def parse_args(argv=None) -> argparse.Namespace:
+    """Parse command line arguments.
+
+    Args:
+        argv: Optional list of arguments for testing. If None, uses sys.argv.
+
+    Returns:
+        Parsed arguments namespace
+    """
     parser = argparse.ArgumentParser(description="Identify tracks in a mix.")
 
     parser.add_argument(
@@ -115,7 +134,7 @@ def parse_args() -> argparse.Namespace:
         help="Enable debug logging",
     )
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def load_environment_variables(env_path: Path) -> None:
