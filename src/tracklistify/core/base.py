@@ -429,8 +429,10 @@ class AsyncApp:
                     # If rmtree fails, try to at least remove empty directory
                     try:
                         temp_dir.rmdir()
-                    except Exception:
-                        pass
+                    except Exception as rmdir_err:
+                        self.logger.debug(
+                            f"Could not remove temp directory {temp_dir}: {rmdir_err}"
+                        )
         except Exception as e:
             self.logger.warning(f"Error during cleanup: {e}")
 

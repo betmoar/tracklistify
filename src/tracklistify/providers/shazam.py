@@ -29,7 +29,8 @@ class ShazamProvider(TrackIdentificationProvider):
             # Brief cooldown to avoid hammering upstream between calls
             try:
                 cooldown = float(getattr(self._config, "shazam_cooldown_seconds", 2.25))
-            except Exception:
+            except (ValueError, AttributeError, TypeError) as e:
+                logger.debug(f"Failed to get cooldown config, using default: {e}")
                 cooldown = 2.25
             if cooldown and cooldown > 0:
                 await asyncio.sleep(cooldown)
