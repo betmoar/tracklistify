@@ -1,4 +1,6 @@
-# tracklistify/utils/time_formatter.py
+"""Time formatting utilities."""
+
+from tracklistify.utils.constants import SECONDS_PER_HOUR, SECONDS_PER_MINUTE
 
 
 def format_seconds_to_hhmmss(seconds: float) -> str:
@@ -10,7 +12,7 @@ def format_seconds_to_hhmmss(seconds: float) -> str:
     Returns:
         String in HH:MM:SS format
     """
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    seconds = int(seconds % 60)
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    hours = int(seconds // SECONDS_PER_HOUR)
+    minutes = int((seconds % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE)
+    secs = int(seconds % SECONDS_PER_MINUTE)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"

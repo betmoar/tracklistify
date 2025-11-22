@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, Optional, TypeVar, cast
 # Local/package imports
 # Import kept for module load order (affects circular import resolution)
 from tracklistify.cache import get_cache  # noqa: F401
+from tracklistify.utils.constants import MILLISECONDS_PER_SECOND, STABLE_HASH_LENGTH
 
 T = TypeVar("T")
 
@@ -28,7 +29,7 @@ def _stable_hash(data: str) -> str:
     Returns:
         Hexadecimal hash string (first 16 chars for reasonable key length)
     """
-    return hashlib.sha256(data.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()[:STABLE_HASH_LENGTH]
 
 
 def memoize(ttl: Optional[int] = None) -> Callable:
@@ -88,7 +89,7 @@ def memoize(ttl: Optional[int] = None) -> Callable:
 
             start_time = time.monotonic()
             result = func(*args, **kwargs)
-            computation_time = (time.monotonic() - start_time) * 1000  # Convert to ms
+            computation_time = (time.monotonic() - start_time) * MILLISECONDS_PER_SECOND
 
             # Update average computation time
             with stats_lock:
