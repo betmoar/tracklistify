@@ -149,3 +149,69 @@ class TestTimeFormatterFunctionality:
 
         assert format_seconds_to_hhmmss(90.5) == "00:01:30"
         assert format_seconds_to_hhmmss(3661.9) == "01:01:01"
+
+
+class TestDRYRefactoring:
+    """Tests for DRY refactoring improvements."""
+
+    def test_platform_domains_defined(self):
+        """Platform domain constants should be defined."""
+        from tracklistify.utils.validation import (
+            YOUTUBE_DOMAINS,
+            SOUNDCLOUD_DOMAINS,
+            MIXCLOUD_DOMAINS,
+        )
+
+        assert "youtube.com" in YOUTUBE_DOMAINS
+        assert "youtu.be" in YOUTUBE_DOMAINS
+        assert "soundcloud.com" in SOUNDCLOUD_DOMAINS
+        assert "mixcloud.com" in MIXCLOUD_DOMAINS
+
+    def test_platform_helper_exists(self):
+        """DRY helper function _is_platform_url should exist."""
+        file_path = Path("src/tracklistify/utils/validation.py")
+
+        with open(file_path) as f:
+            content = f.read()
+
+        assert "def _is_platform_url" in content, (
+            "DRY helper function should exist"
+        )
+
+    def test_url_validators_use_helper(self):
+        """URL validation functions should use the DRY helper."""
+        file_path = Path("src/tracklistify/utils/validation.py")
+
+        with open(file_path) as f:
+            content = f.read()
+
+        # Check that validators delegate to helper
+        assert "_is_platform_url(url, YOUTUBE_DOMAINS)" in content
+        assert "_is_platform_url(url, SOUNDCLOUD_DOMAINS)" in content
+        assert "_is_platform_url(url, MIXCLOUD_DOMAINS)" in content
+
+    def test_youtube_url_validation_works(self):
+        """YouTube URL validation should still work after refactoring."""
+        from tracklistify.utils.validation import is_youtube_url
+
+        assert is_youtube_url("https://youtube.com/watch?v=test") is True
+        assert is_youtube_url("https://www.youtube.com/watch?v=test") is True
+        assert is_youtube_url("https://youtu.be/test") is True
+        assert is_youtube_url("https://soundcloud.com/test") is False
+        assert is_youtube_url("") is False
+
+    def test_soundcloud_url_validation_works(self):
+        """SoundCloud URL validation should still work after refactoring."""
+        from tracklistify.utils.validation import is_soundcloud_url
+
+        assert is_soundcloud_url("https://soundcloud.com/user/track") is True
+        assert is_soundcloud_url("https://www.soundcloud.com/user") is True
+        assert is_soundcloud_url("https://youtube.com/watch?v=test") is False
+
+    def test_mixcloud_url_validation_works(self):
+        """Mixcloud URL validation should still work after refactoring."""
+        from tracklistify.utils.validation import is_mixcloud_url
+
+        assert is_mixcloud_url("https://mixcloud.com/user/mix") is True
+        assert is_mixcloud_url("https://www.mixcloud.com/user") is True
+        assert is_mixcloud_url("https://youtube.com/watch?v=test") is False

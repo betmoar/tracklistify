@@ -4,13 +4,18 @@ Input validation utilities for Tracklistify.
 
 # Standard library imports
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
 # Local/package imports
 from .logger import get_logger
 
 logger = get_logger(__name__)
+
+# Platform domain configurations for URL validation
+YOUTUBE_DOMAINS = ["youtube.com", "youtu.be"]
+SOUNDCLOUD_DOMAINS = ["soundcloud.com"]
+MIXCLOUD_DOMAINS = ["mixcloud.com"]
 
 
 def validate_input(input_path: str) -> Optional[Tuple[str, bool]]:
@@ -56,15 +61,18 @@ def validate_input(input_path: str) -> Optional[Tuple[str, bool]]:
     return None
 
 
-def is_youtube_url(url: str) -> bool:
+def _is_platform_url(url: str, domains: List[str]) -> bool:
     """
-    Check if a URL is a valid YouTube URL.
+    Check if a URL belongs to a specific platform.
+
+    This is a DRY helper function that centralizes URL validation logic.
 
     Args:
         url: URL to check
+        domains: List of base domain names for the platform (e.g., ["youtube.com", "youtu.be"])
 
     Returns:
-        bool: True if URL is a valid YouTube URL, False otherwise
+        bool: True if URL belongs to the platform, False otherwise
     """
     if not url:
         return False
@@ -78,13 +86,28 @@ def is_youtube_url(url: str) -> bool:
         return False
 
     host = urlparse(validated).netloc.lower()
-    # Fix: Use exact domain matching instead of substring check
-    return host in (
-        "youtube.com",
-        "www.youtube.com",
-        "youtu.be",
-        "www.youtu.be",
-    ) or host.endswith(".youtube.com")
+
+    # Check exact matches and www variants
+    for domain in domains:
+        if host == domain or host == f"www.{domain}":
+            return True
+        if host.endswith(f".{domain}"):
+            return True
+
+    return False
+
+
+def is_youtube_url(url: str) -> bool:
+    """
+    Check if a URL is a valid YouTube URL.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        bool: True if URL is a valid YouTube URL, False otherwise
+    """
+    return _is_platform_url(url, YOUTUBE_DOMAINS)
 
 
 def is_soundcloud_url(url: str) -> bool:
@@ -97,22 +120,7 @@ def is_soundcloud_url(url: str) -> bool:
     Returns:
         bool: True if URL is a valid Soundcloud URL, False otherwise
     """
-    if not url:
-        return False
-
-    result = validate_input(url)
-    if not result:
-        return False
-
-    validated, is_local = result
-    if is_local:
-        return False
-
-    host = urlparse(validated).netloc.lower()
-    # Fix: Use exact domain matching
-    return host in ("soundcloud.com", "www.soundcloud.com") or host.endswith(
-        ".soundcloud.com"
-    )
+    return _is_platform_url(url, SOUNDCLOUD_DOMAINS)
 
 
 def is_mixcloud_url(url: str) -> bool:
@@ -125,19 +133,4 @@ def is_mixcloud_url(url: str) -> bool:
     Returns:
         bool: True if URL is a valid Mixcloud URL, False otherwise
     """
-    if not url:
-        return False
-
-    result = validate_input(url)
-    if not result:
-        return False
-
-    validated, is_local = result
-    if is_local:
-        return False
-
-    host = urlparse(validated).netloc.lower()
-    # Fix: Use exact domain matching
-    return host in ("mixcloud.com", "www.mixcloud.com") or host.endswith(
-        ".mixcloud.com"
-    )
+    return _is_platform_url(url, MIXCLOUD_DOMAINS)
