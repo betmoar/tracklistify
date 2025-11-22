@@ -669,7 +669,7 @@ class TestAppSplitAudio:
         mock_audio.info.length = 60  # 1 minute duration
 
         # Mock mutagen.File
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         # Mock subprocess.run to simulate successful file creation
         def mock_run(cmd, **kwargs):
@@ -705,7 +705,7 @@ class TestAppSplitAudio:
     def test_split_audio_invalid_file(self, app, temp_dir, monkeypatch):
         """Test handling of invalid audio file."""
         # Mock mutagen.File to return None (invalid file)
-        monkeypatch.setattr("mutagen._file.File", lambda x: None)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: None)
 
         test_file = temp_dir / "invalid.mp3"
         test_file.write_text("invalid content")
@@ -718,7 +718,7 @@ class TestAppSplitAudio:
         # Mock audio file
         mock_audio = Mock()
         mock_audio.info.length = 60
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         # Mock subprocess.run to raise error
         def mock_run(*args, **kwargs):
@@ -737,7 +737,7 @@ class TestAppSplitAudio:
         # Mock audio file with 60 seconds duration
         mock_audio = Mock()
         mock_audio.info.length = 60
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         # Mock subprocess.run to create actual files
         def mock_run(*args, **kwargs):
@@ -771,7 +771,7 @@ class TestAppSplitAudio:
         """Test handling of very short audio files."""
         mock_audio = Mock()
         mock_audio.info.length = 5  # 5 seconds duration
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         def mock_run(cmd, **kwargs):
             output_file = Path(cmd[-1])
@@ -790,7 +790,7 @@ class TestAppSplitAudio:
         """Test handling of ThreadPoolExecutor errors."""
         mock_audio = Mock()
         mock_audio.info.length = 60
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         def mock_run(cmd, **kwargs):
             raise RuntimeError("Thread pool error")
@@ -807,7 +807,7 @@ class TestAppSplitAudio:
         """Test handling of segment files that are too small."""
         mock_audio = Mock()
         mock_audio.info.length = 60
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         def mock_run(cmd, **kwargs):
             output_file = Path(cmd[-1])
