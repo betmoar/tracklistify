@@ -82,12 +82,14 @@ def _is_domain_or_subdomain(hostname: str, domain: str) -> bool:
         return True
 
     # Check for proper subdomain (domain must be at the end, preceded by a dot)
-    # and ensure the character before the dot is not a dot (to prevent "..")
+    # This allows arbitrary subdomain sequences like "api.music.youtube.com"
     if hostname.endswith("." + domain):
-        # Extract the part before the domain
-        subdomain_part = hostname[:-(len(domain) + 1)]
-        # Ensure it's a valid subdomain (not empty and doesn't contain dots)
-        return subdomain_part and "." not in subdomain_part
+        # Ensure the character before the dot is not a dot (to prevent "..")
+        # and that we're not dealing with something like "youtube.com.evil.com"
+        dot_index = hostname.rfind("." + domain)
+        if dot_index > 0:
+            # Check that the character before the dot is not a dot
+            return hostname[dot_index - 1] != "."
 
     return False
 
