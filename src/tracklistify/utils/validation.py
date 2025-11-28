@@ -4,7 +4,7 @@ Input validation utilities for Tracklistify.
 
 # Standard library imports
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Iterable, Optional, Tuple
 from urllib.parse import urlparse
 
 # Local/package imports
@@ -61,39 +61,42 @@ def validate_input(input_path: str) -> Optional[Tuple[str, bool]]:
     return None
 
 
-def _is_platform_url(url: str, domains: List[str]) -> bool:
+def _normalize_hostname(hostname: Optional[str]) -> str:
+    """Lowercase and strip trailing dots to normalize the hostname."""
+    if hostname is None:
+        return ""
+    # strip any trailing dots that could be used to bypass checks
+    return hostname.strip().lower().rstrip(".")
+
+
+def _is_domain_or_subdomain(hostname: str, domain: str) -> bool:
+    """Return True if hostname equals domain or is a subdomain of domain."""
+    hostname = _normalize_hostname(hostname)
+    domain = domain.lower()
+    if not hostname:
+        return False
+    return hostname == domain or hostname.endswith("." + domain)
+
+
+def _is_platform_url(url: str, allowed_domains: Iterable[str]) -> bool:
     """
-    Check if a URL belongs to a specific platform.
-
-    This is a DRY helper function that centralizes URL validation logic.
-
-    Args:
-        url: URL to check
-        domains: List of base domain names for the platform (e.g., ["youtube.com", "youtu.be"])
-
-    Returns:
-        bool: True if URL belongs to the platform, False otherwise
+    Parse URL and ensure its hostname matches one of the allowed domains
+    or is a proper subdomain. This avoids substring matching on the full URL.
     """
     if not url:
         return False
-
-    result = validate_input(url)
-    if not result:
+    try:
+        parsed = urlparse(url)
+    except Exception:
         return False
 
-    validated, is_local = result
-    if is_local:
+    hostname = parsed.hostname  # urlparse gives hostname without port
+    if not hostname:
         return False
 
-    host = urlparse(validated).netloc.lower()
-
-    # Check exact matches and www variants
-    for domain in domains:
-        if host == domain or host == f"www.{domain}":
+    for domain in allowed_domains:
+        if _is_domain_or_subdomain(hostname, domain):
             return True
-        if host.endswith(f".{domain}"):
-            return True
-
     return False
 
 

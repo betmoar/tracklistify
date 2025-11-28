@@ -5,12 +5,7 @@ Ensures code style, constants, and documentation improvements.
 """
 
 # Standard library imports
-import ast
-import re
 from pathlib import Path
-
-# Third-party imports
-import pytest
 
 
 class TestConstantsModule:
@@ -24,9 +19,9 @@ class TestConstantsModule:
     def test_time_constants_defined(self):
         """Time constants should be defined."""
         from tracklistify.utils.constants import (
+            MILLISECONDS_PER_SECOND,
             SECONDS_PER_HOUR,
             SECONDS_PER_MINUTE,
-            MILLISECONDS_PER_SECOND,
         )
 
         assert SECONDS_PER_HOUR == 3600
@@ -36,8 +31,8 @@ class TestConstantsModule:
     def test_cache_constants_defined(self):
         """Cache constants should be defined."""
         from tracklistify.utils.constants import (
-            DEFAULT_CACHE_TTL,
             DEFAULT_CACHE_MAX_SIZE,
+            DEFAULT_CACHE_TTL,
         )
 
         assert DEFAULT_CACHE_TTL == 3600
@@ -46,10 +41,10 @@ class TestConstantsModule:
     def test_rate_limiter_constants_defined(self):
         """Rate limiter constants should be defined."""
         from tracklistify.utils.constants import (
-            SHAZAM_DEFAULT_RPM,
             ACRCLOUD_DEFAULT_RPM,
-            SPOTIFY_DEFAULT_RPM,
             CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+            SHAZAM_DEFAULT_RPM,
+            SPOTIFY_DEFAULT_RPM,
         )
 
         assert SHAZAM_DEFAULT_RPM == 25
@@ -157,9 +152,9 @@ class TestDRYRefactoring:
     def test_platform_domains_defined(self):
         """Platform domain constants should be defined."""
         from tracklistify.utils.validation import (
-            YOUTUBE_DOMAINS,
-            SOUNDCLOUD_DOMAINS,
             MIXCLOUD_DOMAINS,
+            SOUNDCLOUD_DOMAINS,
+            YOUTUBE_DOMAINS,
         )
 
         assert "youtube.com" in YOUTUBE_DOMAINS
@@ -199,6 +194,14 @@ class TestDRYRefactoring:
         assert is_youtube_url("https://youtu.be/test") is True
         assert is_youtube_url("https://soundcloud.com/test") is False
         assert is_youtube_url("") is False
+
+        # Reject embedded hosts and attackers that fake hosts in path/query
+        assert is_youtube_url("https://youtube.com.evil.com") is False
+        assert is_youtube_url("https://www.youtube.com.evil.com") is False
+        assert is_youtube_url("https://evil.com?redirect=https://youtube.com") is False
+        assert is_youtube_url("http://notyoutube.com") is False
+        # Accept valid subdomain
+        assert is_youtube_url("https://m.youtube.com/watch?v=test") is True
 
     def test_soundcloud_url_validation_works(self):
         """SoundCloud URL validation should still work after refactoring."""
