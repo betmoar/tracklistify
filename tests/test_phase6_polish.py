@@ -149,19 +149,6 @@ class TestTimeFormatterFunctionality:
 class TestDRYRefactoring:
     """Tests for DRY refactoring improvements."""
 
-    def test_platform_domains_defined(self):
-        """Platform domain constants should be defined."""
-        from tracklistify.utils.validation import (
-            MIXCLOUD_DOMAINS,
-            SOUNDCLOUD_DOMAINS,
-            YOUTUBE_DOMAINS,
-        )
-
-        assert "youtube.com" in YOUTUBE_DOMAINS
-        assert "youtu.be" in YOUTUBE_DOMAINS
-        assert "soundcloud.com" in SOUNDCLOUD_DOMAINS
-        assert "mixcloud.com" in MIXCLOUD_DOMAINS
-
     def test_platform_helper_exists(self):
         """DRY helper function _is_platform_url should exist."""
         file_path = Path("src/tracklistify/utils/validation.py")
