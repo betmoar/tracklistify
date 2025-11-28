@@ -6,7 +6,6 @@ and that isinstance() checks work across modules.
 """
 
 # Standard library imports
-import importlib
 import inspect
 from pathlib import Path
 

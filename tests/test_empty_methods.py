@@ -6,10 +6,6 @@ Ensures empty template methods are properly documented.
 
 # Standard library imports
 import inspect
-from pathlib import Path
-
-# Third-party imports
-import pytest
 
 
 class TestTemplateMethodDocumentation:

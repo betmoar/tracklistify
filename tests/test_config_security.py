@@ -5,12 +5,10 @@ Tests for Phase 1 of implementation plan:
 - Issue #2: Mask secrets in environment variable logging
 """
 
-import os
 import pytest
 import logging
 from pathlib import Path
-from tracklistify.config import TrackIdentificationConfig, get_config
-from tracklistify.config.paths import get_root
+from tracklistify.config import TrackIdentificationConfig
 
 
 class TestConfigSecurity:
@@ -45,7 +43,7 @@ class TestConfigSecurity:
         for malicious in malicious_values:
             monkeypatch.setenv("TRACKLISTIFY_SEGMENT_LENGTH", malicious)
             with pytest.raises(ValueError) as exc_info:
-                config = TrackIdentificationConfig()
+                TrackIdentificationConfig()
             assert "Invalid" in str(exc_info.value), (
                 f"Expected ValueError for: {malicious}"
             )
@@ -94,7 +92,7 @@ class TestConfigSecurity:
         for invalid in invalid_values:
             monkeypatch.setenv("TRACKLISTIFY_SEGMENT_LENGTH", invalid)
             with pytest.raises(ValueError) as exc_info:
-                config = TrackIdentificationConfig()
+                TrackIdentificationConfig()
             assert "Invalid" in str(exc_info.value), (
                 f"Expected ValueError for: {invalid}"
             )
@@ -105,7 +103,7 @@ class TestConfigSecurity:
         # and could be a security concern
         monkeypatch.setenv("TRACKLISTIFY_SEGMENT_LENGTH", "1e2")
         with pytest.raises(ValueError):
-            config = TrackIdentificationConfig()
+            TrackIdentificationConfig()
 
 
 class TestSecretMasking:

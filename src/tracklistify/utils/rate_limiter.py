@@ -7,7 +7,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from threading import Lock as ThreadingLock, Semaphore as ThreadingSemaphore
+from threading import Lock, Semaphore
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Local/package imports

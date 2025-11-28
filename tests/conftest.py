@@ -2,9 +2,7 @@
 
 import pytest
 import os
-from pathlib import Path
 from tracklistify.config import TrackIdentificationConfig
-from tracklistify.config.paths import get_root
 
 
 @pytest.fixture

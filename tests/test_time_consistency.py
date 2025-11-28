@@ -7,7 +7,6 @@ Ensures the codebase uses:
 """
 
 # Standard library imports
-import ast
 import re
 from pathlib import Path
 

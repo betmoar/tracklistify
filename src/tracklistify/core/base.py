@@ -17,7 +17,7 @@ from mutagen._file import File
 
 # Local/package imports
 from tracklistify.config.factory import get_config
-from tracklistify.core.exceptions import ApplicationError, TrackIdentificationError
+from tracklistify.core.exceptions import TrackIdentificationError
 from tracklistify.core.track import Track
 from tracklistify.core.types import AudioSegment
 from tracklistify.downloaders import DownloaderFactory

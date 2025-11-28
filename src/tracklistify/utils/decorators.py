@@ -11,7 +11,6 @@ from typing import Any, Callable, Dict, Optional, TypeVar, cast
 
 # Local/package imports
 # Import kept for module load order (affects circular import resolution)
-from tracklistify.cache import get_cache  # noqa: F401
 from tracklistify.utils.constants import MILLISECONDS_PER_SECOND, STABLE_HASH_LENGTH
 
 T = TypeVar("T")

@@ -7,7 +7,6 @@ Issue #14: SimpleLimiter sync in async context
 
 # Standard library imports
 import ast
-import hashlib
 from pathlib import Path
 
 # Third-party imports

@@ -6,11 +6,8 @@ Ensures all singleton patterns in the codebase are thread-safe.
 
 # Standard library imports
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Third-party imports
-import pytest
 
 # Local imports
 from tracklistify.config.factory import get_config, clear_config
@@ -238,9 +235,9 @@ class TestThreadSafetyStress:
     def test_rapid_singleton_access(self):
         """Test rapid sequential singleton access."""
         for _ in range(1000):
-            config = get_config()
-            cache = get_cache()
-            limiter = get_global_rate_limiter()
+            get_config()
+            get_cache()
+            get_global_rate_limiter()
 
         # Should not raise any exceptions
 
@@ -274,7 +271,7 @@ class TestLockImplementation:
         import inspect
         from tracklistify.utils import rate_limiter
 
-        source = inspect.getsource(rate_limiter.get_global_rate_limiter)
+        inspect.getsource(rate_limiter.get_global_rate_limiter)
         # Check if it has thread-safety mechanism
         module_source = inspect.getsource(rate_limiter)
         assert "Lock" in module_source or "lru_cache" in module_source, (

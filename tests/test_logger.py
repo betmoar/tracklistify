@@ -6,7 +6,6 @@ Validates that set_logger() doesn't duplicate handlers on multiple calls.
 
 # Standard library imports
 import logging
-from pathlib import Path
 
 # Third-party imports
 import pytest

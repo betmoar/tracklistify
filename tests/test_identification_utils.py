@@ -9,7 +9,6 @@ Tests for Phase 2, Issue #3: Implement stub functions
 import pytest
 import time
 import sys
-from io import StringIO
 from tracklistify.utils.identification import (
     format_duration,
     create_progress_bar,
