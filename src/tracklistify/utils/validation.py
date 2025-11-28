@@ -70,12 +70,26 @@ def _normalize_hostname(hostname: Optional[str]) -> str:
 
 
 def _is_domain_or_subdomain(hostname: str, domain: str) -> bool:
-    """Return True if hostname equals domain or is a subdomain of domain."""
+    """Return True if hostname equals domain or is a proper subdomain of domain."""
     hostname = _normalize_hostname(hostname)
     domain = domain.lower()
-    if not hostname:
+
+    if not hostname or not domain:
         return False
-    return hostname == domain or hostname.endswith("." + domain)
+
+    # Exact match
+    if hostname == domain:
+        return True
+
+    # Check for proper subdomain (domain must be at the end, preceded by a dot)
+    # and ensure the character before the dot is not a dot (to prevent "..")
+    if hostname.endswith("." + domain):
+        # Extract the part before the domain
+        subdomain_part = hostname[:-(len(domain) + 1)]
+        # Ensure it's a valid subdomain (not empty and doesn't contain dots)
+        return subdomain_part and "." not in subdomain_part
+
+    return False
 
 
 def _is_platform_url(url: str, allowed_domains: Iterable[str]) -> bool:
