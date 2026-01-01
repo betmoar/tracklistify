@@ -179,6 +179,7 @@ class YtDlpDownloader(Downloader):
             "logger": self._logger,
             "progress_hooks": [progress_hook],
             "no_warnings": True,  # Suppress unnecessary warnings
+            "remote_components": ["ejs:github"],
         }
 
         try:
