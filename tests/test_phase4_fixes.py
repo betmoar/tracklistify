@@ -35,15 +35,16 @@ class TestMemoizeHashStability:
                         # Check if it uses built-in hash() function directly
                         source_segment = ast.get_source_segment(content, node)
                         if source_segment:
-                            # Check for built-in hash() - pattern: "hash(" but NOT "_hash(" or "stable_hash("
-                            # The built-in hash appears as just "hash(" without underscore prefix
+                            # Match the built-in hash() function call: "hash("
+                            # not preceded by an underscore or letter (so we
+                            # skip "_hash(" / "stable_hash(" / similar names).
                             import re
 
-                            # Match "hash(" not preceded by underscore or letter
                             builtin_hash_pattern = r"(?<![_a-zA-Z])hash\("
                             if re.search(builtin_hash_pattern, source_segment):
                                 pytest.fail(
-                                    f"Memoize key uses unstable built-in hash(): {source_segment}"
+                                    "Memoize key uses unstable built-in "
+                                    f"hash(): {source_segment}"
                                 )
 
     def test_memoize_hash_is_deterministic(self):
@@ -112,7 +113,8 @@ class TestSimpleLimiterAsyncCompatibility:
                 )
 
                 assert has_async or has_warning, (
-                    "SimpleLimiter should have async support or document sync-only usage"
+                    "SimpleLimiter should have async support or "
+                    "document sync-only usage"
                 )
                 return
 
@@ -130,7 +132,8 @@ class TestSimpleLimiterAsyncCompatibility:
         has_sync_documentation = any(term in doc for term in sync_terms)
 
         assert has_sync_documentation, (
-            f"SimpleLimiter docstring should document sync nature: {SimpleLimiter.__doc__}"
+            "SimpleLimiter docstring should document sync nature: "
+            f"{SimpleLimiter.__doc__}"
         )
 
 
@@ -157,7 +160,9 @@ class TestHashlibUsage:
                 if node.module == "hashlib":
                     has_hashlib_import = True
 
-        assert has_hashlib_import, "decorators.py should import hashlib for stable hashing"
+        assert has_hashlib_import, (
+            "decorators.py should import hashlib for stable hashing"
+        )
 
     def test_memoize_key_generation_uses_hashlib(self):
         """Verify memoize uses hashlib for key generation."""

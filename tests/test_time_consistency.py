@@ -30,7 +30,8 @@ class TestTimeHandlingConsistency:
             # Check if it's for elapsed time calculation
             if "time.time() - start_time" in content:
                 pytest.fail(
-                    "decorators.py uses time.time() for elapsed time - should use time.monotonic()"
+                    "decorators.py uses time.time() for elapsed time "
+                    "- should use time.monotonic()"
                 )
 
     def test_identification_uses_monotonic_for_elapsed(self):
@@ -44,7 +45,8 @@ class TestTimeHandlingConsistency:
         elapsed_pattern = r"time\.time\(\)\s*-\s*self\.start_time"
         if re.search(elapsed_pattern, content):
             pytest.fail(
-                "identification.py uses time.time() for elapsed time - should use time.monotonic()"
+                "identification.py uses time.time() for elapsed time "
+                "- should use time.monotonic()"
             )
 
     def test_invalidation_uses_consistent_timestamps(self):
@@ -83,7 +85,8 @@ class TestTimeHandlingConsistency:
             # Check for time.time() usage (should only be monotonic)
             if "time.time()" in line:
                 pytest.fail(
-                    f"rate_limiter.py line {i} uses time.time() - should use time.monotonic()"
+                    f"rate_limiter.py line {i} uses time.time() "
+                    "- should use time.monotonic()"
                 )
 
     def test_cache_base_uses_time_for_timestamps(self):
@@ -95,7 +98,9 @@ class TestTimeHandlingConsistency:
 
         # "created" and "last_accessed" timestamps should use time.time() (absolute)
         # This is CORRECT - we're testing that it stays this way
-        assert '"created": time.time()' in content or "'created': time.time()" in content
+        assert (
+            '"created": time.time()' in content or "'created': time.time()" in content
+        )
 
     def test_cache_index_uses_time_for_timestamps(self):
         """Cache index should use time.time() for absolute timestamps."""

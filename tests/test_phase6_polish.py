@@ -156,9 +156,7 @@ class TestDRYRefactoring:
         with open(file_path) as f:
             content = f.read()
 
-        assert "def _is_platform_url" in content, (
-            "DRY helper function should exist"
-        )
+        assert "def _is_platform_url" in content, "DRY helper function should exist"
 
     def test_url_validators_use_helper(self):
         """URL validation functions should use the DRY helper."""

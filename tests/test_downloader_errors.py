@@ -55,10 +55,15 @@ class TestDownloaderConsistency:
             elif in_except_block:
                 if line.strip().startswith("return None"):
                     pytest.fail(
-                        f"mixcloud.py:{i+1} returns None in exception handler - should raise"
+                        f"mixcloud.py:{i + 1} returns None in exception handler "
+                        "- should raise"
                     )
                 # Exit except block on new function/class/unindented
-                if line.strip() and not line.startswith(" ") and not line.startswith("\t"):
+                if (
+                    line.strip()
+                    and not line.startswith(" ")
+                    and not line.startswith("\t")
+                ):
                     in_except_block = False
 
     def test_mixcloud_raises_download_error_on_failure(self):
@@ -92,7 +97,12 @@ class TestDownloaderConsistency:
                     break
                 if line.strip().startswith("return None"):
                     pytest.fail(
-                        f"ytdlp.py:{i+1} returns None in exception handler - should raise"
+                        f"ytdlp.py:{i + 1} returns None in exception handler "
+                        "- should raise"
                     )
-                if line.strip() and not line.startswith(" ") and not line.startswith("\t"):
+                if (
+                    line.strip()
+                    and not line.startswith(" ")
+                    and not line.startswith("\t")
+                ):
                     in_except_block = False

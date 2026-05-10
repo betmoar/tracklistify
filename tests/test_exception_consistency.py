@@ -50,7 +50,7 @@ class TestExceptionConsolidation:
         from tracklistify.config import factory as config_factory
 
         if hasattr(config_factory, "ConfigError"):
-            obj = getattr(config_factory, "ConfigError")
+            obj = config_factory.ConfigError
             if inspect.isclass(obj) and issubclass(obj, Exception):
                 assert obj.__module__ == "tracklistify.core.exceptions", (
                     f"ConfigError should be imported from core.exceptions, "
@@ -78,9 +78,9 @@ class TestExceptionConsolidation:
         assert isinstance(error, Exception)
 
     def test_exception_hierarchy_complete(self):
-        """Test that all exceptions inherit from TracklistifyError or ApplicationError."""
+        """All exceptions must inherit from TracklistifyError or ApplicationError."""
         from tracklistify.core import exceptions as core_exceptions
-        from tracklistify.core.exceptions import TracklistifyError, ApplicationError
+        from tracklistify.core.exceptions import ApplicationError, TracklistifyError
 
         # Get all exception classes from core.exceptions
         for name in dir(core_exceptions):
@@ -91,7 +91,8 @@ class TestExceptionConsolidation:
                 if obj.__module__ == "tracklistify.core.exceptions":
                     # Should inherit from TracklistifyError or ApplicationError
                     assert issubclass(obj, (TracklistifyError, ApplicationError)), (
-                        f"{name} should inherit from TracklistifyError or ApplicationError"
+                        f"{name} should inherit from TracklistifyError "
+                        "or ApplicationError"
                     )
 
     def test_all_expected_exceptions_exist(self):
@@ -209,6 +210,6 @@ class TestNoOrphanExceptionDefinitions:
 
         if violations:
             pytest.fail(
-                f"Found orphan exception definitions that should be removed:\n"
+                "Found orphan exception definitions that should be removed:\n"
                 + "\n".join(violations)
             )

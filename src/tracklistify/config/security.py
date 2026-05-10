@@ -33,12 +33,20 @@ SENSITIVE_FIELDS = {
 
 # Sensitive field patterns for environment variables
 SENSITIVE_PATTERNS = [
-    "password", "passwd", "pwd",
-    "secret", "token", "key",
-    "api_key", "apikey",
-    "access_key", "access_secret",
-    "client_secret", "client_id",
-    "auth", "credential",
+    "password",
+    "passwd",
+    "pwd",
+    "secret",
+    "token",
+    "key",
+    "api_key",
+    "apikey",
+    "access_key",
+    "access_secret",
+    "client_secret",
+    "client_id",
+    "auth",
+    "credential",
 ]
 
 
@@ -200,7 +208,7 @@ class CryptoManager:
                 raise KeyManagementError(f"Failed to save key: {e}") from e
 
     def encrypt(self, data: Union[str, bytes]) -> bytes:
-        """Obfuscate data using PBKDF2-derived key + XOR-block scheme with PKCS7 padding.
+        """Obfuscate data with a PBKDF2-derived key + XOR-block scheme (PKCS7 pad).
 
         NOT cryptographically secure. The block loop applies XOR with the previous
         block (CBC-style chaining) and XOR with a 16-byte slice of the derived key

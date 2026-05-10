@@ -143,8 +143,7 @@ class TestProgressDisplay:
         display.complete()
 
     @pytest.mark.skipif(
-        sys.platform == "win32",
-        reason="Terminal output differs on Windows"
+        sys.platform == "win32", reason="Terminal output differs on Windows"
     )
     def test_update_writes_to_stdout(self, capsys):
         """Test that update() writes progress to stdout."""

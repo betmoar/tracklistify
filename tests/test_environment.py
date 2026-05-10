@@ -13,9 +13,9 @@ def test_python_version():
     """Test Python version meets minimum requirements."""
     min_version = (3, 11)  # From env-setup.sh
     current = sys.version_info[:2]
-    assert (
-        current >= min_version
-    ), f"Python version must be >= {min_version} (found {current})"
+    assert current >= min_version, (
+        f"Python version must be >= {min_version} (found {current})"
+    )
 
 
 def test_ffmpeg_installed():

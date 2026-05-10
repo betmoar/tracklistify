@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tracklistify.utils.validation import validate_input
+from tracklistify.utils.validation import clean_url, validate_input
 
 
 def test_http_url_valid():
@@ -66,9 +66,6 @@ def test_file_uri_nonexistent(tmp_path: Path):
     f = tmp_path / "nope.flac"
     uri = f.as_uri()
     assert validate_input(uri) is None
-
-
-from tracklistify.utils.validation import clean_url
 
 
 class TestCleanUrl:

@@ -153,7 +153,7 @@ def is_mixcloud_url(url: str) -> bool:
 
 
 def clean_url(url: str) -> str:
-    """Normalize a URL: strip query, fragment, trailing slash; lowercase scheme and host.
+    """Normalize a URL: strip query/fragment/trailing slash; lowercase scheme + host.
 
     Args:
         url: URL to normalize. May be empty or unparseable.

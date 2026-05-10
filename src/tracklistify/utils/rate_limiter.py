@@ -50,9 +50,13 @@ class ProviderLimits:
     max_requests_per_minute: int = 25  # Default fallback (matches Shazam default)
     max_concurrent_requests: int = 1  # Default fallback (matches Shazam default)
     tokens: int = field(init=False)
-    last_update: float = field(default_factory=time.monotonic)  # Use monotonic for elapsed time
+    last_update: float = field(
+        default_factory=time.monotonic
+    )  # Use monotonic for elapsed time
     semaphore: Optional[asyncio.Semaphore] = field(init=False, default=None)
-    lock: Optional[asyncio.Lock] = field(init=False, default=None)  # Changed from threading.Lock
+    lock: Optional[asyncio.Lock] = field(
+        init=False, default=None
+    )  # Changed from threading.Lock
     metrics: RateLimitMetrics = field(default_factory=RateLimitMetrics)
     circuit_state: CircuitState = field(default=CircuitState.CLOSED)
     circuit_open_time: Optional[float] = None

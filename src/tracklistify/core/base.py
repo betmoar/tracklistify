@@ -180,7 +180,9 @@ class AsyncApp:
             self.logger.info("Saving output...")
             if len(tracks) > 0:
                 # Use _output_formats if set by CLI, otherwise fall back to config
-                output_format = getattr(self, '_output_formats', self.config.output_format)
+                output_format = getattr(
+                    self, "_output_formats", self.config.output_format
+                )
                 await self.save_output(tracks, output_format)
             else:
                 raise ValueError(

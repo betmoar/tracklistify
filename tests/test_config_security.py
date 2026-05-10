@@ -23,9 +23,9 @@ class TestConfigSecurity:
         # Check each line for eval() calls (excluding comments)
         for i, line in enumerate(lines, 1):
             # Remove comments
-            code_part = line.split('#')[0]
+            code_part = line.split("#")[0]
             # Check for eval( in actual code
-            if 'eval(' in code_part:
+            if "eval(" in code_part:
                 pytest.fail(
                     f"eval() found in config module at line {i}: {line.strip()}"
                 )
@@ -147,31 +147,25 @@ class TestSecretMasking:
         from tracklistify.config.security import mask_sensitive_value
 
         # Sensitive values with sufficient length
-        assert mask_sensitive_value(
-            "TRACKLISTIFY_API_KEY", "secret123456"
-        ) == "sec*****456"
+        assert (
+            mask_sensitive_value("TRACKLISTIFY_API_KEY", "secret123456")
+            == "sec*****456"
+        )
 
-        assert mask_sensitive_value(
-            "TRACKLISTIFY_CLIENT_SECRET", "abcdefghijk"
-        ) == "abc*****ijk"
+        assert (
+            mask_sensitive_value("TRACKLISTIFY_CLIENT_SECRET", "abcdefghijk")
+            == "abc*****ijk"
+        )
 
         # Short values
-        assert mask_sensitive_value(
-            "TRACKLISTIFY_API_KEY", "short"
-        ) == "***"
+        assert mask_sensitive_value("TRACKLISTIFY_API_KEY", "short") == "***"
 
-        assert mask_sensitive_value(
-            "TRACKLISTIFY_API_KEY", "1234567"
-        ) == "***"
+        assert mask_sensitive_value("TRACKLISTIFY_API_KEY", "1234567") == "***"
 
         # Non-sensitive values should not be masked
-        assert mask_sensitive_value(
-            "TRACKLISTIFY_DEBUG", "true"
-        ) == "true"
+        assert mask_sensitive_value("TRACKLISTIFY_DEBUG", "true") == "true"
 
-        assert mask_sensitive_value(
-            "TRACKLISTIFY_SEGMENT_LENGTH", "60"
-        ) == "60"
+        assert mask_sensitive_value("TRACKLISTIFY_SEGMENT_LENGTH", "60") == "60"
 
     def test_no_secrets_in_logs(self, monkeypatch, caplog, clean_env):
         """Ensure secrets don't appear in actual logs."""
@@ -186,7 +180,8 @@ class TestSecretMasking:
 
         # Create temporary .env file
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
             f.write(f"TRACKLISTIFY_SPOTIFY_CLIENT_SECRET={test_secret}\n")
             f.write("TRACKLISTIFY_DEBUG=true\n")
             env_path = Path(f.name)

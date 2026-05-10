@@ -33,14 +33,16 @@ class TestAsyncLocks:
         limits = limiter._provider_limits["test"]
 
         # Ensure primitives are created
-        if hasattr(limits, 'ensure_async_primitives'):
+        if hasattr(limits, "ensure_async_primitives"):
             limits.ensure_async_primitives()
 
         # Should be asyncio.Lock, not threading.Lock
-        assert isinstance(limits.lock, asyncio.Lock), \
+        assert isinstance(limits.lock, asyncio.Lock), (
             f"Expected asyncio.Lock, got {type(limits.lock)}"
-        assert not isinstance(limits.lock, type(threading.Lock())), \
+        )
+        assert not isinstance(limits.lock, type(threading.Lock())), (
             "Should not be threading.Lock"
+        )
 
     @pytest.mark.asyncio
     async def test_uses_asyncio_semaphore(self):
@@ -50,11 +52,12 @@ class TestAsyncLocks:
 
         limits = limiter._provider_limits["test"]
 
-        if hasattr(limits, 'ensure_async_primitives'):
+        if hasattr(limits, "ensure_async_primitives"):
             limits.ensure_async_primitives()
 
-        assert isinstance(limits.semaphore, asyncio.Semaphore), \
+        assert isinstance(limits.semaphore, asyncio.Semaphore), (
             f"Expected asyncio.Semaphore, got {type(limits.semaphore)}"
+        )
 
     @pytest.mark.asyncio
     async def test_no_event_loop_blocking(self):
@@ -76,7 +79,9 @@ class TestAsyncLocks:
     async def test_concurrent_acquires_dont_deadlock(self):
         """Ensure concurrent acquires don't cause deadlock."""
         limiter = RateLimiter()
-        limiter.register_provider("test", max_requests_per_minute=100, max_concurrent_requests=5)
+        limiter.register_provider(
+            "test", max_requests_per_minute=100, max_concurrent_requests=5
+        )
 
         results = []
 
@@ -99,7 +104,7 @@ class TestAsyncLocks:
         """Ensure lock can be used with async with statement."""
         limits = ProviderLimits(max_requests_per_minute=10, max_concurrent_requests=1)
 
-        if hasattr(limits, 'ensure_async_primitives'):
+        if hasattr(limits, "ensure_async_primitives"):
             limits.ensure_async_primitives()
 
         # Should be usable with async with
@@ -114,7 +119,7 @@ class TestAsyncLocks:
         limits = ProviderLimits(max_requests_per_minute=10, max_concurrent_requests=1)
 
         # Ensure primitives method should exist and work
-        if hasattr(limits, 'ensure_async_primitives'):
+        if hasattr(limits, "ensure_async_primitives"):
             limits.ensure_async_primitives()
             assert limits.lock is not None
             assert limits.semaphore is not None
@@ -138,7 +143,9 @@ class TestAsyncAcquireRelease:
         """Test that acquire respects timeout parameter."""
         limiter = RateLimiter()
         # Very low rate limit
-        limiter.register_provider("test", max_requests_per_minute=1, max_concurrent_requests=1)
+        limiter.register_provider(
+            "test", max_requests_per_minute=1, max_concurrent_requests=1
+        )
 
         # First acquire should succeed
         result1 = await limiter.acquire("test")
@@ -159,7 +166,9 @@ class TestAsyncAcquireRelease:
     async def test_release_frees_semaphore(self):
         """Test that release properly frees the semaphore."""
         limiter = RateLimiter()
-        limiter.register_provider("test", max_requests_per_minute=60, max_concurrent_requests=1)
+        limiter.register_provider(
+            "test", max_requests_per_minute=60, max_concurrent_requests=1
+        )
 
         # Acquire
         await limiter.acquire("test")
@@ -231,7 +240,9 @@ class TestCircuitBreakerWithAsyncLocks:
 
         limiter = RateLimiter(config=config)
         # Explicitly provide values to avoid config lookup
-        limiter.register_provider("test", max_requests_per_minute=60, max_concurrent_requests=2)
+        limiter.register_provider(
+            "test", max_requests_per_minute=60, max_concurrent_requests=2
+        )
 
         # Simulate failures to trigger circuit breaker
         limits = limiter._provider_limits["test"]
@@ -256,12 +267,16 @@ class TestCircuitBreakerWithAsyncLocks:
 
         limiter = RateLimiter(config=config)
         # Explicitly provide values to avoid config lookup
-        limiter.register_provider("test", max_requests_per_minute=60, max_concurrent_requests=2)
+        limiter.register_provider(
+            "test", max_requests_per_minute=60, max_concurrent_requests=2
+        )
 
         # Open the circuit
         limits = limiter._provider_limits["test"]
         limits.circuit_state = CircuitState.OPEN
-        limits.circuit_open_time = time.monotonic()  # Use monotonic to match implementation
+        limits.circuit_open_time = (
+            time.monotonic()
+        )  # Use monotonic to match implementation
 
         # Acquire should return False immediately
         result = await limiter.acquire("test")
@@ -280,7 +295,9 @@ class TestBackwardCompatibility:
         limiter.register_provider("test1")
         limiter.register_provider("test2", max_requests_per_minute=30)
         limiter.register_provider("test3", max_concurrent_requests=5)
-        limiter.register_provider("test4", max_requests_per_minute=30, max_concurrent_requests=5)
+        limiter.register_provider(
+            "test4", max_requests_per_minute=30, max_concurrent_requests=5
+        )
 
         assert "test1" in limiter._provider_limits
         assert "test2" in limiter._provider_limits

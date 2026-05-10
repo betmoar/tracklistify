@@ -23,9 +23,7 @@ def test_needs_rotation_false_when_fresh():
 def test_needs_rotation_respects_custom_interval():
     loader = SecureConfigLoader()
     loader._rotation_interval = timedelta(days=30)
-    sv = SecretVersion(
-        value="abc123", created_at=datetime.now() - timedelta(days=45)
-    )
+    sv = SecretVersion(value="abc123", created_at=datetime.now() - timedelta(days=45))
     assert loader.needs_rotation(sv) is True
 
 

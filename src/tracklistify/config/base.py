@@ -84,7 +84,8 @@ class BaseConfig:
                             # Do NOT use eval() - security vulnerability!
                             # Only accept valid numeric strings
                             raise ValueError(
-                                f"Invalid {field_type.__name__} value for {env_key}: {env_value}. "
+                                f"Invalid {field_type.__name__} value for "
+                                f"{env_key}: {env_value}. "
                                 f"Expected a valid {field_type.__name__}."
                             ) from e
                     else:

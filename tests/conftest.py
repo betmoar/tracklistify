@@ -42,7 +42,7 @@ def sample_audio_file(tmp_path):
     audio_file = tmp_path / "test.mp3"
     # Create fake MP3 file (minimal valid MP3 header)
     audio_file.write_bytes(
-        b'\xff\xfb\x90\x00'  # MP3 header
-        + b'\x00' * 1000     # Data
+        b"\xff\xfb\x90\x00"  # MP3 header
+        + b"\x00" * 1000  # Data
     )
     return audio_file

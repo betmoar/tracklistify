@@ -27,9 +27,7 @@ class TestNoDebugCode:
                 if line.strip().startswith("#"):
                     continue
                 if "print(" in line:
-                    pytest.fail(
-                        f"print() statement found in core/track.py:{i}\n{line}"
-                    )
+                    pytest.fail(f"print() statement found in core/track.py:{i}\n{line}")
 
     def test_no_some_method_debug_function(self):
         """Ensure no debug 'some_method' function exists."""
@@ -40,7 +38,8 @@ class TestNoDebugCode:
 
             if "def some_method(self):" in content:
                 pytest.fail(
-                    "Debug method 'some_method' found in core/track.py - should be removed"
+                    "Debug method 'some_method' found in core/track.py "
+                    "- should be removed"
                 )
 
     def test_no_mock_classes_in_cache(self):
@@ -91,9 +90,7 @@ class TestNoDebugCode:
 
             for pattern in test_data_patterns:
                 if pattern in content:
-                    pytest.fail(
-                        f"Test data found in core/track.py: {pattern}"
-                    )
+                    pytest.fail(f"Test data found in core/track.py: {pattern}")
 
 
 class TestProductionCodeQuality:

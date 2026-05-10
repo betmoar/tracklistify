@@ -5,12 +5,10 @@ Ensures proper input validation and safe data access.
 """
 
 # Standard library imports
-import ast
 import re
 from pathlib import Path
 
 # Third-party imports
-import pytest
 
 
 class TestSafeArrayAccess:
@@ -25,7 +23,7 @@ class TestSafeArrayAccess:
 
         # Should not have unsafe [0] access on potentially empty lists
         # Look for patterns like: .get("music", [])[0] without length check
-        unsafe_pattern = r'\.get\([^)]+,\s*\[\]\)\[0\]'
+        unsafe_pattern = r"\.get\([^)]+,\s*\[\]\)\[0\]"
         matches = re.findall(unsafe_pattern, content)
 
         # Filter out false positives (the old pattern was removed)
@@ -61,10 +59,9 @@ class TestProgressValidation:
             content = f.read()
 
         # Should clamp progress value
-        assert "max(0.0, min(1.0, progress))" in content or \
-               "progress = max(0.0" in content, (
-            "Progress bar should clamp progress to 0.0-1.0 range"
-        )
+        assert (
+            "max(0.0, min(1.0, progress))" in content or "progress = max(0.0" in content
+        ), "Progress bar should clamp progress to 0.0-1.0 range"
 
     def test_progress_bar_handles_edge_cases(self):
         """create_progress_bar should handle edge cases correctly."""
@@ -83,7 +80,9 @@ class TestProgressValidation:
         assert bar_over.endswith("]")
 
         # Edge cases should be handled
-        assert "█" not in bar_negative or bar_negative == bar_zero  # -0.5 should be clamped to 0
+        assert (
+            "█" not in bar_negative or bar_negative == bar_zero
+        )  # -0.5 should be clamped to 0
         assert "░" not in bar_over or bar_over == bar_one  # 1.5 should be clamped to 1
 
 
@@ -99,6 +98,4 @@ class TestMetadataAccess:
 
         # Should check if music_list is empty
         assert "music_list" in content, "Should use music_list variable"
-        assert "if not music_list" in content, (
-            "Should check if music_list is empty"
-        )
+        assert "if not music_list" in content, "Should check if music_list is empty"

@@ -145,7 +145,10 @@ class TestRateLimiterSingletonThreadSafety:
         instances = []
 
         with ThreadPoolExecutor(max_workers=50) as executor:
-            futures = [executor.submit(lambda: id(get_global_rate_limiter())) for _ in range(100)]
+            futures = [
+                executor.submit(lambda: id(get_global_rate_limiter()))
+                for _ in range(100)
+            ]
             for future in as_completed(futures):
                 instances.append(future.result())
 

@@ -6,7 +6,6 @@ Ensures inline imports are moved to module level where appropriate.
 
 # Standard library imports
 import ast
-import re
 from pathlib import Path
 
 # Third-party imports

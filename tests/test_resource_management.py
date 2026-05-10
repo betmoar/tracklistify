@@ -24,10 +24,8 @@ class TestContextManagerProtocol:
             "TrackIdentificationProvider should have __aenter__ method"
         )
         # Check it's async
-        method = getattr(TrackIdentificationProvider, "__aenter__")
-        assert inspect.iscoroutinefunction(method), (
-            "__aenter__ should be async"
-        )
+        method = TrackIdentificationProvider.__aenter__
+        assert inspect.iscoroutinefunction(method), "__aenter__ should be async"
 
     def test_track_identification_provider_has_aexit(self):
         """TrackIdentificationProvider should implement __aexit__."""
@@ -37,10 +35,8 @@ class TestContextManagerProtocol:
             "TrackIdentificationProvider should have __aexit__ method"
         )
         # Check it's async
-        method = getattr(TrackIdentificationProvider, "__aexit__")
-        assert inspect.iscoroutinefunction(method), (
-            "__aexit__ should be async"
-        )
+        method = TrackIdentificationProvider.__aexit__
+        assert inspect.iscoroutinefunction(method), "__aexit__ should be async"
 
     def test_metadata_provider_has_aenter(self):
         """MetadataProvider should implement __aenter__."""
@@ -105,7 +101,10 @@ class TestProviderCleanup:
                     # Find close method
                     has_close = False
                     for item in node.body:
-                        if isinstance(item, ast.AsyncFunctionDef) and item.name == "close":
+                        if (
+                            isinstance(item, ast.AsyncFunctionDef)
+                            and item.name == "close"
+                        ):
                             has_close = True
                             # Check it's abstract
                             for decorator in item.decorator_list:

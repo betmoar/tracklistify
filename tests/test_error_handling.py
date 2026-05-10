@@ -6,7 +6,6 @@ Ensures exceptions are properly handled with logging.
 
 # Standard library imports
 import ast
-import re
 from pathlib import Path
 
 # Third-party imports
@@ -74,9 +73,11 @@ class TestNoSilentExceptions:
                     if node.type.id == "Exception":
                         # Check context - looking for the cooldown pattern
                         source_segment = ast.get_source_segment(content, node)
-                        if source_segment and "cooldown" in content[
-                            max(0, node.lineno - 5):node.lineno + 5
-                        ]:
+                        if (
+                            source_segment
+                            and "cooldown"
+                            in content[max(0, node.lineno - 5) : node.lineno + 5]
+                        ):
                             pytest.fail(
                                 f"shazam.py:{node.lineno}: "
                                 f"Cooldown exception should use specific types"

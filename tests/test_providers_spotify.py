@@ -12,7 +12,7 @@ def provider():
 
 @pytest.mark.asyncio
 async def test_search_track_accepts_abc_signature(provider, monkeypatch):
-    """search_track must accept (title, artist=None, album=None, duration=None) per ABC."""
+    """search_track must accept the ABC signature: title + 3 optional kwargs."""
     captured = {}
 
     async def fake_api_request(self, method, endpoint, **kwargs):

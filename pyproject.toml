@@ -124,8 +124,9 @@ exclude = [
 ]
 include = [
     "pyproject.toml",
-    "tracklistify/**/*.py",
-    "scripts/**/*.py"
+    "src/tracklistify/**/*.py",
+    "tests/**/*.py",
+    "scripts/**/*.py",
 ]
 
 # Match Black

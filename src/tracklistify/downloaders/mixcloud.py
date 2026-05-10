@@ -7,7 +7,6 @@ import asyncio
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 # Third-party imports
 import yt_dlp
@@ -104,10 +103,16 @@ class MixcloudDownloader(Downloader):
                 raise DownloadError(f"Mix not found: {url}", url=url, cause=e) from e
             elif "private" in error_msg:
                 logger.error(f"Cannot download private mix: {url}")
-                raise DownloadError(f"Cannot download private mix: {url}", url=url, cause=e) from e
+                raise DownloadError(
+                    f"Cannot download private mix: {url}", url=url, cause=e
+                ) from e
             elif "premium" in error_msg:
                 logger.error(f"Cannot download premium content: {url}")
-                raise DownloadError(f"Cannot download premium content: {url}", url=url, cause=e) from e
+                raise DownloadError(
+                    f"Cannot download premium content: {url}", url=url, cause=e
+                ) from e
             else:
                 logger.error(f"Failed to download {url}: {str(e)}")
-                raise DownloadError(f"Download failed: {str(e)}", url=url, cause=e) from e
+                raise DownloadError(
+                    f"Download failed: {str(e)}", url=url, cause=e
+                ) from e

@@ -6,7 +6,6 @@ from pathlib import Path
 
 # Third-party imports
 import pytest
-from dotenv import load_dotenv
 
 # Local/package imports
 from tracklistify.config import (
@@ -585,7 +584,9 @@ def test_post_init_runs_each_step_once(monkeypatch):
     monkeypatch.setattr(
         cfg_mod.BaseConfig, "_setup_validation", wrap("setup", orig_setup)
     )
-    monkeypatch.setattr(cfg_mod.BaseConfig, "_validate", wrap("validate", orig_validate))
+    monkeypatch.setattr(
+        cfg_mod.BaseConfig, "_validate", wrap("validate", orig_validate)
+    )
 
     cfg_mod.TrackIdentificationConfig()
 
