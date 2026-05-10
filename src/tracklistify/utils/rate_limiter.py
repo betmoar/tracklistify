@@ -4,6 +4,7 @@ Rate limiting functionality for API calls with metrics, circuit breaker, and ale
 
 # Standard library imports
 import asyncio
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -308,13 +309,23 @@ class RateLimiter:
         }
 
 
-# Singleton instance
-_global_rate_limiter = None
+# Singleton instance with thread-safe access
+_global_rate_limiter: Optional["RateLimiter"] = None
+_global_rate_limiter_lock = threading.Lock()
 
 
 def get_global_rate_limiter() -> RateLimiter:
-    """Get the global rate limiter instance."""
+    """Get the global rate limiter instance.
+
+    Thread-safe via double-checked locking; concurrent first-access
+    callers all receive the same instance.
+    """
     global _global_rate_limiter
-    if _global_rate_limiter is None:
-        _global_rate_limiter = RateLimiter()
+    # Fast path: already created
+    if _global_rate_limiter is not None:
+        return _global_rate_limiter
+    # Slow path: serialise creation
+    with _global_rate_limiter_lock:
+        if _global_rate_limiter is None:
+            _global_rate_limiter = RateLimiter()
     return _global_rate_limiter
