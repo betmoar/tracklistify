@@ -6,6 +6,7 @@ Cache management for API responses and audio processing.
 from pathlib import Path
 from typing import Optional, TypeVar
 
+from tracklistify.utils.constants import DEFAULT_CACHE_MAX_SIZE, DEFAULT_CACHE_TTL
 from tracklistify.utils.logger import get_logger
 
 # Local/package imports (using relative imports to avoid cycles)
@@ -20,8 +21,6 @@ T = TypeVar("T")
 
 # Default config values if config loading fails
 DEFAULT_CACHE_DIR = Path.home() / ".tracklistify" / "cache"
-DEFAULT_CACHE_TTL = 3600
-DEFAULT_CACHE_MAX_SIZE = 1_000_000
 
 # Global cache instance
 _cache_instance = None

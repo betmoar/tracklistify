@@ -9,6 +9,7 @@ from typing import Optional
 from .base import BaseCache
 from .invalidation import CompositeStrategy, LRUStrategy, SizeStrategy, TTLStrategy
 from .storage import JSONStorage
+from tracklistify.utils.constants import DEFAULT_CACHE_MAX_SIZE, DEFAULT_CACHE_TTL
 from tracklistify.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -19,7 +20,9 @@ _cache_lock = threading.Lock()
 
 
 def create_cache(
-    cache_dir: Optional[Path] = None, ttl: int = 3600, max_size: int = 1_000_000
+    cache_dir: Optional[Path] = None,
+    ttl: int = DEFAULT_CACHE_TTL,
+    max_size: int = DEFAULT_CACHE_MAX_SIZE,
 ) -> BaseCache:
     """Create new cache instance."""
     storage = JSONStorage(cache_dir or Path.home() / ".tracklistify" / "cache")
