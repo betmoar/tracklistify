@@ -29,9 +29,6 @@ SENSITIVE_FIELDS = {
     "client_secret",
     "private_key",
     "auth_token",
-    "ACR_ACCESS_KEY",
-    "ACR_ACCESS_SECRET",
-    "SPOTIFY_CLIENT_SECRET",
 }
 
 # Sensitive field patterns for environment variables
@@ -115,26 +112,6 @@ def generate_key() -> bytes:
 def secure_hash(value: str) -> str:
     """Create a secure hash of a value."""
     return hashlib.blake2b(value.encode()).hexdigest()
-
-
-def mask_sensitive_value_old(value: str) -> str:
-    """
-    OLD VERSION - Deprecated. Use mask_sensitive_value(key, value) instead.
-
-    Mask a sensitive value, showing only the first character for short strings
-    or first three characters for longer strings.
-
-    Args:
-        value: Value to mask
-
-    Returns:
-        str: Masked value
-    """
-    if not value:
-        return ""
-    if len(value) <= 3:
-        return value[0] + "*" * (len(value) - 1)
-    return value[:3] + "*" * 5
 
 
 def is_sensitive_field(field_name: str) -> bool:
@@ -223,8 +200,13 @@ class CryptoManager:
                 raise KeyManagementError(f"Failed to save key: {e}") from e
 
     def encrypt(self, data: Union[str, bytes]) -> bytes:
-        """
-        Encrypt data using AES-256 in CBC mode with PKCS7 padding.
+        """Obfuscate data using PBKDF2-derived key + XOR-block scheme with PKCS7 padding.
+
+        NOT cryptographically secure. The block loop applies XOR with the previous
+        block (CBC-style chaining) and XOR with a 16-byte slice of the derived key
+        — this is obfuscation against casual inspection of config files, not real
+        encryption. For actual secret protection use an OS keychain or a KMS.
+
         Returns: base64(salt + iv + ciphertext)
         """
         if isinstance(data, str):
@@ -239,15 +221,15 @@ class CryptoManager:
             pad_len = 16 - (len(data) % 16)
             padded_data = data + bytes([pad_len] * pad_len)
 
-            # Encrypt using XOR (simple but secure when used with proper key derivation)
+            # XOR-block obfuscation (NOT AES — see method docstring)
             blocks = [padded_data[i : i + 16] for i in range(0, len(padded_data), 16)]
             prev_block = iv
             ciphertext = bytearray()
 
             for block in blocks:
-                # XOR with previous block (CBC mode)
+                # XOR with previous block (CBC-style chaining)
                 xored = bytes(a ^ b for a, b in zip(block, prev_block, strict=True))
-                # XOR with key (simplified AES round)
+                # XOR with first 16 bytes of derived key
                 encrypted = bytes(a ^ b for a, b in zip(xored, key[:16], strict=True))
                 ciphertext.extend(encrypted)
                 prev_block = encrypted
@@ -259,8 +241,10 @@ class CryptoManager:
             raise EncryptionError(f"Encryption failed: {e}") from e
 
     def decrypt(self, encrypted_data: bytes) -> bytes:
-        """
-        Decrypt data.
+        """De-obfuscate data produced by ``encrypt``.
+
+        See ``encrypt`` for the disclaimer on the (non-)security of this scheme.
+
         Expected format: base64(salt + iv + ciphertext)
         """
         try:
@@ -275,15 +259,15 @@ class CryptoManager:
             ciphertext = raw_data[32:]
             key, _ = self._derive_key(salt)
 
-            # Decrypt using XOR (reverse of encryption)
+            # Reverse the XOR-block obfuscation
             blocks = [ciphertext[i : i + 16] for i in range(0, len(ciphertext), 16)]
             prev_block = iv
             plaintext = bytearray()
 
             for block in blocks:
-                # XOR with key (reverse simplified AES round)
+                # XOR with key slice
                 decrypted = bytes(a ^ b for a, b in zip(block, key[:16], strict=True))
-                # XOR with previous block (CBC mode)
+                # XOR with previous block (CBC-style chaining)
                 xored = bytes(a ^ b for a, b in zip(decrypted, prev_block, strict=True))
                 plaintext.extend(xored)
                 prev_block = block
