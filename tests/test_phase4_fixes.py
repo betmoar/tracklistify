@@ -2,7 +2,6 @@
 Tests for Phase 4 additional issues.
 
 Issue #13: Hash collision risk in memoize decorator
-Issue #14: SimpleLimiter sync in async context
 """
 
 # Standard library imports
@@ -82,59 +81,6 @@ class TestMemoizeHashStability:
 
         # Each call should compute (no cache hits)
         assert call_count == 3, "Each unique arg combination should compute"
-
-
-class TestSimpleLimiterAsyncCompatibility:
-    """Tests for Issue #14: SimpleLimiter sync in async."""
-
-    def test_simple_limiter_has_deprecation_warning(self):
-        """SimpleLimiter should warn about async usage or provide async method."""
-        limiter_file = Path("src/tracklistify/utils/rate_limiter.py")
-
-        with open(limiter_file) as f:
-            content = f.read()
-
-        # SimpleLimiter should either:
-        # 1. Have async method (acquire_async or async def acquire)
-        # 2. Have deprecation/usage warning in docstring
-        # 3. Be clearly documented for sync-only usage
-        tree = ast.parse(content)
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef) and node.name == "SimpleLimiter":
-                class_source = ast.get_source_segment(content, node)
-                # Check for async compatibility or warning
-                has_async = "async" in class_source
-                has_warning = (
-                    "deprecated" in class_source.lower()
-                    or "legacy" in class_source.lower()
-                    or "sync" in class_source.lower()
-                    or "blocking" in class_source.lower()
-                )
-
-                assert has_async or has_warning, (
-                    "SimpleLimiter should have async support or "
-                    "document sync-only usage"
-                )
-                return
-
-        pytest.fail("SimpleLimiter class not found")
-
-    def test_simple_limiter_documented_for_sync_use(self):
-        """SimpleLimiter docstring should document sync-only usage."""
-        from tracklistify.utils.rate_limiter import SimpleLimiter
-
-        # Check docstring exists and mentions sync/blocking nature
-        assert SimpleLimiter.__doc__ is not None, "SimpleLimiter should have docstring"
-
-        doc = SimpleLimiter.__doc__.lower()
-        sync_terms = ["sync", "blocking", "thread", "legacy", "simple"]
-        has_sync_documentation = any(term in doc for term in sync_terms)
-
-        assert has_sync_documentation, (
-            "SimpleLimiter docstring should document sync nature: "
-            f"{SimpleLimiter.__doc__}"
-        )
 
 
 class TestHashlibUsage:

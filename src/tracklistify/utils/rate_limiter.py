@@ -7,7 +7,6 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from threading import Lock, Semaphore
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Local/package imports
@@ -309,49 +308,6 @@ class RateLimiter:
         }
 
 
-# Legacy support for the simple RateLimiter
-@dataclass
-class SimpleLimiter:
-    """Simple synchronous rate limiter implementation.
-
-    IMPORTANT: This is a legacy, blocking implementation using threading primitives.
-    It should NOT be used in async contexts as it will block the event loop.
-
-    For async code, use the main RateLimiter class which uses asyncio primitives.
-
-    This class is kept for backward compatibility with synchronous code paths.
-    """
-
-    max_requests_per_minute: int
-    max_concurrent_requests: int
-
-    def __post_init__(self):
-        self._lock = Lock()
-        self._semaphore = Semaphore(self.max_concurrent_requests)
-        self._tokens = self.max_requests_per_minute
-        self._last_refill = time.monotonic()
-
-    def acquire(self) -> bool:
-        """Acquire a token from the rate limiter."""
-        with self._lock:
-            self._refill()
-            if self._tokens > 0:
-                self._tokens -= 1
-                return True
-            return False
-
-    def _refill(self):
-        """Refill tokens based on elapsed time."""
-        now = time.monotonic()
-        elapsed = now - self._last_refill
-        refill_tokens = int(elapsed * (self.max_requests_per_minute / 60))
-        if refill_tokens > 0:
-            self._tokens = min(
-                self.max_requests_per_minute, self._tokens + refill_tokens
-            )
-            self._last_refill = now
-
-
 # Singleton instance
 _global_rate_limiter = None
 
@@ -362,27 +318,3 @@ def get_global_rate_limiter() -> RateLimiter:
     if _global_rate_limiter is None:
         _global_rate_limiter = RateLimiter()
     return _global_rate_limiter
-
-
-def get_simple_rate_limiter(provider: str, config=None) -> SimpleLimiter:
-    """Get legacy rate limiter for the specified provider."""
-    if config is None:
-        config = get_config()
-
-    if provider == "shazam":
-        return SimpleLimiter(
-            max_requests_per_minute=config.shazam_max_rpm,
-            max_concurrent_requests=config.shazam_max_concurrent,
-        )
-    elif provider == "acrcloud":
-        return SimpleLimiter(
-            max_requests_per_minute=config.acrcloud_max_rpm,
-            max_concurrent_requests=config.acrcloud_max_concurrent,
-        )
-    elif provider == "spotify":
-        return SimpleLimiter(
-            max_requests_per_minute=getattr(config, "spotify_max_rpm", 120),
-            max_concurrent_requests=getattr(config, "spotify_max_concurrent", 20),
-        )
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
