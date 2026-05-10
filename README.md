@@ -19,10 +19,11 @@ A powerful and flexible automatic tracklist generator for DJ mixes and audio str
 
 ### 🎵 **Multi-Provider Track Identification**
 
-  - Shazam and ACRCloud integration
-  - Smart provider fallback system
+  - Shazam and ACRCloud for fingerprint-based identification
+  - Spotify integration for metadata enrichment and playlist export
+  - Smart provider fallback system with circuit breaker
   - High accuracy with confidence scoring
-  - Support for multiple platforms (YouTube, Mixcloud, SoundCloud)
+  - Support for multiple platforms (YouTube, Mixcloud, SoundCloud, Spotify)
 
 ### 📊 **Versatile Output Formats**
 
@@ -34,19 +35,20 @@ A powerful and flexible automatic tracklist generator for DJ mixes and audio str
 
 ### 🚀 **Advanced Processing**
 
-  - Automatic format conversion
+  - Automatic format conversion via FFmpeg
   - Batch processing for multiple files
-  - Intelligent caching system
+  - Intelligent caching with TTL/LRU/size invalidation strategies
   - Progress tracking with detailed status
   - Configurable audio quality settings
 
 ### ⚙️ **Robust Architecture**
 
-  - Asynchronous processing
-  - Smart rate limiting
-  - Advanced error recovery
-  - Comprehensive logging system
-  - Docker support
+  - Asynchronous processing throughout
+  - Token-bucket rate limiting with circuit breaker per provider
+  - Thread-safe singletons for config, cache, and rate limiter
+  - Async context managers for deterministic resource cleanup
+  - Centralised, structured exception hierarchy
+  - Coloured console + rotating-file logging
 
 ## Requirements
 
@@ -125,6 +127,22 @@ tracklistify --provider shazam input.mp3
 
 # Set output directory
 tracklistify -o path/to/output input.mp3
+```
+
+## Development
+
+Working on the codebase? Start here:
+
+- [`CLAUDE.md`](CLAUDE.md) — full development guide covering project layout, coding conventions, factory/strategy patterns, testing, and common tasks (also used as context for AI assistants).
+- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — contribution workflow and code of conduct.
+- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — version history.
+- [`docs/archive/`](docs/archive/) — historical audit and implementation-plan artefacts (informational only).
+
+```bash
+uv sync --dev                       # install runtime + dev deps
+uv run python -m pytest -q          # run the full test suite (~335 tests)
+uv run ruff check src/ tests/       # lint
+uv run ruff format src/ tests/      # format
 ```
 
 ## Contributing
