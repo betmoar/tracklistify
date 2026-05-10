@@ -16,7 +16,6 @@ from typing import List
 from mutagen._file import File
 
 # Local/package imports
-from tracklistify.config.factory import get_config
 from tracklistify.core.exceptions import TrackIdentificationError
 from tracklistify.core.track import Track
 from tracklistify.core.types import AudioSegment
@@ -35,6 +34,9 @@ class AsyncApp:
     """Main application logic container"""
 
     def __init__(self, config=None):
+        # Lazy import to avoid circular dependency at module load time
+        from tracklistify.config.factory import get_config
+
         # Always refresh config
         self.config = config or get_config(force_refresh=True)
         self.provider_factory = create_provider_factory()
