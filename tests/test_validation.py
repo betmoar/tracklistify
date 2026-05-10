@@ -66,3 +66,32 @@ def test_file_uri_nonexistent(tmp_path: Path):
     f = tmp_path / "nope.flac"
     uri = f.as_uri()
     assert validate_input(uri) is None
+
+
+from tracklistify.utils.validation import clean_url
+
+
+class TestCleanUrl:
+    def test_strips_query_and_fragment(self):
+        assert (
+            clean_url("https://open.spotify.com/track/abc?si=xyz#frag")
+            == "https://open.spotify.com/track/abc"
+        )
+
+    def test_lowercases_scheme_and_host(self):
+        assert (
+            clean_url("HTTPS://Open.Spotify.COM/track/abc")
+            == "https://open.spotify.com/track/abc"
+        )
+
+    def test_strips_trailing_slash(self):
+        assert (
+            clean_url("https://open.spotify.com/track/abc/")
+            == "https://open.spotify.com/track/abc"
+        )
+
+    def test_returns_empty_for_blank(self):
+        assert clean_url("") == ""
+
+    def test_returns_input_for_unparseable(self):
+        assert clean_url("not a url") == "not a url"

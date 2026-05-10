@@ -160,3 +160,25 @@ def is_mixcloud_url(url: str) -> bool:
         bool: True if URL is a valid Mixcloud URL, False otherwise
     """
     return _is_platform_url(url, MIXCLOUD_DOMAINS)
+
+
+def clean_url(url: str) -> str:
+    """Normalize a URL: strip query, fragment, trailing slash; lowercase scheme and host.
+
+    Args:
+        url: URL to normalize. May be empty or unparseable.
+
+    Returns:
+        str: Normalized URL, or the input unchanged if it is not an absolute URL
+        with both scheme and netloc. Returns ``""`` for empty input.
+    """
+    if not url:
+        return ""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return url
+    if not parsed.scheme or not parsed.netloc:
+        return url
+    path = parsed.path.rstrip("/")
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{path}"
