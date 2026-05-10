@@ -58,39 +58,39 @@ class Track:
         # regardless of time proximity
         return False
 
-    def __init__(
-        self, song_name: str, artist: str, time_in_mix: str, confidence: float
-    ):
-        """Initialize track with validation."""
-        # Validate inputs
-        if not isinstance(song_name, str) or not song_name.strip():
+    def __post_init__(self):
+        """Validate fields populated by the dataclass-generated __init__.
+
+        The dataclass init does the assignment; this hook adds the field-level
+        validation that used to live in a hand-written ``__init__`` overriding
+        the dataclass init. Validation runs once, here.
+        """
+        if not isinstance(self.song_name, str) or not self.song_name.strip():
             raise ValueError("song_name must be a non-empty string")
-        if not isinstance(artist, str) or not artist.strip():
+        if not isinstance(self.artist, str) or not self.artist.strip():
             raise ValueError("artist must be a non-empty string")
-        if not isinstance(time_in_mix, str) or not re.match(
-            r"^\d{2}:\d{2}:\d{2}$", time_in_mix
+        if not isinstance(self.time_in_mix, str) or not re.match(
+            r"^\d{2}:\d{2}:\d{2}$", self.time_in_mix
         ):
             raise ValueError("time_in_mix must be in format HH:MM:SS")
         if (
-            not isinstance(confidence, (int, float))
-            or confidence < 0
-            or confidence > 100
+            not isinstance(self.confidence, (int, float))
+            or self.confidence < 0
+            or self.confidence > 100
         ):
             raise ValueError("confidence must be a number between 0 and 100")
 
-        self.song_name = song_name.strip()
-        self.artist = artist.strip()
-        self.time_in_mix = time_in_mix
-        self.confidence = float(confidence)
-        self.metadata: Dict[str, Any] = {}
+        # Normalise inputs (the prior __init__ stripped strings + cast confidence)
+        self.song_name = self.song_name.strip()
+        self.artist = self.artist.strip()
+        self.confidence = float(self.confidence)
 
-        # Initialize config
-        from tracklistify.config.factory import get_config
+        # Lazy-load config when the caller didn't supply one (preserves the
+        # behaviour the manual __init__ used to provide unconditionally).
+        if self.config is None:
+            from tracklistify.config.factory import get_config
 
-        self.config = get_config()
-
-    def __post_init__(self):
-        pass
+            self.config = get_config()
 
     @property
     def markdown_line(self) -> str:
