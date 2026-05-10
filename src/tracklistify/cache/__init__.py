@@ -3,7 +3,6 @@ Cache management for API responses and audio processing.
 """
 
 # Standard library imports
-import asyncio
 from pathlib import Path
 from typing import Optional, TypeVar
 
@@ -69,40 +68,6 @@ def get_cache() -> BaseCache:
     if _cache_instance is None:
         _cache_instance = create_cache()
     return _cache_instance
-
-
-# TODO(deprecation): remove run_async once all callers are async-native.
-def run_async(coro):
-    """Run a coroutine, creating or joining an event loop as needed.
-
-    .. deprecated::
-        Prefer ``await``-ing coroutines directly or using :func:`asyncio.run`.
-        Spawning a thread to run a fresh event loop is fragile and hides
-        bugs in the call site's async architecture.
-    """
-    import warnings
-
-    warnings.warn(
-        "run_async is deprecated; await coroutines directly or use asyncio.run. "
-        "It will be removed in a future release.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # No running event loop, create new one
-        return asyncio.run(coro)
-
-    if loop.is_running():
-        # Create new loop in separate thread if needed
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            future = pool.submit(asyncio.run, coro)
-            return future.result()
-    else:
-        return loop.run_until_complete(coro)
 
 
 __all__ = [
