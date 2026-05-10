@@ -71,10 +71,23 @@ def get_cache() -> BaseCache:
     return _cache_instance
 
 
+# TODO(deprecation): remove run_async once all callers are async-native.
 def run_async(coro):
+    """Run a coroutine, creating or joining an event loop as needed.
+
+    .. deprecated::
+        Prefer ``await``-ing coroutines directly or using :func:`asyncio.run`.
+        Spawning a thread to run a fresh event loop is fragile and hides
+        bugs in the call site's async architecture.
     """
-    Helper function to run coroutines either in existing event loop or new one.
-    """
+    import warnings
+
+    warnings.warn(
+        "run_async is deprecated; await coroutines directly or use asyncio.run. "
+        "It will be removed in a future release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:

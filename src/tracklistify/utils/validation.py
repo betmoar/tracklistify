@@ -94,33 +94,23 @@ def _is_domain_or_subdomain(hostname: str, domain: str) -> bool:
     return False
 
 
-def _is_platform_url(url: str, allowed_domains: set) -> bool:
-    """
-    Return True if the given URL's hostname matches one of the allowed domains.
-    A match is either an exact hostname match (e.g. "youtu.be") or a valid
-    subdomain of an allowed domain (e.g. "m.youtube.com" for "youtube.com").
+def _is_platform_url(url: str, allowed_domains: Iterable[str]) -> bool:
+    """Return True if the URL's hostname matches one of the allowed domains.
+
+    A match is either an exact hostname match (e.g. "youtu.be") or a proper
+    subdomain (e.g. "m.youtube.com" for "youtube.com"). Subdomain logic is
+    delegated to ``_is_domain_or_subdomain`` to keep both helpers in lockstep.
     """
     if not url:
         return False
-
     try:
         parsed = urlparse(url)
     except Exception:
         return False
-
     host = parsed.hostname
     if not host:
         return False
-
-    host = host.lower().rstrip(".")
-
-    for domain in allowed_domains:
-        d = domain.lower().rstrip(".")
-        # Exact match or a subdomain (preceded by a dot)
-        if host == d or host.endswith("." + d):
-            return True
-
-    return False
+    return any(_is_domain_or_subdomain(host, d) for d in allowed_domains)
 
 
 def is_youtube_url(url: str) -> bool:

@@ -166,14 +166,8 @@ class YtDlpError(DownloaderError):
         super().__init__(message, service="yt-dlp", cause=cause)
 
 
-class URLValidationError(TracklistifyError):
+class URLValidationError(ValidationError):
     """Raised when URL validation fails."""
-
-    pass
-
-
-class ConfigurationError(TracklistifyError):
-    """Raised when configuration is invalid."""
 
     pass
 
