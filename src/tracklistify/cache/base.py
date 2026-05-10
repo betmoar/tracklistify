@@ -13,6 +13,7 @@ from tracklistify.core.types import (
     CacheStorage,
     InvalidationStrategy,
 )
+from tracklistify.utils.constants import DEFAULT_CACHE_MAX_SIZE, DEFAULT_CACHE_TTL
 from tracklistify.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -27,8 +28,8 @@ class BaseCache(Generic[T]):
         self,
         storage: CacheStorage,
         invalidation_strategy: InvalidationStrategy,
-        ttl: int = 3600,
-        max_size: int = 1000000,
+        ttl: int = DEFAULT_CACHE_TTL,
+        max_size: int = DEFAULT_CACHE_MAX_SIZE,
     ):
         """Initialize base cache.
 
