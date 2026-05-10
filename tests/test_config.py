@@ -448,10 +448,14 @@ def test_directory_creation():
         config.temp_dir.rmdir()
 
 
-def test_to_dict():
-    """Test conversion to dictionary."""
-    # Load .env file to ensure environment variables are set, overriding shell vars
-    load_dotenv(override=True)
+def test_to_dict(monkeypatch):
+    """Test conversion to dictionary.
+
+    Clears verbose/debug env overrides so the test doesn't depend on the
+    developer's local `.env` (which commonly enables both for CLI runs).
+    """
+    monkeypatch.delenv("TRACKLISTIFY_VERBOSE", raising=False)
+    monkeypatch.delenv("TRACKLISTIFY_DEBUG", raising=False)
     # Ensure clean singleton state
     clear_config()
     config = TrackIdentificationConfig()
@@ -468,8 +472,8 @@ def test_to_dict():
     assert isinstance(config_dict["output_dir"], Path)
     assert isinstance(config_dict["cache_dir"], Path)
     assert isinstance(config_dict["temp_dir"], Path)
-    assert config_dict["verbose"] is False  # From environment
-    assert config_dict["debug"] is False  # From environment
+    assert config_dict["verbose"] is False  # default when env unset
+    assert config_dict["debug"] is False  # default when env unset
 
 
 def test_documentation():
@@ -556,3 +560,33 @@ def test_env_override_defaults(monkeypatch, tmp_path):
     assert config.output_dir.exists()
     assert config.cache_dir.exists()
     assert config.temp_dir.exists()
+
+
+def test_post_init_runs_each_step_once(monkeypatch):
+    """Regression test: TrackIdentificationConfig.__post_init__ should not double-run
+    _load_from_env / _setup_validation / _validate. Prior to the fix it ran each twice
+    (once in the subclass override, once via super().__post_init__())."""
+    from tracklistify.config import base as cfg_mod
+
+    counts = {"load": 0, "setup": 0, "validate": 0}
+
+    orig_load = cfg_mod.BaseConfig._load_from_env
+    orig_setup = cfg_mod.BaseConfig._setup_validation
+    orig_validate = cfg_mod.BaseConfig._validate
+
+    def wrap(name, fn):
+        def w(self, *a, **k):
+            counts[name] += 1
+            return fn(self, *a, **k)
+
+        return w
+
+    monkeypatch.setattr(cfg_mod.BaseConfig, "_load_from_env", wrap("load", orig_load))
+    monkeypatch.setattr(
+        cfg_mod.BaseConfig, "_setup_validation", wrap("setup", orig_setup)
+    )
+    monkeypatch.setattr(cfg_mod.BaseConfig, "_validate", wrap("validate", orig_validate))
+
+    cfg_mod.TrackIdentificationConfig()
+
+    assert counts == {"load": 1, "setup": 1, "validate": 1}

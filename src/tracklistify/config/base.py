@@ -187,16 +187,14 @@ class TrackIdentificationConfig(BaseConfig):
     download_max_retries: int = field(default=3)
 
     def __post_init__(self):
-        """Initialize configuration after dataclass creation."""
-        # Load environment variables first
-        self._load_from_env()
+        """Initialize configuration after dataclass creation.
 
-        # Then call parent's post_init to set up base config and create directories
+        Delegates fully to ``BaseConfig.__post_init__``; via virtual dispatch the
+        parent calls ``self._setup_validation`` and ``self._validate``, which
+        resolve to the subclass overrides — so the additional validation rules
+        defined here are still applied without running twice.
+        """
         super().__post_init__()
-
-        # Set up additional validation rules
-        self._setup_validation()
-        self._validate()
 
     def _setup_validation(self):
         """Set up validation rules."""
