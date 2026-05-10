@@ -3,7 +3,7 @@
 # Standard library imports
 import asyncio
 import base64
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 # Third-party imports
 import aiohttp
@@ -126,35 +126,57 @@ class SpotifyProvider(MetadataProvider):
 
             return await response.json()
 
-    async def search_track(self, query: str) -> List[Dict]:
-        """
-        Search for tracks on Spotify.
+    async def search_track(
+        self,
+        title: str,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        duration: Optional[float] = None,
+    ) -> Dict:
+        """Search Spotify for the best match for the supplied track metadata.
+
+        Signature matches the ``MetadataProvider`` ABC. The ``duration`` argument
+        is accepted for ABC compliance but Spotify search does not take it as a
+        query parameter; if needed for ranking it can be applied client-side.
 
         Args:
-            query: Search query string
+            title: Track title (required).
+            artist: Artist name (optional).
+            album: Album name (optional).
+            duration: Track duration in seconds (optional, currently unused).
 
         Returns:
-            List of matching tracks with metadata
+            Dict: Top-match track info with keys
+            ``spotify_id``, ``name``, ``artists``, ``album``, ``release_date``.
+            Empty dict if no match is found.
         """
+        del duration  # unused; reserved for future client-side ranking
+        parts = [f'track:"{title}"']
+        if artist:
+            parts.append(f'artist:"{artist}"')
+        if album:
+            parts.append(f'album:"{album}"')
+        query = " ".join(parts)
+
         try:
             response = await self._api_request(
                 "GET", "search", params={"q": query, "type": "track", "limit": 5}
             )
-
-            tracks = []
-            for item in response["tracks"]["items"]:
-                track = {
-                    "id": item["id"],
-                    "name": item["name"],
-                    "artists": [artist["name"] for artist in item["artists"]],
-                    "album": item["album"]["name"],
-                    "release_date": item["album"]["release_date"],
-                }
-                tracks.append(track)
-
-            return tracks
         except Exception as e:
             raise ProviderError(f"Error searching for track: {e}") from e
+
+        items = response.get("tracks", {}).get("items", [])
+        if not items:
+            return {}
+
+        top = items[0]
+        return {
+            "spotify_id": top["id"],
+            "name": top["name"],
+            "artists": [a["name"] for a in top["artists"]],
+            "album": top["album"]["name"],
+            "release_date": top["album"]["release_date"],
+        }
 
     async def get_track_details(self, track_id: str) -> Dict:
         """
