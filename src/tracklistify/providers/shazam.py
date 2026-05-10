@@ -10,6 +10,7 @@ from shazamio import Shazam
 from tracklistify.providers.base import TrackIdentificationProvider
 
 # Local/package imports
+from tracklistify.utils.constants import SHAZAM_SKEW_CAP
 from tracklistify.utils.logger import get_logger
 from tracklistify.config.factory import get_config
 
@@ -63,8 +64,12 @@ class ShazamProvider(TrackIdentificationProvider):
                 time_skew = abs(match.get("timeskew", 0))
 
                 # Convert skews to a 0-100 score where lower skew = higher score
-                freq_score = 100 * (1 - min(freq_skew, 0.1) / 0.1)  # Cap at 0.1
-                time_score = 100 * (1 - min(time_skew, 0.1) / 0.1)  # Cap at 0.1
+                freq_score = 100 * (
+                    1 - min(freq_skew, SHAZAM_SKEW_CAP) / SHAZAM_SKEW_CAP
+                )
+                time_score = 100 * (
+                    1 - min(time_skew, SHAZAM_SKEW_CAP) / SHAZAM_SKEW_CAP
+                )
 
                 # Combine scores with weights
                 match_score = (
