@@ -13,17 +13,12 @@ Base Exceptions:
   - AudioProcessingError: Audio processing failures
   - TrackIdentificationError: Track identification failures
   - ValidationError: Input validation failures
-  - RetryExceededError: Maximum retry attempts exceeded
   - TimeoutError: Operation timeouts
   - ProviderError: Base for provider-specific errors
-  - DownloaderError: Base for downloader-specific errors
 
 Provider-Specific Exceptions:
 - ShazamError: Shazam API specific errors
 - SpotifyError: Spotify API specific errors
-
-Downloader-Specific Exceptions:
-- YtDlpError: yt-dlp download specific errors
 """
 
 
@@ -94,17 +89,6 @@ class ValidationError(TracklistifyError):
     pass
 
 
-class RetryExceededError(TracklistifyError):
-    """Raised when maximum retry attempts are exceeded."""
-
-    def __init__(
-        self, message: str, attempts: int = None, last_error: Exception = None
-    ):
-        self.attempts = attempts
-        self.last_error = last_error
-        super().__init__(message)
-
-
 class TimeoutError(TracklistifyError):
     """Raised when an operation times out."""
 
@@ -146,30 +130,6 @@ class SpotifyError(ProviderError):
     def __init__(self, message: str, error_code: str = None, cause: Exception = None):
         self.error_code = error_code
         super().__init__(message, provider="Spotify", cause=cause)
-
-
-# Downloader-specific exceptions
-class DownloaderError(TracklistifyError):
-    """Base exception for downloader-specific errors."""
-
-    def __init__(self, message: str, service: str = None, cause: Exception = None):
-        self.service = service
-        self.cause = cause
-        super().__init__(message)
-
-
-class YtDlpError(DownloaderError):
-    """Raised when yt-dlp download operations fail."""
-
-    def __init__(self, message: str, video_id: str = None, cause: Exception = None):
-        self.video_id = video_id
-        super().__init__(message, service="yt-dlp", cause=cause)
-
-
-class URLValidationError(ValidationError):
-    """Raised when URL validation fails."""
-
-    pass
 
 
 class AuthenticationError(TracklistifyError):
