@@ -427,6 +427,10 @@ class SecureConfigLoader:
         # Initialize default validators
         self._initialize_default_validators()
 
+    def needs_rotation(self, secret_version: SecretVersion) -> bool:
+        """Return True if the secret's age exceeds the configured rotation interval."""
+        return datetime.now() - secret_version.created_at > self._rotation_interval
+
     def _initialize_default_validators(self) -> None:
         """Initialize default secret validators."""
         # API key validators
