@@ -3,10 +3,10 @@ Track identification and management module.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from tracklistify.config import TrackIdentificationConfig
 from tracklistify.utils.logger import get_logger
@@ -25,6 +25,7 @@ class Track:
     time_in_mix: str
     confidence: float
     config: Optional["TrackIdentificationConfig"] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __str__(self) -> str:
         return (
@@ -82,6 +83,7 @@ class Track:
         self.artist = artist.strip()
         self.time_in_mix = time_in_mix
         self.confidence = float(confidence)
+        self.metadata: Dict[str, Any] = {}
 
         # Initialize config
         from tracklistify.config.factory import get_config
