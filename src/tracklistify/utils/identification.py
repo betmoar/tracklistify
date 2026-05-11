@@ -15,6 +15,7 @@ from tracklistify.config.factory import get_config
 # Local/package imports
 from tracklistify.core.track import Track, TrackMatcher
 from tracklistify.providers.factory import create_provider_factory
+from .constants import DEFAULT_PROGRESS_BAR_WIDTH, TERMINAL_LINE_WIDTH
 from .logger import get_logger
 from .time_formatter import format_seconds_to_hhmmss
 
@@ -134,7 +135,7 @@ class ProgressDisplay:
             elapsed = time.monotonic() - self.start_time if self.start_time else 0
 
             # Create progress bar
-            bar = create_progress_bar(progress, width=30)
+            bar = create_progress_bar(progress, width=DEFAULT_PROGRESS_BAR_WIDTH)
 
             # Display progress with carriage return to overwrite line
             percentage = int(progress * 100)
@@ -181,7 +182,7 @@ class ProgressDisplay:
             >>> display.clear()
         """
         # Clear current line by overwriting with spaces
-        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.write("\r" + " " * TERMINAL_LINE_WIDTH + "\r")
         sys.stdout.flush()
         self._last_line_length = 0
 

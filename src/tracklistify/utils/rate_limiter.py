@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Local/package imports
 from ..config import get_config
+from .constants import TOKEN_REFILL_SLEEP
 
 # Rate limiting constants
 # 1ms threshold to detect actual rate limit
@@ -229,7 +230,7 @@ class RateLimiter:
                     return True
 
             # Wait a short time before checking again
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(TOKEN_REFILL_SLEEP)
 
         # Timeout exceeded - this is a rate limiting failure
         # Record the window and update last_rate_limit but don't increment
