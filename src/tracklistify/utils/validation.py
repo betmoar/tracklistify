@@ -97,15 +97,20 @@ def _is_domain_or_subdomain(hostname: str, domain: str) -> bool:
 def _is_platform_url(url: str, allowed_domains: Iterable[str]) -> bool:
     """Return True if the URL's hostname matches one of the allowed domains.
 
-    A match is either an exact hostname match (e.g. "youtu.be") or a proper
-    subdomain (e.g. "m.youtube.com" for "youtube.com"). Subdomain logic is
-    delegated to ``_is_domain_or_subdomain`` to keep both helpers in lockstep.
+    Only ``http`` and ``https`` schemes are accepted; other schemes
+    (``ftp``, ``file``, ``javascript``, ...) are rejected outright so that
+    they cannot reach ``DownloaderFactory.create_downloader``. A match is
+    either an exact hostname match (e.g. "youtu.be") or a proper subdomain
+    (e.g. "m.youtube.com" for "youtube.com"); subdomain logic is delegated
+    to ``_is_domain_or_subdomain``.
     """
     if not url:
         return False
     try:
         parsed = urlparse(url)
     except Exception:
+        return False
+    if parsed.scheme.lower() not in {"http", "https"}:
         return False
     host = parsed.hostname
     if not host:

@@ -92,3 +92,32 @@ class TestCleanUrl:
 
     def test_returns_input_for_unparseable(self):
         assert clean_url("not a url") == "not a url"
+
+
+class TestPlatformURLScheme:
+    """Regression: _is_platform_url must reject non-HTTP(S) schemes."""
+
+    def test_ftp_youtube_rejected(self):
+        from tracklistify.utils.validation import is_youtube_url
+
+        assert is_youtube_url("ftp://youtube.com/watch?v=abc") is False
+
+    def test_file_uri_rejected(self):
+        from tracklistify.utils.validation import is_youtube_url
+
+        assert is_youtube_url("file:///etc/passwd") is False
+
+    def test_javascript_scheme_rejected(self):
+        from tracklistify.utils.validation import is_soundcloud_url
+
+        assert is_soundcloud_url("javascript:alert(1)//soundcloud.com") is False
+
+    def test_http_still_accepted(self):
+        from tracklistify.utils.validation import is_youtube_url
+
+        assert is_youtube_url("http://youtube.com/watch?v=abc") is True
+
+    def test_https_still_accepted(self):
+        from tracklistify.utils.validation import is_youtube_url
+
+        assert is_youtube_url("https://www.youtube.com/watch?v=abc") is True
