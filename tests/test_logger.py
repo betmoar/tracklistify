@@ -119,8 +119,52 @@ class TestLoggerConfiguration:
         logger = logging.getLogger()
         assert logger.level == logging.DEBUG
 
-    def test_no_verbose_no_debug_sets_warning(self):
-        """Test default level is WARNING when no flags set."""
+    def test_default_level_honors_log_level_param(self):
+        """When neither verbose nor debug is set, the log_level parameter
+        (default 'INFO') determines the effective level. Previous behaviour
+        silently dropped log_level and used WARNING; the new contract
+        respects the documented default."""
         set_logger()
         logger = logging.getLogger()
-        assert logger.level == logging.WARNING
+        assert logger.level == logging.INFO
+
+
+class TestSetLoggerLogLevelParameter:
+    """Regression: --log-level must be honored when --debug/--verbose absent."""
+
+    def test_log_level_debug_is_applied_without_debug_flag(self):
+        """set_logger(log_level='DEBUG') must produce DEBUG effective level."""
+        set_logger(log_level="DEBUG")
+        assert logging.getLogger().level == logging.DEBUG
+
+    def test_log_level_info_is_applied(self):
+        set_logger(log_level="INFO")
+        assert logging.getLogger().level == logging.INFO
+
+    def test_log_level_error_is_applied(self):
+        set_logger(log_level="ERROR")
+        assert logging.getLogger().level == logging.ERROR
+
+    def test_log_level_critical_is_applied(self):
+        set_logger(log_level="CRITICAL")
+        assert logging.getLogger().level == logging.CRITICAL
+
+    def test_debug_flag_overrides_log_level(self):
+        """debug=True must win over log_level='ERROR'."""
+        set_logger(log_level="ERROR", debug=True)
+        assert logging.getLogger().level == logging.DEBUG
+
+    def test_verbose_flag_overrides_log_level(self):
+        """verbose=True must win over log_level='ERROR'."""
+        set_logger(log_level="ERROR", verbose=True)
+        assert logging.getLogger().level == logging.INFO
+
+    def test_invalid_log_level_falls_back_to_warning(self):
+        """Unknown string for log_level falls back to WARNING (prior default)."""
+        set_logger(log_level="NOT_A_LEVEL")
+        assert logging.getLogger().level == logging.WARNING
+
+    def test_log_level_case_insensitive(self):
+        """log_level='debug' (lowercase) is accepted."""
+        set_logger(log_level="debug")
+        assert logging.getLogger().level == logging.DEBUG

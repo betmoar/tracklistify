@@ -73,10 +73,17 @@ def set_logger(
     # Clear existing handlers to prevent duplicates on reconfiguration
     logger.handlers.clear()
 
-    # Set base level
-    base_level = (
-        logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
-    )
+    # Set base level: debug > verbose > log_level (string parameter).
+    if debug:
+        base_level: int = logging.DEBUG
+    elif verbose:
+        base_level = logging.INFO
+    else:
+        # logging.getLevelName returns the int for known names ("DEBUG" -> 10),
+        # or the string "Level <name>" for unknown inputs. Fall back to
+        # WARNING for anything unrecognised (preserves the prior default).
+        resolved = logging.getLevelName(log_level.upper())
+        base_level = resolved if isinstance(resolved, int) else logging.WARNING
     logger.setLevel(base_level)
 
     console_formatter = ColoredFormatter(
