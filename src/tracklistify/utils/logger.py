@@ -86,6 +86,14 @@ def set_logger(
         base_level = resolved if isinstance(resolved, int) else logging.WARNING
     logger.setLevel(base_level)
 
+    # Cap known-noisy third-party loggers at ERROR. symphonia (shazamio's
+    # Rust audio decoder) emits a WARNING for every non-MP3 byte stretch
+    # when it falls back to the MP3 demuxer on non-MP3 containers — most
+    # visible under ``tracklistify --stream-copy`` where segments are
+    # webm/m4a. Genuine decode ERRORs still propagate.
+    for _noisy_logger in ("symphonia_bundle_mp3", "symphonia_core"):
+        logging.getLogger(_noisy_logger).setLevel(logging.ERROR)
+
     console_formatter = ColoredFormatter(
         "%(asctime)s %(levelname)s - %(name)s - %(message)s",
         datefmt="%H:%M:%S",

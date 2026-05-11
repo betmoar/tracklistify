@@ -193,3 +193,21 @@ class TestSetLoggerLogLevelParameter:
         """log_level='debug' (lowercase) is accepted."""
         set_logger(log_level="debug")
         assert logging.getLogger().level == logging.DEBUG
+
+
+class TestThirdPartyLoggerSuppression:
+    """Cap noisy third-party loggers so they don't drown user output."""
+
+    def test_set_logger_caps_symphonia_loggers(self):
+        """symphonia (shazamio's Rust decoder) emits a WARNING for every
+        non-MP3 byte under --stream-copy. Cap them at ERROR."""
+        set_logger(log_level="INFO")
+        assert logging.getLogger("symphonia_bundle_mp3").level == logging.ERROR
+        assert logging.getLogger("symphonia_core").level == logging.ERROR
+
+    def test_third_party_cap_survives_debug_mode(self):
+        """Even with --debug the cap holds — the scanning-noise WARNINGs
+        from symphonia don't help anyone diagnose anything."""
+        set_logger(debug=True)
+        assert logging.getLogger("symphonia_bundle_mp3").level == logging.ERROR
+        assert logging.getLogger("symphonia_core").level == logging.ERROR
