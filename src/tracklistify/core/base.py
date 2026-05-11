@@ -22,7 +22,7 @@ from tracklistify.core.types import AudioSegment
 from tracklistify.downloaders import DownloaderFactory
 from tracklistify.exporters import TracklistOutput
 from tracklistify.providers.factory import create_provider_factory
-from tracklistify.utils.constants import FFMPEG_SEGMENT_TIMEOUT
+from tracklistify.utils.constants import DEFAULT_SEGMENT_PADDING, FFMPEG_SEGMENT_TIMEOUT
 from tracklistify.utils.identification import IdentificationManager
 from tracklistify.utils.logger import get_logger
 from tracklistify.utils.strings import sanitizer
@@ -263,8 +263,10 @@ class AsyncApp:
             )
 
             # Add small padding to improve recognition
-            start_time = max(0, current_time - 0.5)
-            end_time = min(duration, current_time + segment_length + 0.5)
+            start_time = max(0, current_time - DEFAULT_SEGMENT_PADDING)
+            end_time = min(
+                duration, current_time + segment_length + DEFAULT_SEGMENT_PADDING
+            )
             actual_length = end_time - start_time
 
             segment_params.append(
