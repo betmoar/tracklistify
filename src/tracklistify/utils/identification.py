@@ -82,7 +82,9 @@ class ProgressDisplay:
     progress bar, and percentage completion.
 
     Attributes:
-        start_time: Timestamp when progress started (seconds since epoch)
+        start_time: ``time.monotonic()`` value captured when ``start()``
+            was called. Only meaningful as the base for elapsed-time
+            calculations — NOT a wall-clock timestamp.
         current_segment: Current segment being processed
         total_segments: Total number of segments to process
     """

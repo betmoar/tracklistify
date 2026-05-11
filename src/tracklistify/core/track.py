@@ -220,6 +220,10 @@ class TrackMatcher:
         """
         Process an audio file and return identified tracks.
 
+        This is a legacy stub kept for backward compatibility. For real
+        track identification, use
+        :class:`tracklistify.utils.identification.IdentificationManager`.
+
         Args:
             audio_file: Path to the audio file to process
 
@@ -227,7 +231,9 @@ class TrackMatcher:
             List of identified tracks
 
         Raises:
-            TrackIdentificationError: If track identification fails
+            FileNotFoundError: If ``audio_file`` does not exist.
+            ValueError: If the file is empty or its header is not a
+                recognised MP3 signature.
         """
         # Validate audio file
         if not audio_file.exists():
@@ -244,11 +250,12 @@ class TrackMatcher:
             if not header.startswith(b"ID3") and not header.startswith(b"\xff\xfb"):
                 raise ValueError(f"Invalid MP3 file format: {audio_file}")
 
-        # Note: This method is a legacy stub. For actual track identification,
-        # use IdentificationManager from tracklistify.utils.identification
+        # Note: this method is a legacy stub. For actual track identification,
+        # use IdentificationManager from tracklistify.utils.identification.
         logger.warning(
-            "TrackMatcher.identify_tracks is deprecated. "
-            "Use IdentificationManager.identify_tracks instead."
+            "TrackMatcher.process_file is deprecated. "
+            "Use IdentificationManager from "
+            "tracklistify.utils.identification instead."
         )
 
         # Sort tracks by timestamp before merging
