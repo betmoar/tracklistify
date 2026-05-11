@@ -87,8 +87,8 @@ def set_logger(
     logger.setLevel(base_level)
 
     console_formatter = ColoredFormatter(
-        "%(levelname)s - %(name)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        "%(asctime)s %(levelname)s - %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
     )
 
     file_formatter = logging.Formatter(

@@ -6,6 +6,7 @@ Validates that set_logger() doesn't duplicate handlers on multiple calls.
 
 # Standard library imports
 import logging
+import re
 
 # Third-party imports
 import pytest
@@ -28,6 +29,30 @@ def reset_logger():
 class TestLoggerConfiguration:
     """Test logger configuration."""
 
+    def test_console_format_includes_timestamp(self):
+        """Console output must start with HH:MM:SS so users can correlate
+        log lines. Pins the format so future edits can't silently strip
+        the asctime placeholder again (the original console format had a
+        ``datefmt`` configured but no ``%(asctime)s`` token consuming it)."""
+        set_logger(log_level="INFO")
+        console = next(
+            h
+            for h in logging.getLogger().handlers
+            if isinstance(h, logging.StreamHandler)
+            and not isinstance(h, logging.FileHandler)
+        )
+        record = logging.LogRecord(
+            name="t",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="hello",
+            args=(),
+            exc_info=None,
+        )
+        rendered = console.formatter.format(record)
+        assert re.match(r"^\d{2}:\d{2}:\d{2} ", rendered), rendered
+
     def test_set_logger_clears_existing_handlers(self):
         """Test that set_logger clears existing handlers."""
         # First call
@@ -39,9 +64,9 @@ class TestLoggerConfiguration:
         set_logger(log_level="DEBUG")
         handler_count_2 = len(logger.handlers)
 
-        assert handler_count_1 == handler_count_2, (
-            f"Handlers duplicated: {handler_count_1} vs {handler_count_2}"
-        )
+        assert (
+            handler_count_1 == handler_count_2
+        ), f"Handlers duplicated: {handler_count_1} vs {handler_count_2}"
 
     def test_multiple_calls_dont_duplicate_handlers(self):
         """Test that multiple set_logger calls don't duplicate handlers."""
@@ -52,9 +77,9 @@ class TestLoggerConfiguration:
         logger = logging.getLogger()
 
         # Should only have 1 console handler
-        assert len(logger.handlers) == 1, (
-            f"Expected 1 handler, got {len(logger.handlers)}"
-        )
+        assert (
+            len(logger.handlers) == 1
+        ), f"Expected 1 handler, got {len(logger.handlers)}"
 
     def test_file_handler_added_when_specified(self, tmp_path):
         """Test that file handler is added when log_file specified."""
