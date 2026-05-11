@@ -5,7 +5,6 @@ Track identification and management module.
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from tracklistify.config import TrackIdentificationConfig
@@ -215,54 +214,6 @@ class TrackMatcher:
 
         # Sort final list by time in mix
         return sorted(unique_tracks, key=lambda t: t.time_to_seconds())
-
-    def process_file(self, audio_file: Path) -> List[Track]:
-        """
-        Process an audio file and return identified tracks.
-
-        This is a legacy stub kept for backward compatibility. For real
-        track identification, use
-        :class:`tracklistify.utils.identification.IdentificationManager`.
-
-        Args:
-            audio_file: Path to the audio file to process
-
-        Returns:
-            List of identified tracks
-
-        Raises:
-            FileNotFoundError: If ``audio_file`` does not exist.
-            ValueError: If the file is empty or its header is not a
-                recognised MP3 signature.
-        """
-        # Validate audio file
-        if not audio_file.exists():
-            raise FileNotFoundError(f"Audio file not found: {audio_file}")
-        if audio_file.stat().st_size == 0:
-            raise ValueError(f"Audio file is empty: {audio_file}")
-
-        # Clear any existing tracks
-        self.tracks = []
-
-        # Validate audio format (basic check)
-        with open(audio_file, "rb") as f:
-            header = f.read(4)
-            if not header.startswith(b"ID3") and not header.startswith(b"\xff\xfb"):
-                raise ValueError(f"Invalid MP3 file format: {audio_file}")
-
-        # Note: this method is a legacy stub. For actual track identification,
-        # use IdentificationManager from tracklistify.utils.identification.
-        logger.warning(
-            "TrackMatcher.process_file is deprecated. "
-            "Use IdentificationManager from "
-            "tracklistify.utils.identification instead."
-        )
-
-        # Sort tracks by timestamp before merging
-        self.tracks.sort(key=lambda t: t.time_to_seconds())
-
-        # Merge similar tracks and return
-        return self.merge_nearby_tracks()
 
     def _create_track_group(self, track: Track) -> List[Track]:
         """Initialize a new track group with a single track."""
