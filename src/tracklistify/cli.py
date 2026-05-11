@@ -51,6 +51,7 @@ async def main(args: argparse.Namespace) -> int:
             provider=args.provider,
             # Only override config when --no-fallback is explicitly set.
             fallback_enabled=False if args.no_fallback else None,
+            stream_copy=args.stream_copy,
         )
 
         return 0
@@ -104,6 +105,19 @@ def parse_args(argv=None) -> argparse.Namespace:
         action="store_true",
         default=None,
         help="Disable fallback to secondary providers",
+    )
+
+    parser.add_argument(
+        "-sc",
+        "--stream-copy",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip yt-dlp's MP3 transcode and let segments stream-copy the "
+            "source codec (opus/webm/m4a). Much faster on long mixes. "
+            "Shazamio handles any format via ffmpeg; ACRCloud historically "
+            "prefers MP3 so identification rates may drop with that provider."
+        ),
     )
 
     parser.add_argument(

@@ -10,7 +10,7 @@ import subprocess
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 # Third-party imports
 from mutagen import File
@@ -63,6 +63,7 @@ class AsyncApp:
         formats: str = None,
         provider: str = None,
         fallback_enabled: bool = None,
+        stream_copy: bool = False,
     ):
         """Process input URL or file path.
 
@@ -71,6 +72,8 @@ class AsyncApp:
             formats: Output format(s) - overrides config if provided
             provider: Primary provider name - overrides config if provided
             fallback_enabled: Enable/disable fallback - overrides config if provided
+            stream_copy: If True, skip yt-dlp's MP3 transcode and segment with
+                ``-c:a copy`` end-to-end. Faster but keeps the source codec.
         """
         try:
             # Apply CLI argument overrides to config
@@ -116,7 +119,9 @@ class AsyncApp:
                 self.duration = 0
             else:
                 # URL processing - download the file
-                downloader = self.downloader_factory.create_downloader(validated_path)
+                downloader = self.downloader_factory.create_downloader(
+                    validated_path, stream_copy=stream_copy
+                )
                 if downloader is None:
                     raise ValueError("Failed to create downloader")
                 self.logger.info("Downloading audio...")
@@ -150,8 +155,13 @@ class AsyncApp:
 
             self.logger.info("Processing audio...")
 
-            # Process the downloaded file
-            audio_segments = self.split_audio(local_path)
+            # Process the downloaded file. Pass through the duration we got
+            # from yt-dlp (or local-file fallback below) so split_audio
+            # doesn't have to re-probe — mutagen doesn't read every
+            # container we now allow under --stream-copy (e.g. .webm).
+            audio_segments = self.split_audio(
+                local_path, duration_hint=getattr(self, "duration", 0) or None
+            )
             if not audio_segments:
                 raise ValueError("No audio segments were created")
 
@@ -199,25 +209,37 @@ class AsyncApp:
             # Always clean up temporary files
             await self.cleanup()
 
-    def split_audio(self, file_path: str) -> List[AudioSegment]:
-        """Split audio file into overlapping segments for analysis."""
+    def split_audio(
+        self, file_path: str, duration_hint: Optional[float] = None
+    ) -> List[AudioSegment]:
+        """Split audio file into overlapping segments for analysis.
+
+        Args:
+            file_path: Path to the audio file to split.
+            duration_hint: Caller-provided duration in seconds. When set,
+                we skip the mutagen probe (mutagen doesn't read every
+                container — e.g. ``.webm`` returned by yt-dlp under
+                ``--stream-copy``). Mutagen is used only when no hint is
+                available (local-file path with no upstream metadata).
+        """
         self.logger.info(f"Splitting audio file: {file_path}")
         self.logger.debug(
             f"Config values: segment_length={self.config.segment_length}, "
             f"overlap_duration={self.config.overlap_duration}"
         )
 
-        audio = File(file_path)
-        if audio is None:
-            self.logger.error(f"Could not read audio file: {file_path}")
-            return []
-
-        try:
-            duration = audio.info.length  # Duration in seconds
-
-        except AttributeError:
-            self.logger.error("Could not determine audio duration")
-            return []
+        if duration_hint and duration_hint > 0:
+            duration = duration_hint
+        else:
+            audio = File(file_path)
+            if audio is None:
+                self.logger.error(f"Could not read audio file: {file_path}")
+                return []
+            try:
+                duration = audio.info.length  # Duration in seconds
+            except AttributeError:
+                self.logger.error("Could not determine audio duration")
+                return []
 
         # Get configuration for segmentation from instance
         segment_duration = self.config.segment_length
@@ -228,29 +250,12 @@ class AsyncApp:
         temp_dir = Path(self.config.temp_dir)
         temp_dir.mkdir(parents=True, exist_ok=True)
 
-        # Optimize ffmpeg settings for faster processing
-        base_cmd = [
-            "ffmpeg",
-            "-hide_banner",
-            "-nostdin",  # Force non-interactive mode
-            "-loglevel",
-            "error",
-            "-i",
-            file_path,
-            "-vn",  # Skip video processing
-            "-ar",
-            "44100",  # Standard sample rate
-            "-ac",
-            "2",  # Stereo
-            "-c:a",
-            "libmp3lame",  # Use MP3 encoder
-            "-q:a",
-            "5",  # Variable bitrate quality (0-9, lower is better)
-            "-map",
-            "0:a",  # Only process audio stream
-            "-threads",
-            str(os.cpu_count()),  # Use all CPU cores
-        ]
+        # Segment via stream-copy: ffmpeg slices the existing audio frames
+        # without re-encoding. ``-ss`` is placed BEFORE ``-i`` so ffmpeg
+        # does an input-seek (fast jump to the nearest preceding frame)
+        # rather than decoding from the start to find the offset. The
+        # DEFAULT_SEGMENT_PADDING absorbs the sub-frame alignment slop.
+        source_suffix = Path(file_path).suffix or ".mp3"
 
         # Generate segment parameters
         segment_params = []
@@ -259,7 +264,8 @@ class AsyncApp:
         while current_time < duration:
             segment_length = min(segment_duration, duration - current_time)
             segment_file = (
-                temp_dir / f"segment_{current_time:.0f}_{segment_length:.0f}.mp3"
+                temp_dir
+                / f"segment_{current_time:.0f}_{segment_length:.0f}{source_suffix}"
             )
 
             # Add small padding to improve recognition
@@ -274,12 +280,23 @@ class AsyncApp:
                     "start_time": current_time,
                     "length": segment_length,
                     "file": segment_file,
-                    "cmd": base_cmd
-                    + [
+                    "cmd": [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-nostdin",
+                        "-loglevel",
+                        "error",
                         "-ss",
                         str(start_time),
+                        "-i",
+                        file_path,
                         "-t",
                         str(actual_length),
+                        "-vn",
+                        "-map",
+                        "0:a",
+                        "-c:a",
+                        "copy",
                         "-y",
                         str(segment_file),
                     ],
@@ -361,13 +378,23 @@ class AsyncApp:
             max_workers = min(cpu_count * 2, len(segment_params))
             self.logger.debug(f"Processing segments with {max_workers} workers")
 
+            total = len(segment_params)
+            done = 0
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit all tasks and gather results
-                future_segments = list(executor.map(create_segment, segment_params))
+                futures = [executor.submit(create_segment, p) for p in segment_params]
+                for fut in concurrent.futures.as_completed(futures):
+                    result = fut.result()
+                    if result is not None:
+                        segments.append(result)
+                    done += 1
+                    # Log every 10 segments so the user can see progress
+                    # without flooding the console on small jobs.
+                    if done % 10 == 0 and done != total:
+                        self.logger.info(f"Splitting: {done}/{total} segments done")
 
-                # Filter out failed segments
-                segments = [seg for seg in future_segments if seg is not None]
-
+            # Re-sort: ``as_completed`` returns out-of-order; downstream
+            # identification iterates segments in array order.
+            segments.sort(key=lambda s: s.start_time)
             self.logger.info(f"Split audio into {len(segments)} segments")
             return segments
 

@@ -38,6 +38,7 @@ Stack: Python 3.11–3.13, `uv` package manager, `pytest` (asyncio strict), `ruf
 - **`Track` is a `@dataclass` with `__post_init__` validation.** Don't write a manual `__init__` — it overrides the generated one and breaks `field(default_factory=dict)` semantics for `metadata`.
 - **Spotify `_api_request` accepts any 2xx and handles 204.** Don't narrow to `== 200`; mutation endpoints return 201, DELETEs return 204 with empty body.
 - **Spotify wrappers must re-raise `RateLimitError` / `AuthenticationError` unchanged.** Catch them before the generic `except Exception` or callers lose retry-after timing and 401-driven token refresh.
+- **`--stream-copy` (`-sc`) keeps the source codec end-to-end.** yt-dlp skips its MP3 transcode and segments stream-copy whatever YouTube served (opus/webm or m4a). Shazamio decodes via pydub/ffmpeg so any format works; ACRCloud historically prefers MP3 — if identification rates drop with `-sc` + ACRCloud, drop the flag for that run.
 
 ---
 

@@ -57,7 +57,10 @@ class DownloaderFactory:
             return YtDlpDownloader(**kwargs)
         elif is_mixcloud_url(url):
             logger.debug("URL identified as Mixcloud")
-            return MixcloudDownloader(**kwargs)
+            # MixcloudDownloader does not yet honor stream_copy; drop it so
+            # callers can pass the kwarg uniformly without breaking Mixcloud.
+            mixcloud_kwargs = {k: v for k, v in kwargs.items() if k != "stream_copy"}
+            return MixcloudDownloader(**mixcloud_kwargs)
         else:
             error_msg = f"Unsupported URL format: {url}"
             logger.error(error_msg)
