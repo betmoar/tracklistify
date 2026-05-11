@@ -8,7 +8,7 @@ import time
 from typing import List, Optional
 
 # Third-party imports
-from mutagen._file import File, FileType
+from mutagen import File, FileType
 
 from tracklistify.config.factory import get_config
 

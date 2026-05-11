@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List
 
 # Third-party imports
-from mutagen._file import File
+from mutagen import File
 
 # Local/package imports
 from tracklistify.core.exceptions import TrackIdentificationError
