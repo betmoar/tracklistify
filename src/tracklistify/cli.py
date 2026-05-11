@@ -26,23 +26,43 @@ async def main(args: argparse.Namespace) -> int:
         args: Parsed command-line arguments
 
     Returns:
-        Exit code (0 for success, 1 for failure)
+        Exit code (0 for success, 1 for failure, 130 for SIGINT)
     """
     app = None  # Initialize app to None
+    main_task = asyncio.current_task()
+    interrupt_count = 0
+
+    def signal_handler() -> None:
+        """Cancel the main task on first signal; force exit on second.
+
+        The old implementation just scheduled ``app.cleanup()`` as a side
+        task and let the main work keep running — so Ctrl+C printed a
+        message but didn't actually stop anything. Cancelling the main
+        task lets ``CancelledError`` propagate through the await chain,
+        the providers' ``async with`` blocks close cleanly, and the
+        ``finally`` here runs ``app.close()`` for final teardown.
+        """
+        nonlocal interrupt_count
+        interrupt_count += 1
+        if interrupt_count >= 2:
+            logger.warning("Second interrupt — forcing exit")
+            os._exit(130)
+        logger.info(
+            "Received shutdown signal — cancelling "
+            "(press Ctrl+C again to force exit)"
+        )
+        if main_task is not None and not main_task.done():
+            main_task.cancel()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
+
     try:
         # Load configuration
         config = get_config()
 
         # Create and run application
         app = AsyncApp(config)
-
-        # Setup signal handlers
-        def signal_handler():
-            logger.info("Received shutdown signal")
-            asyncio.create_task(app.cleanup())
-
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
 
         # Process input with CLI argument overrides
         await app.process_input(
@@ -56,6 +76,9 @@ async def main(args: argparse.Namespace) -> int:
 
         return 0
 
+    except asyncio.CancelledError:
+        logger.info("Operation cancelled by user")
+        return 130
     except ConfigError as e:
         logger.error(f"Configuration error: {e}", exc_info=True)
         return 1
@@ -67,7 +90,11 @@ async def main(args: argparse.Namespace) -> int:
         return 1
     finally:
         if app:
-            await app.close()
+            try:
+                await app.close()
+            except asyncio.CancelledError:
+                # Second Ctrl+C arrived during teardown — proceed to exit.
+                logger.debug("Teardown cancelled by second interrupt")
 
 
 def parse_args(argv=None) -> argparse.Namespace:
