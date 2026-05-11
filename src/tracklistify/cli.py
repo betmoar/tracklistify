@@ -49,7 +49,8 @@ async def main(args: argparse.Namespace) -> int:
             args.input,
             formats=args.formats,
             provider=args.provider,
-            fallback_enabled=not args.no_fallback,  # Invert --no-fallback flag
+            # Only override config when --no-fallback is explicitly set.
+            fallback_enabled=False if args.no_fallback else None,
         )
 
         return 0
@@ -101,6 +102,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument(
         "--no-fallback",
         action="store_true",
+        default=None,
         help="Disable fallback to secondary providers",
     )
 

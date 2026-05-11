@@ -41,9 +41,11 @@ class TestCLIParsing:
         assert args.provider == "acrcloud"
 
     def test_no_fallback_default(self):
-        """Test --no-fallback default is False."""
+        """When --no-fallback is omitted, args.no_fallback must be None
+        so the CLI can defer to config.fallback_enabled instead of
+        clobbering it with a concrete bool."""
         args = parse_args(["test.mp3"])
-        assert args.no_fallback is False
+        assert args.no_fallback is None
 
     def test_no_fallback_flag(self):
         """Test --no-fallback flag."""
@@ -140,8 +142,10 @@ class TestCLIArgumentPassing:
             assert "fallback_enabled" in call_kwargs
             assert call_kwargs["fallback_enabled"] is False
 
-    async def test_fallback_enabled_by_default(self, tmp_path):
-        """Ensure fallback is enabled by default (no --no-fallback)."""
+    async def test_fallback_enabled_defers_to_config_when_flag_absent(self, tmp_path):
+        """Without --no-fallback, the CLI must pass fallback_enabled=None so
+        AsyncApp.process_input falls back to config.fallback_enabled instead
+        of being silently forced to True."""
         test_file = tmp_path / "test.mp3"
         test_file.write_bytes(b"fake audio data")
 
@@ -154,10 +158,9 @@ class TestCLIArgumentPassing:
             args = parse_args([str(test_file)])
             await main(args)
 
-            # Verify fallback_enabled=True (default)
             call_kwargs = mock_app.process_input.call_args.kwargs
             assert "fallback_enabled" in call_kwargs
-            assert call_kwargs["fallback_enabled"] is True
+            assert call_kwargs["fallback_enabled"] is None
 
 
 class TestAsyncAppArgumentHandling:
