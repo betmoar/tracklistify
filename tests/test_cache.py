@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 # Third-party imports
 import pytest
+from freezegun import freeze_time
 
 # Local/package imports
 from tracklistify.cache import BaseCache, get_cache
@@ -72,26 +73,31 @@ async def test_basic_cache_operations(cache: BaseCache[Dict[str, Any]]):
 
 @pytest.mark.asyncio
 async def test_cache_ttl_invalidation(temp_cache_dir: Path):
-    """Test TTL-based cache invalidation."""
+    """Test TTL-based cache invalidation.
+
+    Uses ``freeze_time`` rather than a real ``time.sleep`` so the test
+    doesn't depend on wall-clock and can't flake under load.
+    """
     storage = JSONStorage(temp_cache_dir)
     strategy = TTLStrategy(default_ttl=1)  # 1 second TTL
     cache = BaseCache[Dict[str, Any]](storage=storage, invalidation_strategy=strategy)
 
-    # Set value
     key = "ttl_test"
     value = {"data": "test"}
-    await cache.set(key, value, ttl=1)
 
-    # Verify value exists
-    result = await cache.get(key)
-    assert result == value
+    with freeze_time("2026-01-01 12:00:00") as frozen:
+        await cache.set(key, value, ttl=1)
 
-    # Wait for TTL to expire
-    time.sleep(1.1)
+        # Verify value exists immediately after set
+        result = await cache.get(key)
+        assert result == value
 
-    # Verify value is invalidated
-    result = await cache.get(key)
-    assert result is None
+        # Advance past the TTL boundary
+        frozen.tick(delta=timedelta(seconds=1.1))
+
+        # Verify value is invalidated
+        result = await cache.get(key)
+        assert result is None
 
 
 @pytest.mark.asyncio

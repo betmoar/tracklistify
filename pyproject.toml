@@ -54,6 +54,7 @@ dev = [
     "commitizen>=4.10.0",
     "pylint>=4.0.3",
     "vulture>=2.14",
+    "freezegun>=1.5",
 ]
 
 [project.scripts]
