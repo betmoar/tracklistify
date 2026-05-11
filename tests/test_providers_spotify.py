@@ -191,3 +191,45 @@ async def test_api_request_rejects_non_2xx(provider, monkeypatch):
 
     with pytest.raises(ProviderError, match="500"):
         await provider._api_request("GET", "me")
+
+
+@pytest.mark.asyncio
+async def test_search_track_propagates_rate_limit(provider, monkeypatch):
+    """RateLimitError from _api_request must not be wrapped as ProviderError."""
+    from tracklistify.providers.base import RateLimitError
+
+    async def fake_api_request(self, method, endpoint, **kwargs):
+        raise RateLimitError("Spotify rate limit exceeded. Retry after 30s")
+
+    monkeypatch.setattr(SpotifyProvider, "_api_request", fake_api_request)
+
+    with pytest.raises(RateLimitError, match="Retry after 30s"):
+        await provider.search_track("Title")
+
+
+@pytest.mark.asyncio
+async def test_create_playlist_propagates_auth_error(provider, monkeypatch):
+    """AuthenticationError must not be wrapped as ProviderError."""
+    from tracklistify.providers.base import AuthenticationError
+
+    async def fake_api_request(self, method, endpoint, **kwargs):
+        raise AuthenticationError("Spotify token expired")
+
+    monkeypatch.setattr(SpotifyProvider, "_api_request", fake_api_request)
+
+    with pytest.raises(AuthenticationError, match="token expired"):
+        await provider.create_playlist("New Playlist")
+
+
+@pytest.mark.asyncio
+async def test_add_tracks_propagates_rate_limit(provider, monkeypatch):
+    """add_tracks_to_playlist must propagate RateLimitError unchanged."""
+    from tracklistify.providers.base import RateLimitError
+
+    async def fake_api_request(self, method, endpoint, **kwargs):
+        raise RateLimitError("Spotify rate limit exceeded")
+
+    monkeypatch.setattr(SpotifyProvider, "_api_request", fake_api_request)
+
+    with pytest.raises(RateLimitError):
+        await provider.add_tracks_to_playlist("pid", ["tid1", "tid2"])

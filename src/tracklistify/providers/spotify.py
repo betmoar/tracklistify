@@ -174,6 +174,8 @@ class SpotifyProvider(MetadataProvider):
             response = await self._api_request(
                 "GET", "search", params={"q": query, "type": "track", "limit": 5}
             )
+        except (RateLimitError, AuthenticationError):
+            raise
         except Exception as e:
             raise ProviderError(f"Error searching for track: {e}") from e
 
@@ -255,6 +257,8 @@ class SpotifyProvider(MetadataProvider):
         try:
             response = await self._api_request("POST", "me/playlists", json=data)
             return response["id"]
+        except (RateLimitError, AuthenticationError):
+            raise
         except Exception as e:
             raise ProviderError(f"Failed to create playlist: {e}") from e
 
@@ -279,5 +283,7 @@ class SpotifyProvider(MetadataProvider):
                 await self._api_request(
                     "POST", f"playlists/{playlist_id}/tracks", json={"uris": uris}
                 )
+            except (RateLimitError, AuthenticationError):
+                raise
             except Exception as e:
                 raise ProviderError(f"Failed to add tracks to playlist: {e}") from e
