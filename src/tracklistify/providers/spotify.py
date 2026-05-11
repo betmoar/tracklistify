@@ -103,7 +103,13 @@ class SpotifyProvider(MetadataProvider):
             self._session = None
 
     async def _api_request(self, method: str, endpoint: str, **kwargs) -> Dict:
-        """Make authenticated request to Spotify API."""
+        """Make authenticated request to Spotify API.
+
+        Accepts any 2xx response. Spotify's playlist mutation endpoints return
+        201 (Created) on success and some return 204 (No Content) with an
+        empty body; both are treated as success here. Returns the decoded
+        JSON body when present, otherwise an empty dict.
+        """
         await self._ensure_session()
         token = await self._get_access_token()
 
@@ -118,13 +124,19 @@ class SpotifyProvider(MetadataProvider):
                 raise RateLimitError(
                     f"Spotify rate limit exceeded. Retry after {retry_after}s"
                 )
-            elif response.status == 401:
+            if response.status == 401:
                 self._access_token = None
                 raise AuthenticationError("Spotify token expired")
-            elif response.status != 200:
+            if not 200 <= response.status < 300:
                 raise ProviderError(f"Spotify API error: {response.status}")
 
-            return await response.json()
+            # 204 No Content (and similar empty-body responses) have no JSON
+            if response.status == 204 or response.headers.get("Content-Length") == "0":
+                return {}
+            try:
+                return await response.json()
+            except aiohttp.ContentTypeError:
+                return {}
 
     async def search_track(
         self,

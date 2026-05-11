@@ -87,3 +87,107 @@ async def test_search_track_title_only(provider, monkeypatch):
 
     await provider.search_track("Just A Title")
     assert "Just A Title" in captured["params"]["q"]
+
+
+@pytest.mark.asyncio
+async def test_api_request_accepts_201(provider, monkeypatch):
+    """Spotify mutation endpoints return 201 on success."""
+
+    class FakeResponse:
+        status = 201
+        headers = {}
+
+        async def json(self):
+            return {"id": "new_playlist_id"}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+    class FakeSession:
+        def request(self, method, url, **kwargs):
+            return FakeResponse()
+
+    async def fake_ensure_session(self):
+        self._session = FakeSession()
+
+    async def fake_get_token(self):
+        return "fake-token"
+
+    monkeypatch.setattr(SpotifyProvider, "_ensure_session", fake_ensure_session)
+    monkeypatch.setattr(SpotifyProvider, "_get_access_token", fake_get_token)
+
+    result = await provider._api_request("POST", "me/playlists", json={"name": "X"})
+    assert result == {"id": "new_playlist_id"}
+
+
+@pytest.mark.asyncio
+async def test_api_request_accepts_204_empty_body(provider, monkeypatch):
+    """Spotify mutation endpoints return 204 with empty body for some ops."""
+    import aiohttp
+
+    class FakeResponse:
+        status = 204
+        headers = {"Content-Length": "0"}
+
+        async def json(self):
+            raise aiohttp.ContentTypeError(None, None)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+    class FakeSession:
+        def request(self, method, url, **kwargs):
+            return FakeResponse()
+
+    async def fake_ensure_session(self):
+        self._session = FakeSession()
+
+    async def fake_get_token(self):
+        return "fake-token"
+
+    monkeypatch.setattr(SpotifyProvider, "_ensure_session", fake_ensure_session)
+    monkeypatch.setattr(SpotifyProvider, "_get_access_token", fake_get_token)
+
+    result = await provider._api_request("DELETE", "playlists/abc/tracks")
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_api_request_rejects_non_2xx(provider, monkeypatch):
+    """Non-2xx (excluding 401/429) still raises ProviderError."""
+    from tracklistify.core.exceptions import ProviderError
+
+    class FakeResponse:
+        status = 500
+        headers = {}
+
+        async def json(self):
+            return {}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+    class FakeSession:
+        def request(self, method, url, **kwargs):
+            return FakeResponse()
+
+    async def fake_ensure_session(self):
+        self._session = FakeSession()
+
+    async def fake_get_token(self):
+        return "fake-token"
+
+    monkeypatch.setattr(SpotifyProvider, "_ensure_session", fake_ensure_session)
+    monkeypatch.setattr(SpotifyProvider, "_get_access_token", fake_get_token)
+
+    with pytest.raises(ProviderError, match="500"):
+        await provider._api_request("GET", "me")
