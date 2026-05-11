@@ -72,6 +72,16 @@ class Track:
             r"^\d{2}:\d{2}:\d{2}$", self.time_in_mix
         ):
             raise ValueError("time_in_mix must be in format HH:MM:SS")
+        # Regex above matches digit shape but accepts e.g. "99:99:99"; this
+        # check rejects semantically invalid HH/MM/SS so time_to_seconds()
+        # can stay infallible.
+        try:
+            datetime.strptime(self.time_in_mix, "%H:%M:%S")
+        except ValueError as e:
+            raise ValueError(
+                f"time_in_mix must be a valid HH:MM:SS time, got "
+                f"{self.time_in_mix!r}"
+            ) from e
         if (
             not isinstance(self.confidence, (int, float))
             or self.confidence < 0
@@ -105,13 +115,13 @@ class Track:
         return f"#EXTINF:-1,{self.artist} - {self.song_name}"
 
     def time_to_seconds(self) -> int:
-        """Convert time_in_mix to seconds."""
-        try:
-            time = datetime.strptime(self.time_in_mix, "%H:%M:%S")
-            return time.hour * 3600 + time.minute * 60 + time.second
-        except ValueError:
-            logger.error(f"Invalid time format: {self.time_in_mix}")
-            return 0
+        """Convert ``time_in_mix`` to seconds.
+
+        Infallible — ``__post_init__`` rejects malformed input at construction
+        so this method can rely on the string parsing cleanly.
+        """
+        time = datetime.strptime(self.time_in_mix, "%H:%M:%S")
+        return time.hour * 3600 + time.minute * 60 + time.second
 
 
 class TrackMatcher:
