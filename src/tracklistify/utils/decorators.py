@@ -90,12 +90,12 @@ def memoize(ttl: Optional[int] = None) -> Callable:
             result = func(*args, **kwargs)
             computation_time = (time.monotonic() - start_time) * MILLISECONDS_PER_SECOND
 
-            # Update average computation time
+            # Update average computation time (misses only — hits don't compute)
             with stats_lock:
+                misses = stats["misses"]
                 stats["avg_computation_time_ms"] = (
-                    stats["avg_computation_time_ms"] * (stats["total_calls"] - 1)
-                    + computation_time
-                ) / stats["total_calls"]
+                    stats["avg_computation_time_ms"] * (misses - 1) + computation_time
+                ) / misses
 
             # Cache the result in local memory
             cache_data = {"result": result, "computation_time_ms": computation_time}
