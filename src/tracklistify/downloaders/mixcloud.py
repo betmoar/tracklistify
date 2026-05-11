@@ -7,6 +7,7 @@ import asyncio
 import os
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 # Third-party imports
 import yt_dlp
@@ -23,7 +24,11 @@ class MixcloudDownloader(Downloader):
     """Mixcloud audio downloader."""
 
     def __init__(
-        self, verbose: bool = False, quality: str = "192", format: str = "mp3"
+        self,
+        verbose: bool = False,
+        quality: str = "192",
+        format: str = "mp3",
+        temp_dir: Optional[str] = None,
     ):
         """Initialize Mixcloud downloader.
 
@@ -31,11 +36,14 @@ class MixcloudDownloader(Downloader):
             verbose: Enable verbose logging
             quality: Audio quality (bitrate)
             format: Output audio format
+            temp_dir: Per-invocation temp directory. When ``None`` we fall
+                back to the system temp dir (legacy behaviour).
         """
         self.ffmpeg_path = self.get_ffmpeg_path()
         self.verbose = verbose
         self.quality = quality
         self.format = format
+        self.temp_dir = temp_dir
         logger.debug(
             f"Initialized MixcloudDownloader with ffmpeg at: {self.ffmpeg_path}"
         )
@@ -53,7 +61,9 @@ class MixcloudDownloader(Downloader):
                 }
             ],
             "ffmpeg_location": self.ffmpeg_path,
-            "outtmpl": os.path.join(tempfile.gettempdir(), "%(id)s.%(ext)s"),
+            "outtmpl": os.path.join(
+                self.temp_dir or tempfile.gettempdir(), "%(id)s.%(ext)s"
+            ),
             "verbose": self.verbose,
         }
 

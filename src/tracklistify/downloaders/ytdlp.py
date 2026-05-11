@@ -107,6 +107,7 @@ class YtDlpDownloader(Downloader):
         quality: str = "192",
         format: str = "mp3",
         stream_copy: bool = False,
+        temp_dir: Optional[str] = None,
     ):
         """Initialize yt-dlp downloader.
 
@@ -118,6 +119,10 @@ class YtDlpDownloader(Downloader):
                 and keep whatever audio codec YouTube serves (typically
                 opus/webm or m4a). Faster for long mixes; downstream
                 segmenting must also stream-copy.
+            temp_dir: Per-invocation temp directory. When not provided,
+                falls back to ``config.temp_dir``. Caller (AsyncApp)
+                passes its own ``self.temp_dir`` so concurrent runs are
+                isolated.
         """
         self.ffmpeg_path = self.get_ffmpeg_path()
         self.verbose = verbose
@@ -127,6 +132,7 @@ class YtDlpDownloader(Downloader):
         self.title = None
         self._logger = YTDLPLogger()
         self.config = get_config()
+        self.temp_dir = temp_dir
         # Store the last extracted metadata from yt-dlp
         self.last_metadata = None
         # Track yt-dlp postprocessor timing so the user sees progress
@@ -137,7 +143,7 @@ class YtDlpDownloader(Downloader):
         )
         logger.debug(
             f"Settings - Quality: {quality}kbps, Format: {format}, "
-            f"stream_copy: {stream_copy}"
+            f"stream_copy: {stream_copy}, temp_dir: {temp_dir}"
         )
 
     def _postprocessor_hook(self, d: dict) -> None:
@@ -160,8 +166,9 @@ class YtDlpDownloader(Downloader):
 
     def get_ydl_opts(self) -> dict:
         """Get yt-dlp options with current configuration."""
-        # Use configured temp directory or fall back to system temp
-        temp_dir = self.config.temp_dir or tempfile.gettempdir()
+        # Prefer the per-invocation temp dir from AsyncApp; fall back to
+        # config (legacy callers) or system temp (last resort).
+        temp_dir = self.temp_dir or self.config.temp_dir or tempfile.gettempdir()
 
         # Ensure temp directory exists
         os.makedirs(temp_dir, exist_ok=True)
@@ -192,7 +199,7 @@ class YtDlpDownloader(Downloader):
         Returns:
             Path to downloaded file
         """
-        temp_dir = Path(self.config.temp_dir)
+        temp_dir = Path(self.temp_dir or self.config.temp_dir)
         temp_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Starting yt-dlp download: {url}")

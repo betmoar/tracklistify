@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import traceback
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -46,10 +47,46 @@ class AsyncApp:
         self.shutdown_event = asyncio.Event()
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
+        # Per-invocation temp subdirectory: every concurrent tracklistify run
+        # gets its own dir under the shared config.temp_dir so cleanup can't
+        # wipe another run's segments mid-identification. Name encodes the
+        # PID so abandoned dirs can be swept on next startup.
+        self.run_id = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        self.temp_dir = Path(self.config.temp_dir) / self.run_id
+        self._sweep_stale_run_dirs()
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+
         # Always recreate identification_manager with fresh config
         self.identification_manager = IdentificationManager(
             config=self.config, provider_factory=self.provider_factory
         )
+
+    def _sweep_stale_run_dirs(self) -> None:
+        """Remove temp subdirs owned by PIDs that no longer exist.
+
+        Runs at startup. Only touches subdirs whose name matches the
+        ``<pid>-<hex>`` shape this class produces; everything else in
+        ``config.temp_dir`` is left alone.
+        """
+        parent = Path(self.config.temp_dir)
+        if not parent.exists():
+            return
+        for child in parent.iterdir():
+            if not child.is_dir():
+                continue
+            pid_str = child.name.split("-", 1)[0]
+            try:
+                pid = int(pid_str)
+            except ValueError:
+                continue  # not one of ours, leave it
+            try:
+                os.kill(pid, 0)  # signal 0 = existence check, no actual signal
+            except (ProcessLookupError, PermissionError):
+                try:
+                    shutil.rmtree(child)
+                    self.logger.debug(f"Swept stale temp dir: {child}")
+                except OSError as e:
+                    self.logger.debug(f"Could not sweep {child}: {e}")
 
     def shutdown(self) -> None:
         """Shutdown the application gracefully."""
@@ -120,7 +157,9 @@ class AsyncApp:
             else:
                 # URL processing - download the file
                 downloader = self.downloader_factory.create_downloader(
-                    validated_path, stream_copy=stream_copy
+                    validated_path,
+                    stream_copy=stream_copy,
+                    temp_dir=str(self.temp_dir),
                 )
                 if downloader is None:
                     raise ValueError("Failed to create downloader")
@@ -246,8 +285,9 @@ class AsyncApp:
         overlap_duration = self.config.overlap_duration
         step = segment_duration - overlap_duration
 
-        # Create temp directory for segments
-        temp_dir = Path(self.config.temp_dir)
+        # Per-invocation temp dir (created in __init__) — every concurrent
+        # run uses its own subdir so cleanup can't wipe peers' segments.
+        temp_dir = self.temp_dir
         temp_dir.mkdir(parents=True, exist_ok=True)
 
         # Segment via stream-copy: ffmpeg slices the existing audio frames
@@ -458,8 +498,9 @@ class AsyncApp:
     async def cleanup(self) -> None:
         """Cleanup resources."""
         try:
-            # Clean up temp directory
-            temp_dir = Path(self.config.temp_dir)
+            # Clean up THIS run's temp subdirectory only. Other concurrent
+            # runs' subdirs under the shared config.temp_dir are left alone.
+            temp_dir = self.temp_dir
             if temp_dir.exists():
                 # First try to remove all files
                 for file in temp_dir.glob("*"):
