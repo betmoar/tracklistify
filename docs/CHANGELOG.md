@@ -18,16 +18,17 @@ modernises the test suite, and tightens lint/format hygiene.
 - `tracklistify.utils.validation.clean_url` — URL normaliser used by the Spotify
   downloader (strips query/fragment/trailing slash, lowercases scheme + host).
 - `Track.metadata: Dict[str, Any]` field for provider enrichment (e.g.
-  `spotify_id`); both the dataclass default and the custom `__init__` now seed
-  an empty dict so it survives across construction paths.
+  `spotify_id`), seeded by `field(default_factory=dict)` so every instance
+  gets an independent dict via the dataclass-generated `__init__`. Validation
+  and config back-fill run in `__post_init__`.
 - `SecureConfigLoader.needs_rotation(secret_version)` — previously called by
   `get_secret()` but never defined; now compares secret age against
   `_rotation_interval` (default 90 days).
 - Async context-manager protocol (`__aenter__` / `__aexit__`) on
   `TrackIdentificationProvider` and `MetadataProvider` for deterministic
   resource cleanup.
-- `tracklistify.constants` module consolidating timeouts, thresholds, and other
-  magic numbers previously scattered across the codebase.
+- `tracklistify.utils.constants` module consolidating timeouts, thresholds,
+  and other magic numbers previously scattered across the codebase.
 - New test modules: `tests/test_imports.py` (smoke-tests every public import),
   `tests/test_security.py`, `tests/test_track_metadata.py`,
   `tests/test_providers_spotify.py`, plus the broader Phase 4 / consistency
@@ -102,6 +103,17 @@ modernises the test suite, and tightens lint/format hygiene.
 
 ### Removed
 
+- **Breaking:** `tracklistify.utils.SimpleLimiter` and
+  `get_simple_rate_limiter` — the secondary in-process limiter was a parallel
+  code path that duplicated `GlobalRateLimiter`. Public callers should migrate
+  to `tracklistify.utils.rate_limiter.get_global_rate_limiter()`, which
+  returns the singleton token-bucket-plus-circuit-breaker limiter used by
+  the rest of the codebase.
+- **Breaking:** `TrackMatcher.process_file` — legacy stub that cleared
+  `self.tracks` then merged the empty list, so it always returned `[]`
+  regardless of input. No callers in `src/` or `tests/`. Use
+  `tracklistify.utils.identification.IdentificationManager` for real
+  identification.
 - Deprecated `mask_sensitive_value_old` (no callers; superseded by the
   key-aware `mask_sensitive_value`).
 - Duplicate `ConfigurationError` in `core.exceptions` (the canonical name is
