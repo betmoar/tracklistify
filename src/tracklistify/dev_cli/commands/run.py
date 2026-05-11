@@ -119,9 +119,7 @@ class RunCommand(DevCommand):
         )
 
         try:
-            result = self.run_shell_command(
-                cmd=full_cmd, env=env, shell=False, check=True
-            )
+            result = self.run_shell_command(cmd=full_cmd, env=env, check=True)
             if result.stdout:
                 click.echo(result.stdout)
             return True

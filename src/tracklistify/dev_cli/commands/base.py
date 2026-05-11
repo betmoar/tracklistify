@@ -63,36 +63,38 @@ class DevCommand(ABC):
             "traceback": traceback.format_exc(),
         }
 
-    # pylint: disable=too-many-positional-arguments
     def run_shell_command(
         self,
         cmd: str,
         env: Optional[Dict[str, str]] = None,
         cwd: Optional[str] = None,
-        shell: bool = False,
         check: bool = True,
     ) -> subprocess.CompletedProcess:
-        """Run a shell command.
+        """Run a command via subprocess.
+
+        Always invokes with ``shell=False`` — the ``cmd`` string is
+        ``shlex.split`` into a list. Callers that need an interpolated
+        shell command must build the list themselves and call
+        ``subprocess.run`` directly with appropriate auditing.
 
         Args:
-            cmd: Command to run
-            env: Environment variables for the command
-            cwd: Working directory for the command
-            shell: Whether to run command in shell
-            check: Whether to check return code
+            cmd: Command to run (shell-style string; split with shlex).
+            env: Environment variables for the command.
+            cwd: Working directory for the command.
+            check: Whether to raise on non-zero return code.
 
         Returns:
-            CompletedProcess: Result of the command
+            CompletedProcess: Result of the command.
 
         Raises:
-            ToolExecutionError: If command execution fails
+            ToolExecutionError: If command execution fails.
         """
         try:
             result = subprocess.run(
-                cmd if shell else shlex.split(cmd),
+                shlex.split(cmd),
                 env=env,
                 cwd=cwd,
-                shell=shell,
+                shell=False,
                 check=check,
                 capture_output=True,
                 text=True,

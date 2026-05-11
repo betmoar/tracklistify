@@ -66,6 +66,14 @@ homepage = "https://github.com/betmoar/tracklistify"
 repository = "https://github.com/betmoar/tracklistify.git"
 documentation = "https://github.com/betmoar/tracklistify#readme"
 
+[tool.bandit]
+# Security pattern scan; medium+ severity blocks commits (-ll in hook args).
+# Exclude tests/ (fixtures use sample creds, mock secrets, etc.).
+exclude_dirs = ["tests", ".venv", "dev_cli"]
+# Add specific B-codes here only after seeing them fire repeatedly with
+# justified rationale. Keep this list short — every entry weakens the scan.
+skips = []
+
 [tool.commitizen]
 name = "cz_conventional_commits"
 tag_format = "v$version"

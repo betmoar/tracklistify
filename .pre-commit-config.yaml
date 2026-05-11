@@ -17,6 +17,15 @@ repos:
     -   id: ruff-format
         types_or: [ python, pyi ]
 
+-   repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+    -   id: bandit
+        args: ["-c", "pyproject.toml", "-ll", "-q"]
+        additional_dependencies: ["bandit[toml]"]
+        # bandit is informational; only medium+ findings fail (-ll).
+        exclude: ^tests/
+
 -   repo: https://github.com/commitizen-tools/commitizen
     rev: v4.0.0
     hooks:
