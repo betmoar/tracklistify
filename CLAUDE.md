@@ -2,7 +2,7 @@
 
 Instructions for Claude working on **Tracklistify** — automatic tracklist generator for DJ mixes (Shazam, ACRCloud, Spotify providers; YouTube/Mixcloud/SoundCloud downloaders).
 
-Stack: Python 3.11–3.13, `uv` package manager, `pytest` (asyncio strict), `ruff` for lint + format. ffmpeg required at runtime.
+Stack: Python 3.11–3.13, `uv` package manager, `pytest` (asyncio strict), `ruff` for lint + format. ffmpeg required at runtime. **Deno also required for YouTube downloads** — the `yt-dlp-ejs` solver scripts (pulled in via the `yt-dlp[default]` extras) run inside Deno to handle YouTube's signature / n-param challenges.
 
 ---
 

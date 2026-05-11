@@ -29,7 +29,7 @@ dependencies = [
     "pydub>=0.25.1",
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",
-    "yt-dlp>=2025.11.12",
+    "yt-dlp[default]>=2026.03.17",
     "shazamio>=0.8.1",
     "click>=8.3.1",
     # audioop was removed from the stdlib in Python 3.13 (PEP 594) but pydub
