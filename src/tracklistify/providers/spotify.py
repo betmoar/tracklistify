@@ -91,6 +91,9 @@ class SpotifyProvider(MetadataProvider):
             spotify_info = await self.search_track(title, artist, album, duration)
             if spotify_info:
                 track_info.update(spotify_info)
+        except (RateLimitError, AuthenticationError):
+            # Must propagate so callers can honor Retry-After / refresh tokens.
+            raise
         except Exception as e:
             logger.warning(f"Failed to enrich metadata: {str(e)}")
 

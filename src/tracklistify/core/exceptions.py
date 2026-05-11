@@ -13,7 +13,7 @@ Base Exceptions:
   - AudioProcessingError: Audio processing failures
   - TrackIdentificationError: Track identification failures
   - ValidationError: Input validation failures
-  - TimeoutError: Operation timeouts
+  - TracklistifyTimeoutError: Operation timeouts
   - ProviderError: Base for provider-specific errors
 
 Provider-Specific Exceptions:
@@ -89,8 +89,11 @@ class ValidationError(TracklistifyError):
     pass
 
 
-class TimeoutError(TracklistifyError):
-    """Raised when an operation times out."""
+class TracklistifyTimeoutError(TracklistifyError):
+    """Raised when an operation times out.
+
+    Named to avoid shadowing the built-in ``TimeoutError``.
+    """
 
     def __init__(self, message: str, timeout: float = None, operation: str = None):
         self.timeout = timeout

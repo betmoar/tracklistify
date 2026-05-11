@@ -22,6 +22,7 @@ from tracklistify.core.types import AudioSegment
 from tracklistify.downloaders import DownloaderFactory
 from tracklistify.exporters import TracklistOutput
 from tracklistify.providers.factory import create_provider_factory
+from tracklistify.utils.constants import FFMPEG_SEGMENT_TIMEOUT
 from tracklistify.utils.identification import IdentificationManager
 from tracklistify.utils.logger import get_logger
 from tracklistify.utils.strings import sanitizer
@@ -298,7 +299,11 @@ class AsyncApp:
                         )
 
                 result = subprocess.run(
-                    params["cmd"], capture_output=True, text=True, check=True
+                    params["cmd"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=FFMPEG_SEGMENT_TIMEOUT,
                 )
                 self.logger.debug(f"FFmpeg output: {result.stdout}")
 
@@ -314,6 +319,21 @@ class AsyncApp:
                         f"Output file is missing or too small"
                     )
                     return None
+
+            except subprocess.TimeoutExpired:
+                self.logger.error(
+                    f"ffmpeg timed out after {FFMPEG_SEGMENT_TIMEOUT}s at "
+                    f"{params['start_time']}s; cleaning up partial output"
+                )
+                if params["file"].exists():
+                    try:
+                        params["file"].unlink()
+                    except OSError as unlink_err:
+                        self.logger.debug(
+                            f"Could not remove partial segment "
+                            f"{params['file']}: {unlink_err}"
+                        )
+                return None
 
             except subprocess.CalledProcessError as e:
                 self.logger.error(

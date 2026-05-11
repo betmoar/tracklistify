@@ -202,44 +202,52 @@ class RateLimiter:
         except asyncio.TimeoutError:
             return False
 
-        # At this point, we have semaphore access and will process the request
-        limits.metrics.total_requests += 1
+        # At this point, we have semaphore access and will process the request.
+        # On every non-True exit (timeout, cancellation, unexpected error) we
+        # must release the semaphore, or callers block forever on subsequent
+        # acquires once max_concurrent_requests is reached.
+        try:
+            limits.metrics.total_requests += 1
 
-        # Check if rate limiting is enabled
-        rate_limit_enabled = getattr(self._config, "rate_limit_enabled", True)
-        if not rate_limit_enabled:
-            return True
+            # Check if rate limiting is enabled
+            rate_limit_enabled = getattr(self._config, "rate_limit_enabled", True)
+            if not rate_limit_enabled:
+                return True
 
-        # Check rate limiting tokens
-        token_wait_start = time.monotonic()
+            # Check rate limiting tokens
+            token_wait_start = time.monotonic()
 
-        while time.monotonic() - token_wait_start < timeout:
-            async with limits.lock:  # ASYNC lock - doesn't block event loop!
-                self._refill_tokens(limits)
-                if limits.tokens > 0:
-                    limits.tokens -= 1
-                    # Record metrics only if we had to wait for tokens (rate limiting)
-                    wait_time = time.monotonic() - token_wait_start
-                    if wait_time >= RATE_LIMIT_DETECTION_THRESHOLD_SECONDS:
-                        # Count successful requests that were rate-limited
-                        limits.metrics.rate_limited_requests += 1
-                        limits.metrics.last_rate_limit = time.monotonic()
-                        limits.metrics.rate_limit_windows.append(
-                            (token_wait_start, time.monotonic())
-                        )
-                    return True
+            while time.monotonic() - token_wait_start < timeout:
+                async with limits.lock:  # ASYNC lock - doesn't block event loop!
+                    self._refill_tokens(limits)
+                    if limits.tokens > 0:
+                        limits.tokens -= 1
+                        # Record metrics only if we had to wait for tokens
+                        wait_time = time.monotonic() - token_wait_start
+                        if wait_time >= RATE_LIMIT_DETECTION_THRESHOLD_SECONDS:
+                            # Successful requests that were rate-limited
+                            limits.metrics.rate_limited_requests += 1
+                            limits.metrics.last_rate_limit = time.monotonic()
+                            limits.metrics.rate_limit_windows.append(
+                                (token_wait_start, time.monotonic())
+                            )
+                        return True
 
-            # Wait a short time before checking again
-            await asyncio.sleep(TOKEN_REFILL_SLEEP)
+                # Wait a short time before checking again
+                await asyncio.sleep(TOKEN_REFILL_SLEEP)
 
-        # Timeout exceeded - this is a rate limiting failure
-        # Record the window and update last_rate_limit but don't increment
-        # rate_limited_requests (that's only for successful requests that waited)
-        limits.metrics.last_rate_limit = time.monotonic()
-        limits.metrics.rate_limit_windows.append((token_wait_start, time.monotonic()))
-
-        limits.semaphore.release()
-        return False
+            # Timeout exceeded - rate limiting failure
+            limits.metrics.last_rate_limit = time.monotonic()
+            limits.metrics.rate_limit_windows.append(
+                (token_wait_start, time.monotonic())
+            )
+            limits.semaphore.release()
+            return False
+        except BaseException:
+            # Cancellation or unexpected error after semaphore was acquired:
+            # release before propagating so we don't strand a slot.
+            limits.semaphore.release()
+            raise
 
     def release(self, provider: Any):
         """Release a concurrent request slot."""

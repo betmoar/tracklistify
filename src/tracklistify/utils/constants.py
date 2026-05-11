@@ -20,6 +20,8 @@ DEFAULT_SEGMENT_PADDING = 0.5  # seconds before/after segment
 MIN_SEGMENT_FILE_SIZE = 1000  # bytes - minimum valid segment size
 DEFAULT_THREAD_POOL_WORKERS = 4  # for audio segmentation
 FFMPEG_MP3_QUALITY = 5  # 0-9 scale, lower is better quality
+FFMPEG_SEGMENT_TIMEOUT = 120  # seconds; per-segment ffmpeg cutoff
+FFMPEG_TRANSCODE_TIMEOUT = 300  # seconds; full-file transcode cutoff
 
 # Cache defaults
 DEFAULT_CACHE_TTL = 3600  # 1 hour

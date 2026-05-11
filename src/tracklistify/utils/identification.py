@@ -3,6 +3,7 @@ Track identification helper functions and utilities.
 """
 
 # Standard library imports
+import asyncio
 import sys
 import time
 from typing import List, Optional
@@ -17,6 +18,7 @@ from tracklistify.core.track import Track, TrackMatcher
 from tracklistify.providers.factory import create_provider_factory
 from .constants import DEFAULT_PROGRESS_BAR_WIDTH, TERMINAL_LINE_WIDTH
 from .logger import get_logger
+from .rate_limiter import get_global_rate_limiter
 from .time_formatter import format_seconds_to_hhmmss
 
 logger = get_logger(__name__)
@@ -199,56 +201,72 @@ class IdentificationManager:
         provider_name = self.config.primary_provider
         provider = self.provider_factory.get_identification_provider(provider_name)
         identified_tracks = []
+        limiter = get_global_rate_limiter()
 
-        for segment in audio_segments:
-            try:
-                track_info = await provider.identify_track(segment)
-                if track_info is None:
-                    logger.debug("Provider returned None for track identification")
-                    continue
-
-                # Extract track metadata with safe array access
-                music_list = track_info.get("metadata", {}).get("music", [])
-                if not music_list:
-                    logger.error("No track metadata found in provider response")
-                    continue
-                metadata = music_list[0] if music_list else {}
-                if not metadata:
-                    logger.error("Empty track metadata in provider response")
-                    continue
-
-                # Format time in mix with proper zero-padding
-                time_in_mix = format_seconds_to_hhmmss(int(segment.start_time))
-
-                # Safely extract artist name with default
-                artists_list = metadata.get("artists", [])
-                artist_name = (
-                    artists_list[0].get("name", "Unknown Artist")
-                    if artists_list
-                    else "Unknown Artist"
-                )
-
+        # ``async with provider`` ensures aiohttp sessions / shazamio resources
+        # are closed even if an exception escapes the loop.
+        async with provider:
+            for segment in audio_segments:
+                acquired = False
                 try:
-                    track = Track(
-                        song_name=metadata.get("title", "Unknown Title"),
-                        artist=artist_name,
-                        time_in_mix=time_in_mix,
-                        confidence=float(
-                            metadata.get("score", 100.0)
-                        ),  # Default to 100% if not provided
-                    )
-                    self.track_matcher.add_track(track)
-                    identified_tracks.append(track)
-                except ValueError as e:
-                    logger.error(f"Failed to create track: {e}")
-                    continue
-                except Exception as e:
-                    logger.error(f"Unexpected error creating track: {e}")
-                    continue
+                    acquired = await limiter.acquire(provider_name)
+                    if not acquired:
+                        logger.warning(
+                            f"Rate limiter rejected request for {provider_name}; "
+                            "skipping segment"
+                        )
+                        continue
 
-            except Exception as e:
-                logger.error(f"Identification failed for segment: {e}")
-                continue
+                    track_info = await provider.identify_track(segment)
+                    if track_info is None:
+                        logger.debug("Provider returned None for track identification")
+                        continue
+
+                    # Extract track metadata with safe array access
+                    music_list = track_info.get("metadata", {}).get("music", [])
+                    if not music_list:
+                        logger.error("No track metadata found in provider response")
+                        continue
+                    metadata = music_list[0] if music_list else {}
+                    if not metadata:
+                        logger.error("Empty track metadata in provider response")
+                        continue
+
+                    # Format time in mix with proper zero-padding
+                    time_in_mix = format_seconds_to_hhmmss(int(segment.start_time))
+
+                    # Safely extract artist name with default
+                    artists_list = metadata.get("artists", [])
+                    artist_name = (
+                        artists_list[0].get("name", "Unknown Artist")
+                        if artists_list
+                        else "Unknown Artist"
+                    )
+
+                    try:
+                        track = Track(
+                            song_name=metadata.get("title", "Unknown Title"),
+                            artist=artist_name,
+                            time_in_mix=time_in_mix,
+                            confidence=float(metadata.get("score", 100.0)),
+                        )
+                        self.track_matcher.add_track(track)
+                        identified_tracks.append(track)
+                    except ValueError as e:
+                        logger.error(f"Failed to create track: {e}")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Unexpected error creating track: {e}")
+                        continue
+
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.error(f"Identification failed for segment: {e}")
+                    continue
+                finally:
+                    if acquired:
+                        limiter.release(provider_name)
 
         # Get unique tracks sorted by time in mix
         unique_tracks = self.track_matcher.get_unique_tracks()

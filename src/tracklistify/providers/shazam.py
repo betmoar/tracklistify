@@ -91,6 +91,8 @@ class ShazamProvider(TrackIdentificationProvider):
                 }
             }
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"Error during track identification: {e}")
             return None

@@ -59,6 +59,7 @@ dev = [
 
 [project.scripts]
 tracklistify = "tracklistify.cli:cli"
+tracklistify-dev = "tracklistify.dev_cli.cli:cli"
 
 [project.urls]
 homepage = "https://github.com/betmoar/tracklistify"

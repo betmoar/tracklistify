@@ -106,8 +106,10 @@ class RunCommand(DevCommand):
             )
 
         # Build command with arguments
-        cmd_args = tool_config.get("args", "").split() + args
-        full_cmd = f"{command} {' '.join(cmd_args)}"
+        cmd_args = tool_config.get("args", "").split() + list(args)
+        # Use list-form / shell=False to avoid shell metacharacter injection
+        # from user-supplied args (e.g. ``dev run pylint "; rm -rf ~"``).
+        full_cmd = " ".join([command, *cmd_args])
         env = self._prepare_environment(tool_config.get("env", {}))
 
         self.logger.info(
@@ -118,7 +120,7 @@ class RunCommand(DevCommand):
 
         try:
             result = self.run_shell_command(
-                cmd=full_cmd, env=env, shell=True, check=True
+                cmd=full_cmd, env=env, shell=False, check=True
             )
             if result.stdout:
                 click.echo(result.stdout)

@@ -19,6 +19,7 @@ from mutagen.oggvorbis import OggVorbis
 
 # Local/package imports
 from tracklistify.core.exceptions import DownloadError
+from tracklistify.utils.constants import FFMPEG_TRANSCODE_TIMEOUT
 from tracklistify.utils.logger import get_logger
 from tracklistify.utils.validation import clean_url
 
@@ -367,7 +368,25 @@ class SpotifyDownloader(Downloader):
                     "-y",
                     str(output_path),
                 ]
-                subprocess.run(cmd, check=True, capture_output=True)
+                try:
+                    subprocess.run(
+                        cmd,
+                        check=True,
+                        capture_output=True,
+                        timeout=FFMPEG_TRANSCODE_TIMEOUT,
+                    )
+                except subprocess.TimeoutExpired as e:
+                    if output_path.exists():
+                        try:
+                            output_path.unlink()
+                        except OSError as unlink_err:
+                            logger.debug(
+                                f"Could not remove partial transcode "
+                                f"{output_path}: {unlink_err}"
+                            )
+                    raise DownloadError(
+                        f"ffmpeg transcode timed out after {FFMPEG_TRANSCODE_TIMEOUT}s"
+                    ) from e
                 temp_path.unlink()
             else:
                 temp_path.rename(output_path)
