@@ -85,12 +85,12 @@ class AsyncApp:
                 self.logger.info(f"Overriding fallback_enabled: {fallback_enabled}")
                 self.config.fallback_enabled = fallback_enabled
 
-            # Store formats for output (used in save_output)
+            # Store formats for output. When formats is None, leave
+            # _output_formats unset so the save block falls back to
+            # self.config.output_format via getattr default.
             if formats is not None:
                 self.logger.info(f"Output formats: {formats}")
                 self._output_formats = formats
-            else:
-                self._output_formats = "all"
 
             # Validate input (URL or local file path)
             validated_result = validate_input(input_path)
