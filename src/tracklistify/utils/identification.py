@@ -8,9 +8,6 @@ import sys
 import time
 from typing import List, Optional
 
-# Third-party imports
-from mutagen import File, FileType
-
 from tracklistify.config.factory import get_config
 
 # Local/package imports
@@ -22,11 +19,6 @@ from .rate_limiter import get_global_rate_limiter
 from .time_formatter import format_seconds_to_hhmmss
 
 logger = get_logger(__name__)
-
-
-def get_audio_info(audio_path: str) -> Optional[FileType]:
-    """Get audio file metadata."""
-    return File(audio_path)
 
 
 def format_duration(duration: float) -> str:

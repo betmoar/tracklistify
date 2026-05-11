@@ -8,6 +8,7 @@ from typing import List
 
 # Local imports
 from .paths import get_root
+from .security import mask_sensitive_value
 from .validation import ConfigValidator, PathRequirement, PathRule
 
 
@@ -82,10 +83,12 @@ class BaseConfig:
                             value = field_type(env_value)
                         except ValueError as e:
                             # Do NOT use eval() - security vulnerability!
-                            # Only accept valid numeric strings
+                            # Mask the value in case a user mis-pasted a secret
+                            # (e.g. API key) into a numeric field.
+                            safe_value = mask_sensitive_value(env_key, env_value)
                             raise ValueError(
                                 f"Invalid {field_type.__name__} value for "
-                                f"{env_key}: {env_value}. "
+                                f"{env_key}: {safe_value}. "
                                 f"Expected a valid {field_type.__name__}."
                             ) from e
                     else:
@@ -95,8 +98,9 @@ class BaseConfig:
                     # Set the value on the instance
                     setattr(self, field_name, value)
                 except Exception as e:
+                    safe_value = mask_sensitive_value(env_key, env_value)
                     raise ValueError(
-                        f"Invalid value for {env_key}: {env_value} - {str(e)}"
+                        f"Invalid value for {env_key}: {safe_value} - {str(e)}"
                     ) from e
 
     def _setup_validation(self) -> None:
@@ -167,8 +171,15 @@ class TrackIdentificationConfig(BaseConfig):
     cache_min_free_space: int = field(default=104857600)
 
     # Rate limiting settings
+    rate_limit_enabled: bool = field(default=True)
     max_requests_per_minute: int = field(default=25)
     max_concurrent_requests: int = field(default=2)
+
+    # Circuit-breaker settings (consumed by RateLimiter via getattr; declared
+    # here so env-var overrides land on the dataclass instance).
+    circuit_breaker_enabled: bool = field(default=True)
+    circuit_breaker_threshold: int = field(default=5)
+    circuit_breaker_reset_timeout: float = field(default=60.0)
 
     # ACRCloud settings
     acrcloud_max_rpm: int = field(default=300)
@@ -178,6 +189,10 @@ class TrackIdentificationConfig(BaseConfig):
     shazam_max_rpm: int = field(default=25)
     shazam_max_concurrent: int = field(default=1)
     shazam_cooldown_seconds: float = field(default=2.25)
+
+    # Spotify rate limits (consumed by RateLimiter.register_provider)
+    spotify_max_rpm: int = field(default=120)
+    spotify_max_concurrent: int = field(default=20)
 
     # Output formats
     output_format: str = field(default="json")

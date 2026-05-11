@@ -49,25 +49,29 @@ def create_cache(
     )
 
 
-def get_cache() -> BaseCache:
+def get_cache(force_refresh: bool = False) -> BaseCache:
     """Get global cache instance.
 
     This function is thread-safe using double-checked locking pattern.
     Multiple threads can safely call this function concurrently.
+
+    Args:
+        force_refresh: If True, discard the existing instance and create
+            a fresh one. Use this from tests after ``get_config(force_refresh=True)``
+            so the cache picks up the new config.
 
     Returns:
         BaseCache: The global cache instance.
     """
     global _cache_instance
 
-    # Fast path: instance already exists
-    if _cache_instance is not None:
+    # Fast path: instance already exists and no refresh requested
+    if not force_refresh and _cache_instance is not None:
         return _cache_instance
 
-    # Slow path: need to create instance (thread-safe)
+    # Slow path: need to (re)create instance (thread-safe)
     with _cache_lock:
-        # Double-check inside lock
-        if _cache_instance is None:
+        if force_refresh or _cache_instance is None:
             _cache_instance = create_cache()
 
     return _cache_instance

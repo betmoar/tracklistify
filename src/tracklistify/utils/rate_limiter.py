@@ -323,18 +323,30 @@ _global_rate_limiter: Optional["RateLimiter"] = None
 _global_rate_limiter_lock = threading.Lock()
 
 
-def get_global_rate_limiter() -> RateLimiter:
+def get_global_rate_limiter(force_refresh: bool = False) -> RateLimiter:
     """Get the global rate limiter instance.
 
     Thread-safe via double-checked locking; concurrent first-access
     callers all receive the same instance.
+
+    Args:
+        force_refresh: If True, replace the existing limiter with a fresh
+            one. Use after ``get_config(force_refresh=True)`` in tests so
+            provider limits pick up the new config.
     """
     global _global_rate_limiter
-    # Fast path: already created
-    if _global_rate_limiter is not None:
+    # Fast path: already created and no refresh requested
+    if not force_refresh and _global_rate_limiter is not None:
         return _global_rate_limiter
     # Slow path: serialise creation
     with _global_rate_limiter_lock:
-        if _global_rate_limiter is None:
+        if force_refresh or _global_rate_limiter is None:
             _global_rate_limiter = RateLimiter()
     return _global_rate_limiter
+
+
+def reset_global_rate_limiter() -> None:
+    """Drop the global rate limiter so the next call recreates it."""
+    global _global_rate_limiter
+    with _global_rate_limiter_lock:
+        _global_rate_limiter = None
