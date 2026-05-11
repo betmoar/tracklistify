@@ -93,7 +93,7 @@ Don't commit unless explicitly asked. When asked, use heredoc commit messages fo
 
 - **Add a provider:** subclass `TrackIdentificationProvider` from `providers/base.py`, register in `providers/factory.py::get_identification_provider`, add config fields to `TrackIdentificationConfig`, add tests with mocked `_api_request`.
 - **Add an output format:** add a method to `exporters/tracklist.py::TracklistOutput`, wire it into `save_all`, extend the `cli.py` `--formats` choices.
-- **Add a config option:** add a field to `TrackIdentificationConfig` (`config/base.py`) with a default; add validation in `__post_init__` if it has bounds; document in `.env.example`.
+- **Add a config option:** add a field to `TrackIdentificationConfig` (`config/base.py`) with a default; add validation in `__post_init__` if it has bounds; assign the field to a section in `scripts/generate_env_example.py::FIELD_SECTIONS`; run `uv run python scripts/generate_env_example.py` to refresh `.env.example`.
 
 For everything else, read the surrounding code — it's the source of truth, not this file.
 
