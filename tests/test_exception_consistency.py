@@ -205,7 +205,9 @@ class TestNoOrphanExceptionDefinitions:
                 for pattern in disallowed_definitions:
                     if pattern in content:
                         violations.append(f"{py_file}: {pattern}")
-            except Exception:
+            except OSError:
+                # Skip files we can't read (symlinks, permission errors, etc.).
+                # The scan is best-effort; an unreadable file is not a violation.
                 pass
 
         if violations:
