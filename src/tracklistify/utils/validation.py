@@ -160,6 +160,9 @@ def is_mixcloud_url(url: str) -> bool:
 def clean_url(url: str) -> str:
     """Normalize a URL: strip query/fragment/trailing slash; lowercase scheme + host.
 
+    Userinfo (``user:pass@``) is **stripped** from the output — normalized URLs
+    are commonly logged or echoed, so propagating credentials would be a leak.
+
     Args:
         url: URL to normalize. May be empty or unparseable.
 
@@ -175,5 +178,10 @@ def clean_url(url: str) -> str:
         return url
     if not parsed.scheme or not parsed.netloc:
         return url
+    # Rebuild netloc from hostname (+ optional port) to drop any user:pass@.
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return url
+    netloc = host if parsed.port is None else f"{host}:{parsed.port}"
     path = parsed.path.rstrip("/")
-    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{path}"
+    return f"{parsed.scheme.lower()}://{netloc}{path}"

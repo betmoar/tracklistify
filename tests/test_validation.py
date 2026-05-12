@@ -93,6 +93,21 @@ class TestCleanUrl:
     def test_returns_input_for_unparseable(self):
         assert clean_url("not a url") == "not a url"
 
+    def test_strips_userinfo_credentials(self):
+        """clean_url() output is frequently logged; never propagate
+        ``user:pass@`` credentials into the normalized form."""
+        assert (
+            clean_url("https://alice:secret@youtube.com/watch?v=abc")
+            == "https://youtube.com/watch"
+        )
+
+    def test_preserves_explicit_port(self):
+        """Stripping userinfo must not also strip ports."""
+        assert (
+            clean_url("https://user:pw@host.example:8443/p")
+            == "https://host.example:8443/p"
+        )
+
 
 class TestPlatformURLScheme:
     """Regression: _is_platform_url must reject non-HTTP(S) schemes."""
