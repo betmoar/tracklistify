@@ -24,15 +24,17 @@ classifiers = [
 ]
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "aiohttp>=3.11.8",
-    "configparser>=7.1.0",
+    "aiohttp>=3.13.2",
     "mutagen>=1.47.0",
     "pydub>=0.25.1",
-    "python-dotenv>=1.0.1",
-    "requests>=2.32.3",
-    "yt-dlp>=2024.11.18",
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+    "yt-dlp[default]>=2026.03.17",
     "shazamio>=0.8.1",
-    "click>=8.1.7",
+    "click>=8.3.1",
+    # audioop was removed from the stdlib in Python 3.13 (PEP 594) but pydub
+    # still imports it; this maintained backport restores the symbol.
+    "audioop-lts>=0.2.1 ; python_version >= '3.13'",
 ]
 
 [tool.uv.sources]
@@ -42,25 +44,35 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3.3",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=6.0.0",
-    "pytest-mock>=3.14.0",
-    "pytest-httpx>=0.21.0",
-    "pre-commit>=4.0.1",
-    "ruff>=0.8.0",
-    "commitizen>=4.0.0",
-    "pylint>=3.3.1",
-    "vulture>=2.13",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+    "pytest-httpx>=0.35.0",
+    "pre-commit>=4.5.0",
+    "ruff>=0.14.6",
+    "commitizen>=4.10.0",
+    "pylint>=4.0.3",
+    "vulture>=2.14",
+    "freezegun>=1.5",
 ]
 
 [project.scripts]
 tracklistify = "tracklistify.cli:cli"
+tracklistify-dev = "tracklistify.dev_cli.cli:cli"
 
 [project.urls]
 homepage = "https://github.com/betmoar/tracklistify"
 repository = "https://github.com/betmoar/tracklistify.git"
 documentation = "https://github.com/betmoar/tracklistify#readme"
+
+[tool.bandit]
+# Security pattern scan; medium+ severity blocks commits (-ll in hook args).
+# Exclude tests/ (fixtures use sample creds, mock secrets, etc.).
+exclude_dirs = ["tests", ".venv", "dev_cli"]
+# Add specific B-codes here only after seeing them fire repeatedly with
+# justified rationale. Keep this list short — every entry weakens the scan.
+skips = []
 
 [tool.commitizen]
 name = "cz_conventional_commits"
@@ -124,8 +136,9 @@ exclude = [
 ]
 include = [
     "pyproject.toml",
-    "tracklistify/**/*.py",
-    "scripts/**/*.py"
+    "src/tracklistify/**/*.py",
+    "tests/**/*.py",
+    "scripts/**/*.py",
 ]
 
 # Match Black
@@ -170,3 +183,6 @@ docstring-code-format = false
 # This only has an effect when the `docstring-code-format` setting is
 # enabled.
 docstring-code-line-length = "dynamic"
+
+[tool.uv]
+link-mode = "copy"

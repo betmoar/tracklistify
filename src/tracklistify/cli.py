@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .config import ConfigError, get_config, get_root
+from .config.security import mask_sensitive_value
 from .core import ApplicationError, AsyncApp
 
 # Local/package imports
@@ -19,8 +20,43 @@ logger = get_logger(__name__)
 
 
 async def main(args: argparse.Namespace) -> int:
-    """Main entry point."""
+    """Main entry point.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure, 130 for SIGINT)
+    """
     app = None  # Initialize app to None
+    main_task = asyncio.current_task()
+    interrupt_count = 0
+
+    def signal_handler() -> None:
+        """Cancel the main task on first signal; force exit on second.
+
+        The old implementation just scheduled ``app.cleanup()`` as a side
+        task and let the main work keep running — so Ctrl+C printed a
+        message but didn't actually stop anything. Cancelling the main
+        task lets ``CancelledError`` propagate through the await chain,
+        the providers' ``async with`` blocks close cleanly, and the
+        ``finally`` here runs ``app.close()`` for final teardown.
+        """
+        nonlocal interrupt_count
+        interrupt_count += 1
+        if interrupt_count >= 2:
+            logger.warning("Second interrupt — forcing exit")
+            os._exit(130)
+        logger.info(
+            "Received shutdown signal — cancelling "
+            "(press Ctrl+C again to force exit)"
+        )
+        if main_task is not None and not main_task.done():
+            main_task.cancel()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
+
     try:
         # Load configuration
         config = get_config()
@@ -28,19 +64,21 @@ async def main(args: argparse.Namespace) -> int:
         # Create and run application
         app = AsyncApp(config)
 
-        # Setup signal handlers
-        def signal_handler():
-            logger.info("Received shutdown signal")
-            asyncio.create_task(app.cleanup())
-
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
-
-        # Sample items for processing
-        await app.process_input(args.input)
+        # Process input with CLI argument overrides
+        await app.process_input(
+            args.input,
+            formats=args.formats,
+            provider=args.provider,
+            # Only override config when --no-fallback is explicitly set.
+            fallback_enabled=False if args.no_fallback else None,
+            stream_copy=args.stream_copy,
+        )
 
         return 0
 
+    except asyncio.CancelledError:
+        logger.info("Operation cancelled by user")
+        return 130
     except ConfigError as e:
         logger.error(f"Configuration error: {e}", exc_info=True)
         return 1
@@ -52,11 +90,22 @@ async def main(args: argparse.Namespace) -> int:
         return 1
     finally:
         if app:
-            await app.close()
+            try:
+                await app.close()
+            except asyncio.CancelledError:
+                # Second Ctrl+C arrived during teardown — proceed to exit.
+                logger.debug("Teardown cancelled by second interrupt")
 
 
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
+def parse_args(argv=None) -> argparse.Namespace:
+    """Parse command line arguments.
+
+    Args:
+        argv: Optional list of arguments for testing. If None, uses sys.argv.
+
+    Returns:
+        Parsed arguments namespace
+    """
     parser = argparse.ArgumentParser(description="Identify tracks in a mix.")
 
     parser.add_argument(
@@ -81,7 +130,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-fallback",
         action="store_true",
+        default=None,
         help="Disable fallback to secondary providers",
+    )
+
+    parser.add_argument(
+        "-sc",
+        "--stream-copy",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip yt-dlp's MP3 transcode and let segments stream-copy the "
+            "source codec (opus/webm/m4a). Much faster on long mixes. "
+            "Shazamio handles any format via ffmpeg; ACRCloud historically "
+            "prefers MP3 so identification rates may drop with that provider."
+        ),
     )
 
     parser.add_argument(
@@ -101,7 +164,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-v",
         "--verbose",
-        default=True,
         action="store_true",
         help="Enable verbose logging",
     )
@@ -114,7 +176,7 @@ def parse_args() -> argparse.Namespace:
         help="Enable debug logging",
     )
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def load_environment_variables(env_path: Path) -> None:
@@ -123,10 +185,12 @@ def load_environment_variables(env_path: Path) -> None:
         load_dotenv(env_path)
         logger.info(f"Loaded environment from {env_path}")
 
-        # Log loaded environment variables for debugging
+        # Log loaded environment variables for debugging (mask sensitive values)
         for key, value in os.environ.items():
             if key.startswith("TRACKLISTIFY_"):
-                logger.debug(f"Loaded env var: {key}={value}")
+                # Mask sensitive values to prevent credential exposure
+                display_value = mask_sensitive_value(key, value)
+                logger.debug(f"Loaded env var: {key}={display_value}")
 
 
 def cli() -> None:

@@ -6,7 +6,6 @@ from pathlib import Path
 
 # Third-party imports
 import pytest
-from dotenv import load_dotenv
 
 # Local/package imports
 from tracklistify.config import (
@@ -36,57 +35,54 @@ from tracklistify.config.validation import (
 )
 
 
-def test_default_config():
-    """Test default configuration values."""
-    # Load .env file to ensure environment variables are set, overriding shell vars
-    load_dotenv(override=True)
+def test_default_config(monkeypatch):
+    """Test default configuration values (code defaults, no .env file)."""
+    # Clear all TRACKLISTIFY_ environment variables to test pure code defaults
+    env_vars_to_clear = [key for key in os.environ if key.startswith("TRACKLISTIFY_")]
+    for key in env_vars_to_clear:
+        monkeypatch.delenv(key, raising=False)
+
     # Ensure clean singleton state
     clear_config()
     config = TrackIdentificationConfig()
 
-    # Track identification settings
-    assert config.segment_length == 60  # TRACKLISTIFY_SEGMENT_LENGTH=60
-    assert config.min_confidence == 0.8  # TRACKLISTIFY_MIN_CONFIDENCE=0.8
-    assert config.time_threshold == 30.0  # TRACKLISTIFY_TIME_THRESHOLD=30.0
+    # Track identification settings - CODE DEFAULTS
+    assert config.segment_length == 60
+    assert config.min_confidence == 0.5  # Code default is 0.5
+    assert config.time_threshold == 30.0
     assert config.max_duplicates == 2
 
-    # Provider settings
+    # Provider settings - CODE DEFAULTS
     assert config.primary_provider == "shazam"
-    # From TRACKLISTIFY_FALLBACK_ENABLED=false
     assert config.fallback_enabled is False
     assert config.fallback_providers == []
-    # From TRACKLISTIFY_ACRCLOUD_MAX_RPM=30
-    assert config.acrcloud_max_rpm == 30
-    # From TRACKLISTIFY_ACRCLOUD_MAX_CONCURRENT=5
-    assert config.acrcloud_max_concurrent == 5
-    # From TRACKLISTIFY_SHAZAM_MAX_RPM=25
+    assert config.acrcloud_max_rpm == 300  # Code default is 300
+    assert config.acrcloud_max_concurrent == 10  # Code default is 10
     assert config.shazam_max_rpm == 25
-    # From TRACKLISTIFY_SHAZAM_MAX_CONCURRENT=1
     assert config.shazam_max_concurrent == 1
 
-    # Cache settings
+    # Cache settings - CODE DEFAULTS
     assert config.cache_enabled is True
-    assert config.cache_ttl == 3600  # TRACKLISTIFY_CACHE_TTL=3600
-    assert config.cache_max_size == 1000  # TRACKLISTIFY_CACHE_MAX_SIZE=1000
+    assert config.cache_ttl == 3600
+    assert config.cache_max_size == 1_000_000  # bytes (~1MB), matches SizeStrategy
     assert config.cache_storage_format == "json"
     assert config.cache_compression_enabled is True
     assert config.cache_compression_level == 6
     assert config.cache_cleanup_enabled is True
     assert config.cache_cleanup_interval == 3600
-    # From TRACKLISTIFY_CACHE_MAX_AGE=86400
     assert config.cache_max_age == 86400
     assert config.cache_min_free_space == 104857600
 
-    # Output settings
-    assert config.output_format == "all"  # TRACKLISTIFY_OUTPUT_FORMAT=all
+    # Output settings - CODE DEFAULT
+    assert config.output_format == "json"  # Code default is "json"
 
     # Base config settings
     assert isinstance(config.output_dir, Path)
     assert isinstance(config.cache_dir, Path)
     assert isinstance(config.temp_dir, Path)
     assert isinstance(config.log_dir, Path)
-    assert config.verbose is False  # TRACKLISTIFY_VERBOSE=false
-    assert config.debug is False  # TRACKLISTIFY_DEBUG=false
+    assert config.verbose is False
+    assert config.debug is False
 
 
 @pytest.fixture
@@ -95,83 +91,52 @@ def temp_test_dir(tmp_path):
     yield tmp_path
 
 
-def test_custom_config(temp_test_dir):
-    """Test custom configuration values with environment variable overrides."""
-    # Load .env file to ensure environment variables are set, overriding shell vars
-    load_dotenv(override=True)
+def test_custom_config(temp_test_dir, monkeypatch):
+    """Test that environment variables override constructor values."""
+    # Clear all existing TRACKLISTIFY_ env vars first
+    env_vars_to_clear = [key for key in os.environ if key.startswith("TRACKLISTIFY_")]
+    for key in env_vars_to_clear:
+        monkeypatch.delenv(key, raising=False)
+
+    # Set specific environment variables that should override constructor values
+    monkeypatch.setenv("TRACKLISTIFY_MIN_CONFIDENCE", "0.9")
+    monkeypatch.setenv("TRACKLISTIFY_TIME_THRESHOLD", "45.0")
+    monkeypatch.setenv("TRACKLISTIFY_MAX_DUPLICATES", "3")
+    monkeypatch.setenv("TRACKLISTIFY_CACHE_TTL", "7200")
+    monkeypatch.setenv("TRACKLISTIFY_OUTPUT_FORMAT", "markdown")
+    monkeypatch.setenv("TRACKLISTIFY_OUTPUT_DIR", str(temp_test_dir / "env_output"))
+    monkeypatch.setenv("TRACKLISTIFY_CACHE_DIR", str(temp_test_dir / "env_cache"))
+    monkeypatch.setenv("TRACKLISTIFY_TEMP_DIR", str(temp_test_dir / "env_temp"))
+    monkeypatch.setenv("TRACKLISTIFY_LOG_DIR", str(temp_test_dir / "env_log"))
+
     # Ensure clean singleton state
     clear_config()
+
+    # Create config with constructor values that should be overridden
     config = TrackIdentificationConfig(
-        # Track identification settings - overridden by environment
-        segment_length=60,
-        min_confidence=0.8,
-        time_threshold=45.0,
-        max_duplicates=5,
-        # Provider settings
-        primary_provider="shazam",
-        fallback_enabled=False,
-        fallback_providers=["acrcloud"],
-        # Cache settings - these will be overridden by environment
-        cache_enabled=False,
-        cache_ttl=7200,
-        cache_max_size=2000,
-        cache_compression_level=9,
-        cache_cleanup_interval=7200,
-        cache_max_age=172800,
-        # Output settings - this will be overridden by environment
-        output_format="yaml",
-        # Base config settings - these should work as directories are different
-        output_dir=temp_test_dir / "custom_output",
-        cache_dir=temp_test_dir / "custom_cache",
-        temp_dir=temp_test_dir / "custom_temp",
-        log_dir=temp_test_dir / "custom_log",
-        verbose=True,
-        debug=True,
+        min_confidence=0.5,  # Should be overridden to 0.9
+        time_threshold=30.0,  # Should be overridden to 45.0
+        max_duplicates=2,  # Should be overridden to 3
+        cache_ttl=3600,  # Should be overridden to 7200
+        output_format="json",  # Should be overridden to markdown
+        output_dir=temp_test_dir / "constructor_output",  # Overridden
+        cache_dir=temp_test_dir / "constructor_cache",  # Overridden
+        temp_dir=temp_test_dir / "constructor_temp",  # Overridden
+        log_dir=temp_test_dir / "constructor_log",  # Overridden
     )
 
-    # Track identification settings - env variables override constructor
-    assert config.segment_length == 60  # From environment
-    # From environment, overrides constructor
-    assert config.min_confidence == 0.8
-    # From environment, overrides constructor
-    assert config.time_threshold == 30.0
-    # From environment, overrides constructor
-    assert config.max_duplicates == 2
+    # Verify environment variables override constructor values
+    assert config.min_confidence == 0.9
+    assert config.time_threshold == 45.0
+    assert config.max_duplicates == 3
+    assert config.cache_ttl == 7200
+    assert config.output_format == "markdown"
 
-    # Provider settings - environment overrides constructor
-    assert config.primary_provider == "shazam"  # From environment
-    assert config.fallback_enabled is False  # From environment
-    # Constructor value preserved
-    assert config.fallback_providers == ["acrcloud"]
-
-    # Cache settings - environment overrides constructor
-    # From environment, overrides constructor
-    assert config.cache_enabled is True
-    # From environment, overrides constructor
-    assert config.cache_ttl == 3600
-    # From environment, overrides constructor
-    assert config.cache_max_size == 1000
-    # From environment, overrides constructor
-    assert config.cache_compression_level == 6
-    assert config.cache_cleanup_interval == 3600  # From environment
-    # From environment, overrides constructor
-    assert config.cache_max_age == 86400
-
-    # Output settings - environment overrides constructor
-    # From environment, overrides constructor
-    assert config.output_format == "all"
-
-    # Base config settings - environment overrides all constructor args
-    # From environment
-    assert config.output_dir == Path(".tracklistify/output")
-    # From environment
-    assert config.cache_dir == Path(".tracklistify/cache")
-    # From environment
-    assert config.temp_dir == Path(".tracklistify/temp")
-    # From environment
-    assert config.log_dir == Path(".tracklistify/log")
-    assert config.verbose is False  # From environment
-    assert config.debug is False  # From environment
+    # Verify path overrides (env vars should override constructor)
+    assert config.output_dir == temp_test_dir / "env_output"
+    assert config.cache_dir == temp_test_dir / "env_cache"
+    assert config.temp_dir == temp_test_dir / "env_temp"
+    assert config.log_dir == temp_test_dir / "env_log"
 
 
 def test_validation_positive_float():
@@ -282,10 +247,12 @@ def test_sensitive_field_detection():
 
 
 def test_sensitive_value_masking():
-    """Test sensitive value masking."""
-    assert mask_sensitive_value("password123") == "pas*****"
-    assert mask_sensitive_value("key") == "k**"
-    assert mask_sensitive_value("") == ""
+    """Test sensitive value masking (updated for new API)."""
+    # Updated to use new two-argument API
+    assert mask_sensitive_value("password", "password123") == "pas*****123"
+    assert mask_sensitive_value("key", "secret_key") == "sec*****key"
+    assert mask_sensitive_value("key", "key") == "***"
+    assert mask_sensitive_value("password", "") == "***"
 
     data = {
         "username": "user",
@@ -480,10 +447,14 @@ def test_directory_creation():
         config.temp_dir.rmdir()
 
 
-def test_to_dict():
-    """Test conversion to dictionary."""
-    # Load .env file to ensure environment variables are set, overriding shell vars
-    load_dotenv(override=True)
+def test_to_dict(monkeypatch):
+    """Test conversion to dictionary.
+
+    Clears verbose/debug env overrides so the test doesn't depend on the
+    developer's local `.env` (which commonly enables both for CLI runs).
+    """
+    monkeypatch.delenv("TRACKLISTIFY_VERBOSE", raising=False)
+    monkeypatch.delenv("TRACKLISTIFY_DEBUG", raising=False)
     # Ensure clean singleton state
     clear_config()
     config = TrackIdentificationConfig()
@@ -500,8 +471,8 @@ def test_to_dict():
     assert isinstance(config_dict["output_dir"], Path)
     assert isinstance(config_dict["cache_dir"], Path)
     assert isinstance(config_dict["temp_dir"], Path)
-    assert config_dict["verbose"] is False  # From environment
-    assert config_dict["debug"] is False  # From environment
+    assert config_dict["verbose"] is False  # default when env unset
+    assert config_dict["debug"] is False  # default when env unset
 
 
 def test_documentation():
@@ -548,53 +519,75 @@ def test_get_config():
     clear_config()
 
 
-def test_env_override_defaults():
+def test_env_override_defaults(monkeypatch, tmp_path):
     """Test that environment variables properly override default values."""
-    # Get default config first
+    # Clear all TRACKLISTIFY_ env vars for clean state
+    env_vars_to_clear = [key for key in os.environ if key.startswith("TRACKLISTIFY_")]
+    for key in env_vars_to_clear:
+        monkeypatch.delenv(key, raising=False)
+
+    # Clear singleton state
+    clear_config()
+
+    # Get default config first - paths should be absolute (resolved from project root)
     default_config = TrackIdentificationConfig()
-    assert default_config.output_dir == Path(".tracklistify/output")
-    assert default_config.cache_dir == Path(".tracklistify/cache")
-    assert default_config.temp_dir == Path(".tracklistify/temp")
+    # Default paths are relative to project_root, so they're absolute
+    assert default_config.output_dir.is_absolute()
+    assert str(default_config.output_dir).endswith(".tracklistify/output")
 
-    # Set environment variables
-    os.environ["TRACKLISTIFY_OUTPUT_DIR"] = "~/.tracklistify/output"
-    os.environ["TRACKLISTIFY_CACHE_DIR"] = "~/.tracklistify/cache"
-    os.environ["TRACKLISTIFY_TEMP_DIR"] = "~/.tracklistify/temp"
+    # Set environment variables to override defaults
+    custom_output = tmp_path / "custom_output"
+    custom_cache = tmp_path / "custom_cache"
+    custom_temp = tmp_path / "custom_temp"
 
-    try:
-        # Clear singleton to force reload
-        clear_config()
+    monkeypatch.setenv("TRACKLISTIFY_OUTPUT_DIR", str(custom_output))
+    monkeypatch.setenv("TRACKLISTIFY_CACHE_DIR", str(custom_cache))
+    monkeypatch.setenv("TRACKLISTIFY_TEMP_DIR", str(custom_temp))
 
-        # Get new config with environment variables
-        config = get_config()
+    # Clear singleton to force reload
+    clear_config()
 
-        # Verify environment variables override defaults
-        expected_output = Path("~/.tracklistify/output").expanduser()
-        assert config.output_dir == expected_output
-        expected_cache = Path("~/.tracklistify/cache").expanduser()
-        assert config.cache_dir == expected_cache
-        expected_temp = Path("~/.tracklistify/temp").expanduser()
-        assert config.temp_dir == expected_temp
+    # Get new config with environment variables
+    config = get_config()
 
-        # Verify directories are created
-        assert config.output_dir.exists()
-        assert config.cache_dir.exists()
-        assert config.temp_dir.exists()
+    # Verify environment variables override defaults
+    assert config.output_dir == custom_output
+    assert config.cache_dir == custom_cache
+    assert config.temp_dir == custom_temp
 
-    finally:
-        # Clean up environment variables
-        del os.environ["TRACKLISTIFY_OUTPUT_DIR"]
-        del os.environ["TRACKLISTIFY_CACHE_DIR"]
-        del os.environ["TRACKLISTIFY_TEMP_DIR"]
+    # Verify directories are created
+    assert config.output_dir.exists()
+    assert config.cache_dir.exists()
+    assert config.temp_dir.exists()
 
-        # Clean up created directories recursively if config was created
-        import shutil
 
-        try:
-            paths = [config.output_dir, config.cache_dir, config.temp_dir]
-            for dir_path in paths:
-                if dir_path.exists():
-                    shutil.rmtree(dir_path)
-        except NameError:
-            # config wasn't created due to earlier failure, nothing to clean up
-            pass
+def test_post_init_runs_each_step_once(monkeypatch):
+    """Regression test: TrackIdentificationConfig.__post_init__ should not double-run
+    _load_from_env / _setup_validation / _validate. Prior to the fix it ran each twice
+    (once in the subclass override, once via super().__post_init__())."""
+    from tracklistify.config import base as cfg_mod
+
+    counts = {"load": 0, "setup": 0, "validate": 0}
+
+    orig_load = cfg_mod.BaseConfig._load_from_env
+    orig_setup = cfg_mod.BaseConfig._setup_validation
+    orig_validate = cfg_mod.BaseConfig._validate
+
+    def wrap(name, fn):
+        def w(self, *a, **k):
+            counts[name] += 1
+            return fn(self, *a, **k)
+
+        return w
+
+    monkeypatch.setattr(cfg_mod.BaseConfig, "_load_from_env", wrap("load", orig_load))
+    monkeypatch.setattr(
+        cfg_mod.BaseConfig, "_setup_validation", wrap("setup", orig_setup)
+    )
+    monkeypatch.setattr(
+        cfg_mod.BaseConfig, "_validate", wrap("validate", orig_validate)
+    )
+
+    cfg_mod.TrackIdentificationConfig()
+
+    assert counts == {"load": 1, "setup": 1, "validate": 1}

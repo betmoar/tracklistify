@@ -3,7 +3,7 @@
 # Standard library imports
 import asyncio
 import base64
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 # Third-party imports
 import aiohttp
@@ -91,6 +91,9 @@ class SpotifyProvider(MetadataProvider):
             spotify_info = await self.search_track(title, artist, album, duration)
             if spotify_info:
                 track_info.update(spotify_info)
+        except (RateLimitError, AuthenticationError):
+            # Must propagate so callers can honor Retry-After / refresh tokens.
+            raise
         except Exception as e:
             logger.warning(f"Failed to enrich metadata: {str(e)}")
 
@@ -103,7 +106,13 @@ class SpotifyProvider(MetadataProvider):
             self._session = None
 
     async def _api_request(self, method: str, endpoint: str, **kwargs) -> Dict:
-        """Make authenticated request to Spotify API."""
+        """Make authenticated request to Spotify API.
+
+        Accepts any 2xx response. Spotify's playlist mutation endpoints return
+        201 (Created) on success and some return 204 (No Content) with an
+        empty body; both are treated as success here. Returns the decoded
+        JSON body when present, otherwise an empty dict.
+        """
         await self._ensure_session()
         token = await self._get_access_token()
 
@@ -118,43 +127,73 @@ class SpotifyProvider(MetadataProvider):
                 raise RateLimitError(
                     f"Spotify rate limit exceeded. Retry after {retry_after}s"
                 )
-            elif response.status == 401:
+            if response.status == 401:
                 self._access_token = None
                 raise AuthenticationError("Spotify token expired")
-            elif response.status != 200:
+            if not 200 <= response.status < 300:
                 raise ProviderError(f"Spotify API error: {response.status}")
 
-            return await response.json()
+            # 204 No Content (and similar empty-body responses) have no JSON
+            if response.status == 204 or response.headers.get("Content-Length") == "0":
+                return {}
+            try:
+                return await response.json()
+            except aiohttp.ContentTypeError:
+                return {}
 
-    async def search_track(self, query: str) -> List[Dict]:
-        """
-        Search for tracks on Spotify.
+    async def search_track(
+        self,
+        title: str,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        duration: Optional[float] = None,
+    ) -> Dict:
+        """Search Spotify for the best match for the supplied track metadata.
+
+        Signature matches the ``MetadataProvider`` ABC. The ``duration`` argument
+        is accepted for ABC compliance but Spotify search does not take it as a
+        query parameter; if needed for ranking it can be applied client-side.
 
         Args:
-            query: Search query string
+            title: Track title (required).
+            artist: Artist name (optional).
+            album: Album name (optional).
+            duration: Track duration in seconds (optional, currently unused).
 
         Returns:
-            List of matching tracks with metadata
+            Dict: Top-match track info with keys
+            ``spotify_id``, ``name``, ``artists``, ``album``, ``release_date``.
+            Empty dict if no match is found.
         """
+        del duration  # unused; reserved for future client-side ranking
+        parts = [f'track:"{title}"']
+        if artist:
+            parts.append(f'artist:"{artist}"')
+        if album:
+            parts.append(f'album:"{album}"')
+        query = " ".join(parts)
+
         try:
             response = await self._api_request(
                 "GET", "search", params={"q": query, "type": "track", "limit": 5}
             )
-
-            tracks = []
-            for item in response["tracks"]["items"]:
-                track = {
-                    "id": item["id"],
-                    "name": item["name"],
-                    "artists": [artist["name"] for artist in item["artists"]],
-                    "album": item["album"]["name"],
-                    "release_date": item["album"]["release_date"],
-                }
-                tracks.append(track)
-
-            return tracks
+        except (RateLimitError, AuthenticationError):
+            raise
         except Exception as e:
             raise ProviderError(f"Error searching for track: {e}") from e
+
+        items = response.get("tracks", {}).get("items", [])
+        if not items:
+            return {}
+
+        top = items[0]
+        return {
+            "spotify_id": top["id"],
+            "name": top["name"],
+            "artists": [a["name"] for a in top["artists"]],
+            "album": top["album"]["name"],
+            "release_date": top["album"]["release_date"],
+        }
 
     async def get_track_details(self, track_id: str) -> Dict:
         """
@@ -196,3 +235,58 @@ class SpotifyProvider(MetadataProvider):
         except Exception as e:
             logger.error(f"Spotify track details error: {e}")
             raise
+
+    async def create_playlist(
+        self,
+        name: str,
+        description: str = "Created by Tracklistify",
+        public: bool = True,
+    ) -> str:
+        """Create a new Spotify playlist.
+
+        Args:
+            name: Playlist name
+            description: Playlist description
+            public: Whether the playlist should be public
+
+        Returns:
+            Playlist ID
+
+        Raises:
+            ProviderError: If playlist creation fails
+        """
+        data = {"name": name, "description": description, "public": public}
+
+        try:
+            response = await self._api_request("POST", "me/playlists", json=data)
+            return response["id"]
+        except (RateLimitError, AuthenticationError):
+            raise
+        except Exception as e:
+            raise ProviderError(f"Failed to create playlist: {e}") from e
+
+    async def add_tracks_to_playlist(
+        self, playlist_id: str, track_ids: List[str]
+    ) -> None:
+        """Add tracks to a Spotify playlist.
+
+        Args:
+            playlist_id: Spotify playlist ID
+            track_ids: List of Spotify track IDs to add
+
+        Raises:
+            ProviderError: If adding tracks fails
+        """
+        # Spotify API limits: max 100 tracks per request
+        for i in range(0, len(track_ids), 100):
+            batch = track_ids[i : i + 100]
+            uris = [f"spotify:track:{track_id}" for track_id in batch]
+
+            try:
+                await self._api_request(
+                    "POST", f"playlists/{playlist_id}/tracks", json={"uris": uris}
+                )
+            except (RateLimitError, AuthenticationError):
+                raise
+            except Exception as e:
+                raise ProviderError(f"Failed to add tracks to playlist: {e}") from e

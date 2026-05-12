@@ -10,6 +10,7 @@ from shazamio import Shazam
 from tracklistify.providers.base import TrackIdentificationProvider
 
 # Local/package imports
+from tracklistify.utils.constants import SHAZAM_SKEW_CAP
 from tracklistify.utils.logger import get_logger
 from tracklistify.config.factory import get_config
 
@@ -29,7 +30,8 @@ class ShazamProvider(TrackIdentificationProvider):
             # Brief cooldown to avoid hammering upstream between calls
             try:
                 cooldown = float(getattr(self._config, "shazam_cooldown_seconds", 2.25))
-            except Exception:
+            except (ValueError, AttributeError, TypeError) as e:
+                logger.debug(f"Failed to get cooldown config, using default: {e}")
                 cooldown = 2.25
             if cooldown and cooldown > 0:
                 await asyncio.sleep(cooldown)
@@ -62,8 +64,12 @@ class ShazamProvider(TrackIdentificationProvider):
                 time_skew = abs(match.get("timeskew", 0))
 
                 # Convert skews to a 0-100 score where lower skew = higher score
-                freq_score = 100 * (1 - min(freq_skew, 0.1) / 0.1)  # Cap at 0.1
-                time_score = 100 * (1 - min(time_skew, 0.1) / 0.1)  # Cap at 0.1
+                freq_score = 100 * (
+                    1 - min(freq_skew, SHAZAM_SKEW_CAP) / SHAZAM_SKEW_CAP
+                )
+                time_score = 100 * (
+                    1 - min(time_skew, SHAZAM_SKEW_CAP) / SHAZAM_SKEW_CAP
+                )
 
                 # Combine scores with weights
                 match_score = (
@@ -85,6 +91,8 @@ class ShazamProvider(TrackIdentificationProvider):
                 }
             }
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"Error during track identification: {e}")
             return None
@@ -94,8 +102,7 @@ class ShazamProvider(TrackIdentificationProvider):
         # Implement any additional metadata enrichment if necessary
         return track_info
 
-    async def close(self):
+    async def close(self) -> None:
         """Cleanup resources."""
         # Shazam object does not have a close method; nothing to clean up
         logger.debug("ShazamProvider cleanup called, no resources to close.")
-        pass

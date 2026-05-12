@@ -9,7 +9,7 @@ import json
 import os
 import zlib
 from pathlib import Path
-from typing import Dict, List, Optional, TypeVar, Union
+from typing import Any, Dict, List, Optional, TypeVar, Union
 
 # Third-party imports
 import aiofiles
@@ -245,7 +245,7 @@ class JSONStorage(CacheStorage[T]):
             logger.error(f"Error listing cache keys: {str(e)}")
             return []
 
-    async def get_storage_stats(self) -> Dict[str, any]:
+    async def get_storage_stats(self) -> Dict[str, Any]:
         """Get storage statistics from index."""
         try:
             await self._ensure_index_loaded()

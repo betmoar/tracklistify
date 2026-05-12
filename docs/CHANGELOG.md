@@ -9,121 +9,136 @@ Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 
+Audit-driven hardening of 0.7.0: makes the package importable, aligns concrete
+providers with their abstract base classes, fixes silent configuration bugs,
+modernises the test suite, and tightens lint/format hygiene.
+
 ### Added
 
-- Core Features
-  - Introduced `TracklistOutput` class for handling tracklist output in various formats
-    - Smart file naming with date, artist, and venue information
-    - Comprehensive JSON export with track statistics
-    - Better error handling for missing metadata
-  - Added `ProgressDisplay` class for managing progress display during track identification
-  - Integrated ACRCloud provider for track identification
-  - Support for additional platforms (Mixcloud, SoundCloud)
-  - Web interface for easier usage
-  - Docker support
-- Downloader System
-  - Factory pattern with `DownloaderFactory` for dynamic downloader creation
-  - Enhanced Spotify downloader
-    - High-quality audio support with configurable formats
-    - Comprehensive metadata tagging (artist, album, cover art)
-    - Automatic temporary file cleanup
-  - Improved YouTube and Mixcloud downloaders
-    - Configurable quality settings
-    - Better error handling for failed downloads
-    - Progress tracking during downloads
-  - Support for multiple audio formats (MP3, M4A, OGG)
-- Configuration & Cache
-  - Secure configuration handling with `SecureConfigLoader`
-  - Environment variable support for all components
-  - Dependency validation system
-  - `BaseCache` with TTL, LRU, and Size-based invalidation
-  - JSON storage backend with compression
-  - Cache statistics and monitoring
-- Development Tools
-  - Enhanced development CLI for debugging
-  - Local virtualenv settings in `poetry.toml`
-  - Python version constraints (3.11-3.13)
-  - In-project virtualenv creation
-- Infrastructure
-  - Rate limiting system with circuit breaker pattern
-  - Async support throughout the application
-  - Comprehensive error tracking and reporting
-- Logging System
-  - Colored console output for different log levels
-  - Rotating file handler with configurable size limits
-  - Centralized logging configuration with ColoredFormatter
+- `tracklistify.utils.validation.clean_url` — URL normaliser used by the Spotify
+  downloader (strips query/fragment/trailing slash, lowercases scheme + host).
+- `Track.metadata: Dict[str, Any]` field for provider enrichment (e.g.
+  `spotify_id`), seeded by `field(default_factory=dict)` so every instance
+  gets an independent dict via the dataclass-generated `__init__`. Validation
+  and config back-fill run in `__post_init__`.
+- `SecureConfigLoader.needs_rotation(secret_version)` — previously called by
+  `get_secret()` but never defined; now compares secret age against
+  `_rotation_interval` (default 90 days).
+- Async context-manager protocol (`__aenter__` / `__aexit__`) on
+  `TrackIdentificationProvider` and `MetadataProvider` for deterministic
+  resource cleanup.
+- `tracklistify.utils.constants` module consolidating timeouts, thresholds,
+  and other magic numbers previously scattered across the codebase.
+- New test modules: `tests/test_imports.py` (smoke-tests every public import),
+  `tests/test_security.py`, `tests/test_track_metadata.py`,
+  `tests/test_providers_spotify.py`, plus the broader Phase 4 / consistency
+  suites added on this branch. Total: **335 passing tests**.
+- `docs/archive/` for historical implementation artefacts (audit report,
+  multi-phase implementation plans, summaries) with a README explaining
+  their status.
+- `CLAUDE.md` at repo root with a comprehensive guide for AI-assisted
+  development (project layout, conventions, common tasks).
 
 ### Changed
 
-- Architecture
-  - Refactored downloader architecture with factory pattern
-  - Improved FFmpeg integration
-  - Enhanced metadata handling for audio files
-  - Modernized event loop handling
-  - Updated cache implementation for better efficiency
-- Components
-  - Enhanced `SpotifyPlaylistExporter` to use core track module
-  - Improved YouTube downloader with environment-based paths
-  - Enhanced progress display with better formatting
-  - Updated configuration system for flexibility
-- Development
-  - Simplified pre-commit hooks configuration
-  - Streamlined Ruff settings in `pyproject.toml`
-  - Updated pytest configuration
-  - Standardized Python version requirements
-  - Reorganized documentation structure
-- Enhanced logging system
-  - Moved from individual loggers to centralized configuration
-  - Added ANSI color support for better readability
-  - Improved log rotation and file handling
-
-### Removed
-
-- Legacy Components
-  - Deprecated `tracklistify/identification.py`
-  - Centralized logging from `tracklistify/logger.py`
-  - Old output handling from `tracklistify/output.py`
-- Configuration
-  - Deprecated virtualenv settings from `pyproject.toml`
-- Deprecated `error_logging.py` in favor of new centralized logging system
+- `core/__init__.py` now eager-loads only leaf modules (`exceptions`, `types`)
+  and lazy-loads `AsyncApp` / `Track` / `TrackMatcher` via PEP 562
+  `__getattr__`. This is what unblocks `import tracklistify` — see Fixed below.
+- `SpotifyProvider.search_track` realigned with the `MetadataProvider` ABC:
+  `(title, artist=None, album=None, duration=None) -> Dict`. Returns the
+  top-match result as a flat dict keyed on `spotify_id` (was: `(query)` →
+  `List[Dict]`, which no internal caller actually used).
+- `TrackIdentificationConfig.__post_init__` reduced to a single
+  `super().__post_init__()` call. The override previously ran
+  `_load_from_env`, `_setup_validation`, and `_validate` twice each; virtual
+  dispatch ensures the subclass's `_setup_validation` extra rules still run.
+- `_is_platform_url` now delegates subdomain matching to the existing
+  `_is_domain_or_subdomain` helper instead of reimplementing the logic;
+  `allowed_domains` typed as `Iterable[str]` so list/set callers both fit.
+- `URLValidationError` reparented under `ValidationError` so
+  `except ValidationError:` catches URL failures.
+- `mask_sensitive_data` / `is_sensitive_field` casing now consistent —
+  `SENSITIVE_FIELDS` holds only lowercase substrings, matching is done after
+  `.lower()` so `ACR_ACCESS_KEY` / `acr_access_key` / `secret` all match.
+- `CryptoManager` docstrings: replaced "AES-256 in CBC mode" with truthful
+  description (PBKDF2-derived key + XOR-block obfuscation; not
+  cryptographically secure — for real protection use OS keychain or KMS).
+- Singletons (`get_config`, cache factory, rate limiter) made thread-safe via
+  `threading.Lock` and stable hashing so concurrent first-access doesn't
+  produce duplicate instances.
+- Time-elapsed measurements now use `time.monotonic()` consistently across
+  rate limiter, decorators, and identification manager.
+- `[tool.ruff] include` now points at `src/tracklistify/**/*.py` /
+  `tests/**/*.py` — previously pointed at `tracklistify/**/*.py` and was
+  silently linting zero files.
+- Dependencies bumped: aiohttp 3.13, yt-dlp 2025.11, click 8.3, pytest 8.4,
+  pytest-asyncio 1.3, ruff 0.14, plus minor bumps across the dev group.
 
 ### Fixed
 
-- Functionality
-  - YouTube downloader title setting
-  - Progress display duplication
-  - Event loop deprecation warnings
-  - Temporary file cleanup
-  - Interrupt signal handling
-  - Rate limiter reliability
-- Infrastructure
-  - Cache operations error handling
-  - Thread safety in async operations
-  - File system operations
-  - FFmpeg path detection
-  - FFmpeg background process
-  - Poetry virtualenv configuration
-  - Pre-commit hooks formatting
-  - Pytest configuration parameters
-- Improved error message formatting and clarity
-- Enhanced log file rotation handling
+- **Circular import** that prevented `import tracklistify` from succeeding.
+  The chain ran through `utils.identification → config.factory →
+  core.exceptions → core/__init__.py → core/base.py → downloaders.factory →
+  config` (back to a partially-initialised `config`). Fix: lazy `core`
+  re-exports + lazy `get_config` import in `core.base`.
+- `core/__init__.py` imported `ApplicationError` from `.base`; the class
+  actually lives in `.exceptions`.
+- `tracklistify.downloaders.spotify` imported a non-existent `clean_url`
+  symbol; the function now exists in `utils.validation`.
+- `Track.metadata` was referenced by `exporters/spotify.py` and
+  `providers/spotify.py` but never declared on the dataclass.
+- `SecureConfigLoader.get_secret` called `self.needs_rotation(secret_version)`
+  without that method existing.
+- Spotify provider's `search_track` signature didn't match the
+  `MetadataProvider` ABC, breaking the internal `enrich_metadata` call.
+- `tests/test_to_dict` asserted `verbose=False` while reading from the local
+  `.env` (which commonly sets `TRACKLISTIFY_VERBOSE=true`); now uses
+  `monkeypatch.delenv` for determinism.
+- Logger handler duplication on reconfiguration (each `set_logger` call no
+  longer stacks a new handler).
+- Downloaders no longer return `None` from exception handlers — they raise
+  `DownloadError` so failures propagate.
+- `cli` `--verbose` flag default corrected to `False`.
+- Various type hints corrected and return-type annotations added.
+
+### Removed
+
+- **Breaking:** `tracklistify.utils.SimpleLimiter` and
+  `get_simple_rate_limiter` — the secondary in-process limiter was a parallel
+  code path that duplicated `GlobalRateLimiter`. Public callers should migrate
+  to `tracklistify.utils.rate_limiter.get_global_rate_limiter()`, which
+  returns the singleton token-bucket-plus-circuit-breaker limiter used by
+  the rest of the codebase.
+- **Breaking:** `TrackMatcher.process_file` — legacy stub that cleared
+  `self.tracks` then merged the empty list, so it always returned `[]`
+  regardless of input. No callers in `src/` or `tests/`. Use
+  `tracklistify.utils.identification.IdentificationManager` for real
+  identification.
+- Deprecated `mask_sensitive_value_old` (no callers; superseded by the
+  key-aware `mask_sensitive_value`).
+- Duplicate `ConfigurationError` in `core.exceptions` (the canonical name is
+  `ConfigError`; zero importers referenced the duplicate).
+- Test/mock code that had leaked into production sources under `core/` and
+  `cache/`.
+- Five session-artefact MDs from repo root (`AUDIT_REPORT.md`,
+  `IMPLEMENTATION_PLAN.md`, `IMPLEMENTATION_PLAN_PHASES_3_6.md`,
+  `IMPLEMENTATION_QUICK_REFERENCE.md`, `IMPLEMENTATION_SUMMARY.md`) — moved
+  to `docs/archive/` rather than deleted, to preserve the paper trail.
+
+### Deprecated
+
+- `tracklistify.cache.run_async`: now emits `DeprecationWarning`. Prefer
+  awaiting coroutines directly or using `asyncio.run`. The body is unchanged
+  so existing callers continue to work; removal is deferred to a future
+  release.
 
 ### Security
 
-- Enhanced configuration security handling
-- Improved secret management
-- Better environment variable validation
-- Secure file operations implementation
-- Better sanitization of logged error messages
-
-### Performance
-
-- Optimized cache operations
-- Improved memory management
-- Enhanced thread safety
-- Better async resource utilization
-- Optimized logging operations with better buffering
-- Improved log rotation efficiency
+- `is_sensitive_field` casing bug fixed (described under Changed).
+- `CryptoManager` docstrings no longer claim AES-256 — callers can now make
+  informed decisions about whether the obfuscation is fit for purpose.
+- Centralised exception consolidation reduces the chance of `except` blocks
+  silently missing a divergent error class.
 
 ## [Rate Limiter Enhancements] - 2024-11-25
 

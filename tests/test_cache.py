@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 # Third-party imports
 import pytest
+from freezegun import freeze_time
 
 # Local/package imports
 from tracklistify.cache import BaseCache, get_cache
@@ -72,26 +73,31 @@ async def test_basic_cache_operations(cache: BaseCache[Dict[str, Any]]):
 
 @pytest.mark.asyncio
 async def test_cache_ttl_invalidation(temp_cache_dir: Path):
-    """Test TTL-based cache invalidation."""
+    """Test TTL-based cache invalidation.
+
+    Uses ``freeze_time`` rather than a real ``time.sleep`` so the test
+    doesn't depend on wall-clock and can't flake under load.
+    """
     storage = JSONStorage(temp_cache_dir)
     strategy = TTLStrategy(default_ttl=1)  # 1 second TTL
     cache = BaseCache[Dict[str, Any]](storage=storage, invalidation_strategy=strategy)
 
-    # Set value
     key = "ttl_test"
     value = {"data": "test"}
-    await cache.set(key, value, ttl=1)
 
-    # Verify value exists
-    result = await cache.get(key)
-    assert result == value
+    with freeze_time("2026-01-01 12:00:00") as frozen:
+        await cache.set(key, value, ttl=1)
 
-    # Wait for TTL to expire
-    time.sleep(1.1)
+        # Verify value exists immediately after set
+        result = await cache.get(key)
+        assert result == value
 
-    # Verify value is invalidated
-    result = await cache.get(key)
-    assert result is None
+        # Advance past the TTL boundary
+        frozen.tick(delta=timedelta(seconds=1.1))
+
+        # Verify value is invalidated
+        result = await cache.get(key)
+        assert result is None
 
 
 @pytest.mark.asyncio
@@ -225,6 +231,27 @@ async def test_global_cache_instance():
     cache1 = get_cache()
     cache2 = get_cache()
     assert cache1 is cache2  # Same instance
+
+
+def test_get_cache_honors_config_cache_dir(tmp_path, monkeypatch):
+    """get_cache() must build its instance from TrackIdentificationConfig.
+
+    Before the fix, get_cache() called create_cache() with no args, so the
+    user-configured cache_dir was silently ignored and everything wrote to
+    ~/.tracklistify/cache. Set TRACKLISTIFY_CACHE_DIR, force-refresh both
+    config and cache, then assert the storage is rooted at our path.
+    """
+    from tracklistify.cache.factory import get_cache as get_cache_factory
+    from tracklistify.config import get_config
+
+    custom = tmp_path / "custom_cache"
+    monkeypatch.setenv("TRACKLISTIFY_CACHE_DIR", str(custom))
+    get_config(force_refresh=True)
+    cache = get_cache_factory(force_refresh=True)
+    # JSONStorage roots files at ``_cache_dir``; resolve both sides so
+    # symlink / ~ expansion differences don't trip the comparison.
+    storage_path = Path(cache._storage._cache_dir)
+    assert storage_path.resolve() == custom.resolve()
 
 
 def test_cache_configuration():

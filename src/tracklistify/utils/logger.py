@@ -52,18 +52,58 @@ def set_logger(
     verbose: bool = False,
     debug: bool = False,
 ) -> logging.Logger:
-    """Configure and return a logger instance."""
+    """Configure and return a logger instance.
+
+    This function can be called multiple times safely. Existing handlers
+    will be removed before adding new ones to prevent duplicate log messages.
+
+    Args:
+        log_level: Base log level string (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        log_file: Optional path to log file for file-based logging
+        max_bytes: Maximum size of log file before rotation (default: 10MB)
+        backup_count: Number of backup log files to keep (default: 5)
+        verbose: Enable verbose output (sets INFO level)
+        debug: Enable debug output (sets DEBUG level)
+
+    Returns:
+        Configured root logger instance
+    """
     logger = logging.getLogger()
 
-    # Set base level
-    base_level = (
-        logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
-    )
-    logger.setLevel(base_level)  # getattr(logging, log_level.upper())
+    # Close existing handlers before clearing to avoid leaked file descriptors
+    # (e.g. a previously attached RotatingFileHandler keeping a log file open).
+    # `handlers.clear()` alone removes references but doesn't close streams.
+    for existing in list(logger.handlers):
+        try:
+            existing.close()
+        except Exception:  # noqa: BLE001 - best-effort close on shutdown path
+            pass
+        logger.removeHandler(existing)
+
+    # Set base level: debug > verbose > log_level (string parameter).
+    if debug:
+        base_level: int = logging.DEBUG
+    elif verbose:
+        base_level = logging.INFO
+    else:
+        # logging.getLevelName returns the int for known names ("DEBUG" -> 10),
+        # or the string "Level <name>" for unknown inputs. Fall back to
+        # WARNING for anything unrecognised (preserves the prior default).
+        resolved = logging.getLevelName(log_level.upper())
+        base_level = resolved if isinstance(resolved, int) else logging.WARNING
+    logger.setLevel(base_level)
+
+    # Cap known-noisy third-party loggers at ERROR. symphonia (shazamio's
+    # Rust audio decoder) emits a WARNING for every non-MP3 byte stretch
+    # when it falls back to the MP3 demuxer on non-MP3 containers — most
+    # visible under ``tracklistify --stream-copy`` where segments are
+    # webm/m4a. Genuine decode ERRORs still propagate.
+    for _noisy_logger in ("symphonia_bundle_mp3", "symphonia_core"):
+        logging.getLogger(_noisy_logger).setLevel(logging.ERROR)
 
     console_formatter = ColoredFormatter(
-        "%(levelname)s - %(name)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        "%(asctime)s %(levelname)s - %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
     )
 
     file_formatter = logging.Formatter(

@@ -8,6 +8,7 @@ from typing import List
 
 # Local imports
 from .paths import get_root
+from .security import mask_sensitive_value
 from .validation import ConfigValidator, PathRequirement, PathRule
 
 
@@ -80,9 +81,16 @@ class BaseConfig:
                         # Handle numeric types
                         try:
                             value = field_type(env_value)
-                        except ValueError:
-                            # Try evaluating numeric expressions
-                            value = field_type(eval(env_value))
+                        except ValueError as e:
+                            # Do NOT use eval() - security vulnerability!
+                            # Mask the value in case a user mis-pasted a secret
+                            # (e.g. API key) into a numeric field.
+                            safe_value = mask_sensitive_value(env_key, env_value)
+                            raise ValueError(
+                                f"Invalid {field_type.__name__} value for "
+                                f"{env_key}: {safe_value}. "
+                                f"Expected a valid {field_type.__name__}."
+                            ) from e
                     else:
                         # Handle other types
                         value = field_type(env_value)
@@ -90,18 +98,44 @@ class BaseConfig:
                     # Set the value on the instance
                     setattr(self, field_name, value)
                 except Exception as e:
+                    safe_value = mask_sensitive_value(env_key, env_value)
                     raise ValueError(
-                        f"Invalid value for {env_key}: {env_value} - {str(e)}"
+                        f"Invalid value for {env_key}: {safe_value} - {str(e)}"
                     ) from e
 
-    def _setup_validation(self):
-        """Set up validation rules."""
-        # Rest of validation setup...
+    def _setup_validation(self) -> None:
+        """Set up validation rules for configuration fields.
+
+        This is a template method that subclasses should override to add
+        their specific validation rules. Called automatically during
+        __post_init__.
+
+        Subclasses should call super()._setup_validation() first, then
+        add their own rules using self._validator.
+
+        Example:
+            def _setup_validation(self):
+                super()._setup_validation()
+                self._validator.add_range_rule("my_field", 0, 100)
+        """
+        # Base class has no validation rules to set up
+        # Subclasses override this to add their specific rules
 
     def _validate(self) -> None:
-        """Validate configuration values."""
-        # Add any base validation here
-        pass
+        """Validate all configuration values against defined rules.
+
+        This is a template method that subclasses can override to add
+        custom validation logic beyond the declarative rules.
+        Called automatically during __post_init__ after _setup_validation.
+
+        Subclasses should call super()._validate() first, then add
+        any additional validation that can't be expressed as rules.
+
+        Raises:
+            ValueError: If any configuration value is invalid.
+        """
+        # Base class validation is handled by _validator
+        # Subclasses can override to add custom validation logic
 
 
 @dataclass
@@ -127,7 +161,10 @@ class TrackIdentificationConfig(BaseConfig):
     # Caching settings
     cache_enabled: bool = field(default=True)
     cache_ttl: int = field(default=3600)
-    cache_max_size: int = field(default=1000)
+    # Byte budget for the cache (matches SizeStrategy / BaseCache semantics).
+    # Previously defaulted to 1000 — meant as "entries" but interpreted as
+    # bytes, which was so small the cache rejected every Shazam response.
+    cache_max_size: int = field(default=1_000_000)
     cache_storage_format: str = field(default="json")
     cache_compression_enabled: bool = field(default=True)
     cache_compression_level: int = field(default=6)
@@ -137,8 +174,15 @@ class TrackIdentificationConfig(BaseConfig):
     cache_min_free_space: int = field(default=104857600)
 
     # Rate limiting settings
+    rate_limit_enabled: bool = field(default=True)
     max_requests_per_minute: int = field(default=25)
     max_concurrent_requests: int = field(default=2)
+
+    # Circuit-breaker settings (consumed by RateLimiter via getattr; declared
+    # here so env-var overrides land on the dataclass instance).
+    circuit_breaker_enabled: bool = field(default=True)
+    circuit_breaker_threshold: int = field(default=5)
+    circuit_breaker_reset_timeout: float = field(default=60.0)
 
     # ACRCloud settings
     acrcloud_max_rpm: int = field(default=300)
@@ -149,6 +193,10 @@ class TrackIdentificationConfig(BaseConfig):
     shazam_max_concurrent: int = field(default=1)
     shazam_cooldown_seconds: float = field(default=2.25)
 
+    # Spotify rate limits (consumed by RateLimiter.register_provider)
+    spotify_max_rpm: int = field(default=120)
+    spotify_max_concurrent: int = field(default=20)
+
     # Output formats
     output_format: str = field(default="json")
 
@@ -158,16 +206,14 @@ class TrackIdentificationConfig(BaseConfig):
     download_max_retries: int = field(default=3)
 
     def __post_init__(self):
-        """Initialize configuration after dataclass creation."""
-        # Load environment variables first
-        self._load_from_env()
+        """Initialize configuration after dataclass creation.
 
-        # Then call parent's post_init to set up base config and create directories
+        Delegates fully to ``BaseConfig.__post_init__``; via virtual dispatch the
+        parent calls ``self._setup_validation`` and ``self._validate``, which
+        resolve to the subclass overrides — so the additional validation rules
+        defined here are still applied without running twice.
+        """
         super().__post_init__()
-
-        # Set up additional validation rules
-        self._setup_validation()
-        self._validate()
 
     def _setup_validation(self):
         """Set up validation rules."""

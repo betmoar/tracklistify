@@ -52,67 +52,28 @@ class SpotifyPlaylistExporter:
             playlist_name = f"Tracklistify Mix - {date_str}"
 
         try:
-            # Create playlist
-            playlist_id = await self._create_playlist(playlist_name)
+            playlist_id = await self.spotify.create_playlist(playlist_name)
 
-            # Get Spotify track IDs
+            # Resolve Spotify track IDs (use cached metadata when present)
             track_ids = []
             for track in tracks:
-                if not track.metadata.get("spotify_id"):
-                    # Try to find track on Spotify
-                    spotify_info = await self.spotify.search_track(
-                        track.song_name,
-                        track.artist,
-                        None,
-                        None,  # album  # duration
-                    )
-                    if spotify_info:
-                        track_ids.append(spotify_info["spotify_id"])
-                else:
-                    track_ids.append(track.metadata["spotify_id"])
+                spotify_id = track.metadata.get("spotify_id")
+                if spotify_id:
+                    track_ids.append(spotify_id)
+                    continue
+                spotify_info = await self.spotify.search_track(
+                    track.song_name, track.artist
+                )
+                if spotify_info:
+                    track_ids.append(spotify_info["spotify_id"])
 
             if not track_ids:
                 raise ExportError("No tracks found on Spotify")
 
-            # Add tracks to playlist
-            await self._add_tracks_to_playlist(playlist_id, track_ids)
-
-            # Return playlist URL
+            await self.spotify.add_tracks_to_playlist(playlist_id, track_ids)
             return f"https://open.spotify.com/playlist/{playlist_id}"
 
+        except ExportError:
+            raise
         except Exception as e:
-            raise ExportError(f"Failed to export playlist: {str(e)}") from e
-
-    async def _create_playlist(self, name: str) -> str:
-        """Create a new Spotify playlist."""
-        endpoint = f"{self.spotify.API_BASE}/me/playlists"
-
-        data = {"name": name, "description": "Created by Tracklistify", "public": True}
-
-        async with self.spotify._session.post(
-            endpoint, headers=await self.spotify._get_auth_headers(), json=data
-        ) as response:
-            if response.status == 201:
-                playlist = await response.json()
-                return playlist["id"]
-            else:
-                raise ExportError(f"Failed to create playlist: {response.status}")
-
-    async def _add_tracks_to_playlist(self, playlist_id: str, track_ids: List[str]):
-        """Add tracks to a Spotify playlist."""
-        endpoint = f"{self.spotify.API_BASE}/playlists/{playlist_id}/tracks"
-
-        # Spotify API limits: max 100 tracks per request
-        for i in range(0, len(track_ids), 100):
-            batch = track_ids[i : i + 100]
-            uris = [f"spotify:track:{track_id}" for track_id in batch]
-
-            async with self.spotify._session.post(
-                endpoint,
-                headers=await self.spotify._get_auth_headers(),
-                json={"uris": uris},
-            ) as response:
-                if response.status != 201:
-                    raise ExportError(
-                        f"Failed to add tracks to playlist: {response.status}"
-                    )
+            raise ExportError(f"Failed to export playlist: {e}") from e

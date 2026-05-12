@@ -13,6 +13,7 @@ from tracklistify.core.types import (
     CacheStorage,
     InvalidationStrategy,
 )
+from tracklistify.utils.constants import DEFAULT_CACHE_MAX_SIZE, DEFAULT_CACHE_TTL
 from tracklistify.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -27,8 +28,8 @@ class BaseCache(Generic[T]):
         self,
         storage: CacheStorage,
         invalidation_strategy: InvalidationStrategy,
-        ttl: int = 3600,
-        max_size: int = 1000000,
+        ttl: int = DEFAULT_CACHE_TTL,
+        max_size: int = DEFAULT_CACHE_MAX_SIZE,
     ):
         """Initialize base cache.
 
@@ -57,13 +58,10 @@ class BaseCache(Generic[T]):
             "entries": 0,
         }
 
-        # Mock config for now
-        class MockConfig:
-            cache_enabled = True
-            cache_compression_enabled = True
-            cache_storage_format = "json"
+        # Use real configuration (lazy import to avoid circular dependency)
+        from tracklistify.config.factory import get_config
 
-        self._config = MockConfig()
+        self._config = get_config()
 
         logger.debug(f"Initialized cache with TTL={ttl}s, max_size={max_size} bytes")
 

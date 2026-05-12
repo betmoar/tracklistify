@@ -287,23 +287,26 @@ class TestAppSaveOutput:
 class TestAppCleanup:
     @pytest.mark.asyncio
     async def test_cleanup_empty_temp_dir(self, app, temp_dir):
-        """Test cleanup with empty temporary directory."""
+        """Cleanup removes the per-instance subdir but leaves the shared parent."""
+        run_dir = app.temp_dir
+        assert run_dir.exists()
         await app.cleanup()
-        assert not temp_dir.exists()
+        assert not run_dir.exists()
+        assert temp_dir.exists()  # shared parent must survive
 
     @pytest.mark.asyncio
     async def test_cleanup_with_files(self, app, temp_dir):
-        """Test cleanup with temporary files."""
-        # Create some temporary files
-        test_file = temp_dir / "test.txt"
-        test_file.write_text("test content")
-
-        test_subdir = temp_dir / "subdir"
-        test_subdir.mkdir()
-        (test_subdir / "subfile.txt").write_text("sub content")
+        """Cleanup must remove files from the per-instance subdir but leave
+        the shared parent (``temp_dir``) intact for any other concurrent run."""
+        run_dir = app.temp_dir
+        (run_dir / "test.txt").write_text("test content")
+        subdir = run_dir / "subdir"
+        subdir.mkdir()
+        (subdir / "subfile.txt").write_text("sub content")
 
         await app.cleanup()
-        assert not temp_dir.exists()
+        assert not run_dir.exists()
+        assert temp_dir.exists()
 
     @pytest.mark.asyncio
     async def test_cleanup_with_locked_files(self, app, temp_dir):
@@ -352,21 +355,21 @@ class TestAppCleanup:
             )
 
     @pytest.mark.asyncio
-    async def test_cleanup_operation_order(self, app, temp_dir):
-        """Test cleanup operation order."""
-        test_file = temp_dir / "test.txt"
-        test_file.write_text("test")
+    async def test_cleanup_operation_order(self, app, temp_dir):  # noqa: ARG002
+        """Files inside the per-instance subdir are unlinked before the
+        subdir itself is rmtree'd."""
+        (app.temp_dir / "test.txt").write_text("test")
 
         operations = []
 
-        def track_unlink():
+        def track_unlink(_self):
             operations.append("file")
 
-        def track_rmtree(path):
+        def track_rmtree(_path):
             operations.append("dir")
 
         with (
-            patch("pathlib.Path.unlink", side_effect=track_unlink),
+            patch("pathlib.Path.unlink", track_unlink),
             patch("shutil.rmtree", side_effect=track_rmtree),
         ):
             await app.cleanup()
@@ -401,58 +404,57 @@ class TestAppCleanup:
             )
 
     @pytest.mark.asyncio
-    async def test_cleanup_with_symlinks(self, app, temp_dir):
-        """Test cleanup with symbolic links."""
-        # Create a test file and a symlink to it
-        test_file = temp_dir / "test.txt"
+    async def test_cleanup_with_symlinks(self, app, temp_dir):  # noqa: ARG002
+        """Cleanup tolerates symlinks inside the per-instance subdir."""
+        run_dir = app.temp_dir
+        test_file = run_dir / "test.txt"
         test_file.write_text("test content")
-        symlink = temp_dir / "link.txt"
+        symlink = run_dir / "link.txt"
 
-        # Create symlink (platform-independent)
         try:
             symlink.symlink_to(test_file)
         except OSError:
             pytest.skip("Symlink creation not supported on this platform")
 
         await app.cleanup()
-        assert not temp_dir.exists()
+        assert not run_dir.exists()
 
     @pytest.mark.asyncio
-    async def test_cleanup_deep_directory(self, app, temp_dir):
-        """Test cleanup with deeply nested directories."""
-        current = temp_dir
-        for i in range(10):  # Create 10 levels of directories
+    async def test_cleanup_deep_directory(self, app, temp_dir):  # noqa: ARG002
+        """Cleanup recursively removes nested dirs under the per-instance
+        subdir."""
+        run_dir = app.temp_dir
+        current = run_dir
+        for i in range(10):
             current = current / f"level_{i}"
             current.mkdir()
             (current / "file.txt").write_text("test")
 
         await app.cleanup()
-        assert not temp_dir.exists()
+        assert not run_dir.exists()
 
     @pytest.mark.asyncio
-    async def test_cleanup_special_chars(self, app, temp_dir):
-        """Test cleanup with special character filenames."""
-        special_chars = ["!@#$%^&*()", "spaces in name", "中文文件"]
-        for name in special_chars:
-            special_file = temp_dir / name
-            special_file.write_text("test")
+    async def test_cleanup_special_chars(self, app, temp_dir):  # noqa: ARG002
+        """Cleanup handles unicode/special-char filenames in the per-instance
+        subdir."""
+        run_dir = app.temp_dir
+        for name in ["!@#$%^&*()", "spaces in name", "中文文件"]:
+            (run_dir / name).write_text("test")
 
         await app.cleanup()
-        assert not temp_dir.exists()
+        assert not run_dir.exists()
 
     @pytest.mark.asyncio
-    async def test_cleanup_concurrent(self, app, temp_dir):
-        """Test concurrent cleanup calls."""
-        # Create some test files
+    async def test_cleanup_concurrent(self, app, temp_dir):  # noqa: ARG002
+        """Multiple concurrent cleanup calls on the same App are safe."""
+        run_dir = app.temp_dir
         for i in range(3):
-            (temp_dir / f"test_{i}.txt").write_text(f"test content {i}")
+            (run_dir / f"test_{i}.txt").write_text(f"test content {i}")
 
-        # Run multiple cleanup tasks concurrently
         tasks = [app.cleanup() for _ in range(3)]
         await asyncio.gather(*tasks)
 
-        # Verify cleanup was successful
-        assert not temp_dir.exists()
+        assert not run_dir.exists()
 
 
 class TestAppProcessInput:
@@ -669,7 +671,7 @@ class TestAppSplitAudio:
         mock_audio.info.length = 60  # 1 minute duration
 
         # Mock mutagen.File
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         # Mock subprocess.run to simulate successful file creation
         def mock_run(cmd, **kwargs):
@@ -705,7 +707,7 @@ class TestAppSplitAudio:
     def test_split_audio_invalid_file(self, app, temp_dir, monkeypatch):
         """Test handling of invalid audio file."""
         # Mock mutagen.File to return None (invalid file)
-        monkeypatch.setattr("mutagen._file.File", lambda x: None)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: None)
 
         test_file = temp_dir / "invalid.mp3"
         test_file.write_text("invalid content")
@@ -718,7 +720,7 @@ class TestAppSplitAudio:
         # Mock audio file
         mock_audio = Mock()
         mock_audio.info.length = 60
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         # Mock subprocess.run to raise error
         def mock_run(*args, **kwargs):
@@ -737,7 +739,7 @@ class TestAppSplitAudio:
         # Mock audio file with 60 seconds duration
         mock_audio = Mock()
         mock_audio.info.length = 60
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         # Mock subprocess.run to create actual files
         def mock_run(*args, **kwargs):
@@ -771,7 +773,7 @@ class TestAppSplitAudio:
         """Test handling of very short audio files."""
         mock_audio = Mock()
         mock_audio.info.length = 5  # 5 seconds duration
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         def mock_run(cmd, **kwargs):
             output_file = Path(cmd[-1])
@@ -790,7 +792,7 @@ class TestAppSplitAudio:
         """Test handling of ThreadPoolExecutor errors."""
         mock_audio = Mock()
         mock_audio.info.length = 60
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         def mock_run(cmd, **kwargs):
             raise RuntimeError("Thread pool error")
@@ -807,7 +809,7 @@ class TestAppSplitAudio:
         """Test handling of segment files that are too small."""
         mock_audio = Mock()
         mock_audio.info.length = 60
-        monkeypatch.setattr("mutagen._file.File", lambda x: mock_audio)
+        monkeypatch.setattr("tracklistify.core.base.File", lambda x: mock_audio)
 
         def mock_run(cmd, **kwargs):
             output_file = Path(cmd[-1])
@@ -821,3 +823,88 @@ class TestAppSplitAudio:
 
         segments = app.split_audio(str(test_file))
         assert segments == []  # Should reject segments with small file size
+
+
+class TestPerInstanceTempDir:
+    """Regression: concurrent tracklistify runs must use isolated temp dirs."""
+
+    def test_two_apps_get_distinct_temp_subdirs(self, temp_dir, monkeypatch):
+        """Two AsyncApp instances under the same config.temp_dir must
+        allocate distinct subdirectories so concurrent runs can't trample
+        each other's segments."""
+        monkeypatch.setenv("TRACKLISTIFY_TEMP_DIR", str(temp_dir))
+        get_config(force_refresh=True)
+        a = App()
+        b = App()
+
+        assert a.temp_dir != b.temp_dir
+        assert a.temp_dir.parent == temp_dir
+        assert b.temp_dir.parent == temp_dir
+        assert a.temp_dir.exists()
+        assert b.temp_dir.exists()
+        # Names start with the PID so the stale-sweeper can identify them.
+        assert a.temp_dir.name.split("-", 1)[0].isdigit()
+
+    def test_cleanup_only_removes_own_subdir(self, temp_dir, monkeypatch):
+        """One AsyncApp's cleanup must not delete a peer's data."""
+        monkeypatch.setenv("TRACKLISTIFY_TEMP_DIR", str(temp_dir))
+        get_config(force_refresh=True)
+        a = App()
+        b = App()
+
+        peer_file = b.temp_dir / "peer.txt"
+        peer_file.write_text("don't touch me")
+
+        asyncio.run(a.cleanup())
+
+        assert peer_file.exists()
+        assert not a.temp_dir.exists()
+        assert b.temp_dir.exists()
+
+    def test_stale_sweep_removes_dirs_for_dead_pids(self, temp_dir, monkeypatch):
+        """Subdirs whose PID prefix is no longer alive are swept on startup."""
+        monkeypatch.setenv("TRACKLISTIFY_TEMP_DIR", str(temp_dir))
+        get_config(force_refresh=True)
+
+        # PID 99999999 is virtually guaranteed to not exist.
+        stale = temp_dir / "99999999-deadbeef"
+        stale.mkdir(parents=True)
+        (stale / "old.txt").write_text("orphan")
+
+        # Constructing an App triggers _sweep_stale_run_dirs.
+        App()
+
+        assert not stale.exists()
+
+    def test_stale_sweep_keeps_live_pid_dirs(self, temp_dir, monkeypatch):
+        """Subdirs from a currently-running tracklistify must survive."""
+        import os as _os
+
+        monkeypatch.setenv("TRACKLISTIFY_TEMP_DIR", str(temp_dir))
+        get_config(force_refresh=True)
+
+        # Our own PID is alive — that dir must not be swept.
+        live = temp_dir / f"{_os.getpid()}-cafebabe"
+        live.mkdir(parents=True)
+        (live / "in_flight.txt").write_text("hands off")
+
+        App()
+
+        assert live.exists()
+        assert (live / "in_flight.txt").exists()
+
+    def test_stale_sweep_ignores_non_pid_subdirs(self, temp_dir, monkeypatch):
+        """Subdirs that don't match the <pid>-<hex> pattern must be left
+        alone — the sweeper is bounded to its own naming convention."""
+        monkeypatch.setenv("TRACKLISTIFY_TEMP_DIR", str(temp_dir))
+        get_config(force_refresh=True)
+
+        # User or another tool's directory under temp; not ours.
+        foreign = temp_dir / "user-data"
+        foreign.mkdir(parents=True)
+        (foreign / "important.bin").write_bytes(b"\x00\x01")
+
+        App()
+
+        assert foreign.exists()
+        assert (foreign / "important.bin").exists()

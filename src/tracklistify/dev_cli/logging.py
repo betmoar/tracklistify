@@ -54,7 +54,7 @@ class DevCliLogger:
             file_handler.setLevel(logging.DEBUG)
             file_handler.setFormatter(
                 logging.Formatter(
-                    "%(asctime)s [%(levelname)s] %(message)s\n" "%(extra)s\n",
+                    "%(asctime)s [%(levelname)s] %(message)s\n%(extra)s\n",
                     datefmt="%Y-%m-%d %H:%M:%S",
                 )
             )

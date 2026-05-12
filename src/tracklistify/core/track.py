@@ -3,17 +3,37 @@ Track identification and management module.
 """
 
 import re
-from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
 from tracklistify.config import TrackIdentificationConfig
 from tracklistify.utils.logger import get_logger
 
-from .exceptions import TrackIdentificationError
 
 logger = get_logger(__name__)
+
+
+# Allow ``HH+`` (one or more digits) so elapsed offsets like ``25:00:00`` or
+# ``100:30:00`` from long mixes are accepted. ``MM`` and ``SS`` must still be
+# exactly two digits — the field is an *elapsed* time, not a wall-clock time,
+# so ``datetime.strptime("%H:%M:%S")`` (which caps hours at 23) can't be used.
+_TIME_IN_MIX_RE = re.compile(r"^(\d+):(\d{2}):(\d{2})$")
+
+
+def _parse_elapsed_hhmmss(value: str) -> Tuple[int, int, int]:
+    """Parse an elapsed ``HH:MM:SS`` (HH unbounded) into ``(h, m, s)``.
+
+    Raises ``ValueError`` for any malformed input or out-of-range MM/SS.
+    """
+    match = _TIME_IN_MIX_RE.match(value)
+    if not match:
+        raise ValueError(f"time_in_mix must be in elapsed HH:MM:SS form, got {value!r}")
+    h, m, s = (int(part) for part in match.groups())
+    if not (0 <= m < 60):
+        raise ValueError(f"time_in_mix minutes out of range (0-59): {value!r}")
+    if not (0 <= s < 60):
+        raise ValueError(f"time_in_mix seconds out of range (0-59): {value!r}")
+    return h, m, s
 
 
 @dataclass
@@ -25,6 +45,7 @@ class Track:
     time_in_mix: str
     confidence: float
     config: Optional["TrackIdentificationConfig"] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __str__(self) -> str:
         return (
@@ -58,38 +79,41 @@ class Track:
         # regardless of time proximity
         return False
 
-    def __init__(
-        self, song_name: str, artist: str, time_in_mix: str, confidence: float
-    ):
-        """Initialize track with validation."""
-        # Validate inputs
-        if not isinstance(song_name, str) or not song_name.strip():
+    def __post_init__(self):
+        """Validate fields populated by the dataclass-generated __init__.
+
+        The dataclass init does the assignment; this hook adds the field-level
+        validation that used to live in a hand-written ``__init__`` overriding
+        the dataclass init. Validation runs once, here.
+        """
+        if not isinstance(self.song_name, str) or not self.song_name.strip():
             raise ValueError("song_name must be a non-empty string")
-        if not isinstance(artist, str) or not artist.strip():
+        if not isinstance(self.artist, str) or not self.artist.strip():
             raise ValueError("artist must be a non-empty string")
-        if not isinstance(time_in_mix, str) or not re.match(
-            r"^\d{2}:\d{2}:\d{2}$", time_in_mix
-        ):
+        if not isinstance(self.time_in_mix, str):
             raise ValueError("time_in_mix must be in format HH:MM:SS")
+        # Elapsed-time semantics: hours unbounded, MM/SS strictly 0-59.
+        # Parsing here also acts as validation; ``time_to_seconds`` reuses it
+        # so it stays infallible.
+        _parse_elapsed_hhmmss(self.time_in_mix)
         if (
-            not isinstance(confidence, (int, float))
-            or confidence < 0
-            or confidence > 100
+            not isinstance(self.confidence, (int, float))
+            or self.confidence < 0
+            or self.confidence > 100
         ):
             raise ValueError("confidence must be a number between 0 and 100")
 
-        self.song_name = song_name.strip()
-        self.artist = artist.strip()
-        self.time_in_mix = time_in_mix
-        self.confidence = float(confidence)
+        # Normalise inputs (the prior __init__ stripped strings + cast confidence)
+        self.song_name = self.song_name.strip()
+        self.artist = self.artist.strip()
+        self.confidence = float(self.confidence)
 
-        # Initialize config
-        from tracklistify.config.factory import get_config
+        # Lazy-load config when the caller didn't supply one (preserves the
+        # behaviour the manual __init__ used to provide unconditionally).
+        if self.config is None:
+            from tracklistify.config.factory import get_config
 
-        self.config = get_config()
-
-    def __post_init__(self):
-        pass
+            self.config = get_config()
 
     @property
     def markdown_line(self) -> str:
@@ -105,23 +129,14 @@ class Track:
         return f"#EXTINF:-1,{self.artist} - {self.song_name}"
 
     def time_to_seconds(self) -> int:
-        """Convert time_in_mix to seconds."""
-        try:
-            time = datetime.strptime(self.time_in_mix, "%H:%M:%S")
-            return time.hour * 3600 + time.minute * 60 + time.second
-        except ValueError:
-            logger.error(f"Invalid time format: {self.time_in_mix}")
-            return 0
+        """Convert ``time_in_mix`` to seconds.
 
-    def some_method(self):
-        from tracklistify.config.factory import get_config
-
-        config = get_config()
-        # Example usage of config
-        time_threshold = config.time_threshold
-        max_duplicates = config.max_duplicates
-        # Use these variables as needed
-        print(f"Time threshold: {time_threshold}, Max duplicates: {max_duplicates}")
+        Infallible — ``__post_init__`` rejects malformed input at construction
+        so this method can rely on the string parsing cleanly. Handles hour
+        values > 23 (elapsed time, not clock time).
+        """
+        h, m, s = _parse_elapsed_hhmmss(self.time_in_mix)
+        return h * 3600 + m * 60 + s
 
 
 class TrackMatcher:
@@ -224,77 +239,6 @@ class TrackMatcher:
 
         # Sort final list by time in mix
         return sorted(unique_tracks, key=lambda t: t.time_to_seconds())
-
-    def process_file(self, audio_file: Path) -> List[Track]:
-        """
-        Process an audio file and return identified tracks.
-
-        Args:
-            audio_file: Path to the audio file to process
-
-        Returns:
-            List of identified tracks
-
-        Raises:
-            TrackIdentificationError: If track identification fails
-        """
-        try:
-            # Validate audio file
-            if not audio_file.exists():
-                raise FileNotFoundError(f"Audio file not found: {audio_file}")
-            if audio_file.stat().st_size == 0:
-                raise ValueError(f"Audio file is empty: {audio_file}")
-
-            # Clear any existing tracks
-            self.tracks = []
-
-            # Mock track identification for our test file
-            if audio_file.name == "test_mix.mp3":
-                # Add some test tracks
-                self.add_track(
-                    Track(
-                        song_name="Test Track 1",
-                        artist="Test Artist 1",
-                        time_in_mix="00:00:00",
-                        confidence=90.0,
-                    )
-                )
-                self.add_track(
-                    Track(
-                        song_name="Test Track 2",
-                        artist="Test Artist 2",
-                        time_in_mix="00:00:30",
-                        confidence=85.0,
-                    )
-                )
-            else:
-                # Validate audio format (basic check)
-                with open(audio_file, "rb") as f:
-                    header = f.read(4)
-                    if not header.startswith(b"ID3") and not header.startswith(
-                        b"\xff\xfb"
-                    ):
-                        raise ValueError(f"Invalid MP3 file format: {audio_file}")
-
-                # TODO: Implement actual track identification using ACRCloud
-                # This would involve:
-                # 1. Splitting audio into segments
-                # 2. Sending each segment to ACRCloud
-                # 3. Processing responses
-                # 4. Creating Track objects
-                raise NotImplementedError(
-                    "Real track identification not implemented yet"
-                )
-
-            # Sort tracks by timestamp before merging
-            self.tracks.sort(key=lambda t: t.time_to_seconds())
-
-            # Merge similar tracks and return
-            return self.merge_nearby_tracks()
-
-        except Exception as e:
-            logger.error(f"Failed to process audio file: {e}")
-            raise TrackIdentificationError(f"Failed to process audio file: {e}") from e
 
     def _create_track_group(self, track: Track) -> List[Track]:
         """Initialize a new track group with a single track."""

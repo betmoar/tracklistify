@@ -4,13 +4,18 @@ Input validation utilities for Tracklistify.
 
 # Standard library imports
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Iterable, Optional, Tuple
 from urllib.parse import urlparse
 
 # Local/package imports
 from .logger import get_logger
 
 logger = get_logger(__name__)
+
+# Platform domain configurations for URL validation
+YOUTUBE_DOMAINS = ["youtube.com", "youtu.be"]
+SOUNDCLOUD_DOMAINS = ["soundcloud.com"]
+MIXCLOUD_DOMAINS = ["mixcloud.com"]
 
 
 def validate_input(input_path: str) -> Optional[Tuple[str, bool]]:
@@ -56,6 +61,63 @@ def validate_input(input_path: str) -> Optional[Tuple[str, bool]]:
     return None
 
 
+def _normalize_hostname(hostname: Optional[str]) -> str:
+    """Lowercase and strip trailing dots to normalize the hostname."""
+    if hostname is None:
+        return ""
+    # strip any trailing dots that could be used to bypass checks
+    return hostname.strip().lower().rstrip(".")
+
+
+def _is_domain_or_subdomain(hostname: str, domain: str) -> bool:
+    """Return True if hostname equals domain or is a proper subdomain of domain."""
+    hostname = _normalize_hostname(hostname)
+    domain = domain.lower()
+
+    if not hostname or not domain:
+        return False
+
+    # Exact match
+    if hostname == domain:
+        return True
+
+    # Check for proper subdomain (domain must be at the end, preceded by a dot)
+    # This allows arbitrary subdomain sequences like "api.music.youtube.com"
+    if hostname.endswith("." + domain):
+        # Ensure the character before the dot is not a dot (to prevent "..")
+        # and that we're not dealing with something like "youtube.com.evil.com"
+        dot_index = hostname.rfind("." + domain)
+        if dot_index > 0:
+            # Check that the character before the dot is not a dot
+            return hostname[dot_index - 1] != "."
+
+    return False
+
+
+def _is_platform_url(url: str, allowed_domains: Iterable[str]) -> bool:
+    """Return True if the URL's hostname matches one of the allowed domains.
+
+    Only ``http`` and ``https`` schemes are accepted; other schemes
+    (``ftp``, ``file``, ``javascript``, ...) are rejected outright so that
+    they cannot reach ``DownloaderFactory.create_downloader``. A match is
+    either an exact hostname match (e.g. "youtu.be") or a proper subdomain
+    (e.g. "m.youtube.com" for "youtube.com"); subdomain logic is delegated
+    to ``_is_domain_or_subdomain``.
+    """
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+    return any(_is_domain_or_subdomain(host, d) for d in allowed_domains)
+
+
 def is_youtube_url(url: str) -> bool:
     """
     Check if a URL is a valid YouTube URL.
@@ -66,25 +128,7 @@ def is_youtube_url(url: str) -> bool:
     Returns:
         bool: True if URL is a valid YouTube URL, False otherwise
     """
-    if not url:
-        return False
-
-    result = validate_input(url)
-    if not result:
-        return False
-
-    validated, is_local = result
-    if is_local:
-        return False
-
-    host = urlparse(validated).netloc.lower()
-    # Fix: Use exact domain matching instead of substring check
-    return host in (
-        "youtube.com",
-        "www.youtube.com",
-        "youtu.be",
-        "www.youtu.be",
-    ) or host.endswith(".youtube.com")
+    return _is_platform_url(url, YOUTUBE_DOMAINS)
 
 
 def is_soundcloud_url(url: str) -> bool:
@@ -97,22 +141,7 @@ def is_soundcloud_url(url: str) -> bool:
     Returns:
         bool: True if URL is a valid Soundcloud URL, False otherwise
     """
-    if not url:
-        return False
-
-    result = validate_input(url)
-    if not result:
-        return False
-
-    validated, is_local = result
-    if is_local:
-        return False
-
-    host = urlparse(validated).netloc.lower()
-    # Fix: Use exact domain matching
-    return host in ("soundcloud.com", "www.soundcloud.com") or host.endswith(
-        ".soundcloud.com"
-    )
+    return _is_platform_url(url, SOUNDCLOUD_DOMAINS)
 
 
 def is_mixcloud_url(url: str) -> bool:
@@ -125,19 +154,34 @@ def is_mixcloud_url(url: str) -> bool:
     Returns:
         bool: True if URL is a valid Mixcloud URL, False otherwise
     """
+    return _is_platform_url(url, MIXCLOUD_DOMAINS)
+
+
+def clean_url(url: str) -> str:
+    """Normalize a URL: strip query/fragment/trailing slash; lowercase scheme + host.
+
+    Userinfo (``user:pass@``) is **stripped** from the output — normalized URLs
+    are commonly logged or echoed, so propagating credentials would be a leak.
+
+    Args:
+        url: URL to normalize. May be empty or unparseable.
+
+    Returns:
+        str: Normalized URL, or the input unchanged if it is not an absolute URL
+        with both scheme and netloc. Returns ``""`` for empty input.
+    """
     if not url:
-        return False
-
-    result = validate_input(url)
-    if not result:
-        return False
-
-    validated, is_local = result
-    if is_local:
-        return False
-
-    host = urlparse(validated).netloc.lower()
-    # Fix: Use exact domain matching
-    return host in ("mixcloud.com", "www.mixcloud.com") or host.endswith(
-        ".mixcloud.com"
-    )
+        return ""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return url
+    if not parsed.scheme or not parsed.netloc:
+        return url
+    # Rebuild netloc from hostname (+ optional port) to drop any user:pass@.
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return url
+    netloc = host if parsed.port is None else f"{host}:{parsed.port}"
+    path = parsed.path.rstrip("/")
+    return f"{parsed.scheme.lower()}://{netloc}{path}"

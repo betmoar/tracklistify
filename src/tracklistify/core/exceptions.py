@@ -13,22 +13,23 @@ Base Exceptions:
   - AudioProcessingError: Audio processing failures
   - TrackIdentificationError: Track identification failures
   - ValidationError: Input validation failures
-  - RetryExceededError: Maximum retry attempts exceeded
-  - TimeoutError: Operation timeouts
+  - TracklistifyTimeoutError: Operation timeouts
   - ProviderError: Base for provider-specific errors
-  - DownloaderError: Base for downloader-specific errors
 
 Provider-Specific Exceptions:
 - ShazamError: Shazam API specific errors
 - SpotifyError: Spotify API specific errors
-
-Downloader-Specific Exceptions:
-- YtDlpError: yt-dlp download specific errors
 """
 
 
 class TracklistifyError(Exception):
     """Base exception class for Tracklistify."""
+
+    pass
+
+
+class ApplicationError(TracklistifyError):
+    """Base application error for general application failures."""
 
     pass
 
@@ -67,11 +68,18 @@ class AudioProcessingError(TracklistifyError):
 
 
 class TrackIdentificationError(TracklistifyError):
-    """Raised when track identification fails."""
+    """Raised when track identification fails or produces no results."""
 
-    def __init__(self, message: str, segment: int = None, cause: Exception = None):
+    def __init__(
+        self,
+        message: str,
+        segment: int = None,
+        cause: Exception = None,
+        context: dict = None,
+    ):
         self.segment = segment
         self.cause = cause
+        self.context = context or {}
         super().__init__(message)
 
 
@@ -81,19 +89,11 @@ class ValidationError(TracklistifyError):
     pass
 
 
-class RetryExceededError(TracklistifyError):
-    """Raised when maximum retry attempts are exceeded."""
+class TracklistifyTimeoutError(TracklistifyError):
+    """Raised when an operation times out.
 
-    def __init__(
-        self, message: str, attempts: int = None, last_error: Exception = None
-    ):
-        self.attempts = attempts
-        self.last_error = last_error
-        super().__init__(message)
-
-
-class TimeoutError(TracklistifyError):
-    """Raised when an operation times out."""
+    Named to avoid shadowing the built-in ``TimeoutError``.
+    """
 
     def __init__(self, message: str, timeout: float = None, operation: str = None):
         self.timeout = timeout
@@ -135,36 +135,6 @@ class SpotifyError(ProviderError):
         super().__init__(message, provider="Spotify", cause=cause)
 
 
-# Downloader-specific exceptions
-class DownloaderError(TracklistifyError):
-    """Base exception for downloader-specific errors."""
-
-    def __init__(self, message: str, service: str = None, cause: Exception = None):
-        self.service = service
-        self.cause = cause
-        super().__init__(message)
-
-
-class YtDlpError(DownloaderError):
-    """Raised when yt-dlp download operations fail."""
-
-    def __init__(self, message: str, video_id: str = None, cause: Exception = None):
-        self.video_id = video_id
-        super().__init__(message, service="yt-dlp", cause=cause)
-
-
-class URLValidationError(TracklistifyError):
-    """Raised when URL validation fails."""
-
-    pass
-
-
-class ConfigurationError(TracklistifyError):
-    """Raised when configuration is invalid."""
-
-    pass
-
-
 class AuthenticationError(TracklistifyError):
     """Raised when authentication fails."""
 
@@ -172,6 +142,21 @@ class AuthenticationError(TracklistifyError):
         self.service = service
         self.cause = cause
         super().__init__(message)
+
+
+class RateLimitError(ProviderError):
+    """Raised when provider rate limit is exceeded."""
+
+    def __init__(self, message: str, provider: str = None, retry_after: float = None):
+        self.retry_after = retry_after
+        super().__init__(message, provider=provider)
+
+
+class IdentificationError(ProviderError):
+    """Raised when track identification fails."""
+
+    def __init__(self, message: str, provider: str = None, cause: Exception = None):
+        super().__init__(message, provider=provider, cause=cause)
 
 
 class ExportError(TracklistifyError):

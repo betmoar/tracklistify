@@ -19,6 +19,7 @@ from mutagen.oggvorbis import OggVorbis
 
 # Local/package imports
 from tracklistify.core.exceptions import DownloadError
+from tracklistify.utils.constants import FFMPEG_TRANSCODE_TIMEOUT
 from tracklistify.utils.logger import get_logger
 from tracklistify.utils.validation import clean_url
 
@@ -203,7 +204,7 @@ class SpotifyDownloader(Downloader):
         logger.debug(f"Settings - Quality: {quality}, Format: {format}")
         logger.debug(f"Directories - Output: {self.output_dir}, Temp: {self.temp_dir}")
 
-    async def _ensure_session(self):
+    async def _ensure_session(self) -> None:
         """Ensure aiohttp session exists with cookies."""
         if self._session is None:
             self._session = aiohttp.ClientSession(cookies=self._cookies)
@@ -247,7 +248,7 @@ class SpotifyDownloader(Downloader):
         """Clean filename by removing illegal characters."""
         return re.sub(ILLEGAL_CHARS_REGEX, ILLEGAL_CHARS_REPLACEMENT, filename)
 
-    def _set_metadata(self, file_path: str, metadata: Dict[str, Any]):
+    def _set_metadata(self, file_path: str, metadata: Dict[str, Any]) -> None:
         """Set audio file metadata tags."""
         if self.format == AudioFormat.M4A:
             audio = MP4(file_path)
@@ -367,7 +368,25 @@ class SpotifyDownloader(Downloader):
                     "-y",
                     str(output_path),
                 ]
-                subprocess.run(cmd, check=True, capture_output=True)
+                try:
+                    subprocess.run(
+                        cmd,
+                        check=True,
+                        capture_output=True,
+                        timeout=FFMPEG_TRANSCODE_TIMEOUT,
+                    )
+                except subprocess.TimeoutExpired as e:
+                    if output_path.exists():
+                        try:
+                            output_path.unlink()
+                        except OSError as unlink_err:
+                            logger.debug(
+                                f"Could not remove partial transcode "
+                                f"{output_path}: {unlink_err}"
+                            )
+                    raise DownloadError(
+                        f"ffmpeg transcode timed out after {FFMPEG_TRANSCODE_TIMEOUT}s"
+                    ) from e
                 temp_path.unlink()
             else:
                 temp_path.rename(output_path)
@@ -383,7 +402,7 @@ class SpotifyDownloader(Downloader):
         except Exception as e:
             raise DownloadError(f"Failed to download from Spotify: {str(e)}") from e
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the downloader session."""
         if self._session:
             await self._session.close()

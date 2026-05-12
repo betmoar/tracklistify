@@ -6,8 +6,9 @@ Cache index management for efficient key-to-filename mapping.
 import asyncio
 import json
 import time
+import zlib
 from pathlib import Path
-from typing import Dict, List, Optional, TypeVar, Union
+from typing import Any, Dict, List, Optional, TypeVar, Union
 
 # Third-party imports
 import aiofiles
@@ -34,7 +35,7 @@ class CacheIndex:
         """
         self._cache_dir = Path(cache_dir)
         self._index_file = self._cache_dir / "cache.index.json"
-        self._index: Dict[str, Dict[str, any]] = {}
+        self._index: Dict[str, Dict[str, Any]] = {}
         self._lock = asyncio.Lock()
         self._dirty = False
 
@@ -81,7 +82,7 @@ class CacheIndex:
                 raise
 
     async def add_entry(
-        self, key: str, filename: str, metadata: Dict[str, any]
+        self, key: str, filename: str, metadata: Dict[str, Any]
     ) -> None:
         """Add or update entry in index.
 
@@ -128,7 +129,7 @@ class CacheIndex:
         """
         return self._index.get(key, {}).get("filename")
 
-    async def get_metadata(self, key: str) -> Optional[Dict[str, any]]:
+    async def get_metadata(self, key: str) -> Optional[Dict[str, Any]]:
         """Get metadata for cache key.
 
         Args:
@@ -164,7 +165,7 @@ class CacheIndex:
         """
         return list(self._index.keys())
 
-    async def get_stats(self) -> Dict[str, any]:
+    async def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics from index.
 
         Returns:
@@ -239,8 +240,6 @@ class CacheIndex:
 
                     # Handle compressed files
                     if data.startswith(ZLIB_HEADER):
-                        import zlib
-
                         data = zlib.decompress(data)
 
                     entry = json.loads(data.decode("utf-8"))

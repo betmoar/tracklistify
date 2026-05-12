@@ -3,18 +3,27 @@
 # Standard library imports
 import asyncio
 import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
+import os
+import shutil
+import subprocess
 import traceback
+import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
+
+# Third-party imports
+from mutagen import File
 
 # Local/package imports
-from tracklistify.config.factory import get_config
+from tracklistify.core.exceptions import TrackIdentificationError
 from tracklistify.core.track import Track
 from tracklistify.core.types import AudioSegment
 from tracklistify.downloaders import DownloaderFactory
 from tracklistify.exporters import TracklistOutput
 from tracklistify.providers.factory import create_provider_factory
+from tracklistify.utils.constants import DEFAULT_SEGMENT_PADDING, FFMPEG_SEGMENT_TIMEOUT
 from tracklistify.utils.identification import IdentificationManager
 from tracklistify.utils.logger import get_logger
 from tracklistify.utils.strings import sanitizer
@@ -27,6 +36,9 @@ class AsyncApp:
     """Main application logic container"""
 
     def __init__(self, config=None):
+        # Lazy import to avoid circular dependency at module load time
+        from tracklistify.config.factory import get_config
+
         # Always refresh config
         self.config = config or get_config(force_refresh=True)
         self.provider_factory = create_provider_factory()
@@ -35,10 +47,46 @@ class AsyncApp:
         self.shutdown_event = asyncio.Event()
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
+        # Per-invocation temp subdirectory: every concurrent tracklistify run
+        # gets its own dir under the shared config.temp_dir so cleanup can't
+        # wipe another run's segments mid-identification. Name encodes the
+        # PID so abandoned dirs can be swept on next startup.
+        self.run_id = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        self.temp_dir = Path(self.config.temp_dir) / self.run_id
+        self._sweep_stale_run_dirs()
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+
         # Always recreate identification_manager with fresh config
         self.identification_manager = IdentificationManager(
             config=self.config, provider_factory=self.provider_factory
         )
+
+    def _sweep_stale_run_dirs(self) -> None:
+        """Remove temp subdirs owned by PIDs that no longer exist.
+
+        Runs at startup. Only touches subdirs whose name matches the
+        ``<pid>-<hex>`` shape this class produces; everything else in
+        ``config.temp_dir`` is left alone.
+        """
+        parent = Path(self.config.temp_dir)
+        if not parent.exists():
+            return
+        for child in parent.iterdir():
+            if not child.is_dir():
+                continue
+            pid_str = child.name.split("-", 1)[0]
+            try:
+                pid = int(pid_str)
+            except ValueError:
+                continue  # not one of ours, leave it
+            try:
+                os.kill(pid, 0)  # signal 0 = existence check, no actual signal
+            except (ProcessLookupError, PermissionError):
+                try:
+                    shutil.rmtree(child)
+                    self.logger.debug(f"Swept stale temp dir: {child}")
+                except OSError as e:
+                    self.logger.debug(f"Could not sweep {child}: {e}")
 
     def shutdown(self) -> None:
         """Shutdown the application gracefully."""
@@ -46,9 +94,45 @@ class AsyncApp:
         self.shutdown_event.set()
         self.executor.shutdown(wait=True)
 
-    async def process_input(self, input_path: str):
-        """Process input URL or file path."""
+    async def process_input(
+        self,
+        input_path: str,
+        formats: str = None,
+        provider: str = None,
+        fallback_enabled: bool = None,
+        stream_copy: bool = False,
+    ):
+        """Process input URL or file path.
+
+        Args:
+            input_path: Path to audio file or URL to download
+            formats: Output format(s) - overrides config if provided
+            provider: Primary provider name - overrides config if provided
+            fallback_enabled: Enable/disable fallback - overrides config if provided
+            stream_copy: If True, skip yt-dlp's MP3 transcode and segment with
+                ``-c:a copy`` end-to-end. Faster but keeps the source codec.
+        """
         try:
+            # Apply CLI argument overrides to config
+            if provider is not None:
+                self.logger.info(f"Overriding primary provider: {provider}")
+                self.config.primary_provider = provider
+                # Recreate identification manager with updated config
+                self.identification_manager = IdentificationManager(
+                    config=self.config, provider_factory=self.provider_factory
+                )
+
+            if fallback_enabled is not None:
+                self.logger.info(f"Overriding fallback_enabled: {fallback_enabled}")
+                self.config.fallback_enabled = fallback_enabled
+
+            # Store formats for output. When formats is None, leave
+            # _output_formats unset so the save block falls back to
+            # self.config.output_format via getattr default.
+            if formats is not None:
+                self.logger.info(f"Output formats: {formats}")
+                self._output_formats = formats
+
             # Validate input (URL or local file path)
             validated_result = validate_input(input_path)
             if validated_result is None:
@@ -72,7 +156,11 @@ class AsyncApp:
                 self.duration = 0
             else:
                 # URL processing - download the file
-                downloader = self.downloader_factory.create_downloader(validated_path)
+                downloader = self.downloader_factory.create_downloader(
+                    validated_path,
+                    stream_copy=stream_copy,
+                    temp_dir=str(self.temp_dir),
+                )
                 if downloader is None:
                     raise ValueError("Failed to create downloader")
                 self.logger.info("Downloading audio...")
@@ -106,8 +194,13 @@ class AsyncApp:
 
             self.logger.info("Processing audio...")
 
-            # Process the downloaded file
-            audio_segments = self.split_audio(local_path)
+            # Process the downloaded file. Pass through the duration we got
+            # from yt-dlp (or local-file fallback below) so split_audio
+            # doesn't have to re-probe — mutagen doesn't read every
+            # container we now allow under --stream-copy (e.g. .webm).
+            audio_segments = self.split_audio(
+                local_path, duration_hint=getattr(self, "duration", 0) or None
+            )
             if not audio_segments:
                 raise ValueError("No audio segments were created")
 
@@ -136,7 +229,11 @@ class AsyncApp:
             # Only save if we have identified tracks
             self.logger.info("Saving output...")
             if len(tracks) > 0:
-                await self.save_output(tracks, self.config.output_format)
+                # Use _output_formats if set by CLI, otherwise fall back to config
+                output_format = getattr(
+                    self, "_output_formats", self.config.output_format
+                )
+                await self.save_output(tracks, output_format)
             else:
                 raise ValueError(
                     "No tracks were successfully identified with sufficient confidence"
@@ -151,65 +248,54 @@ class AsyncApp:
             # Always clean up temporary files
             await self.cleanup()
 
-    def split_audio(self, file_path: str) -> List[AudioSegment]:
-        """Split audio file into overlapping segments for analysis."""
+    def split_audio(
+        self, file_path: str, duration_hint: Optional[float] = None
+    ) -> List[AudioSegment]:
+        """Split audio file into overlapping segments for analysis.
+
+        Args:
+            file_path: Path to the audio file to split.
+            duration_hint: Caller-provided duration in seconds. When set,
+                we skip the mutagen probe (mutagen doesn't read every
+                container — e.g. ``.webm`` returned by yt-dlp under
+                ``--stream-copy``). Mutagen is used only when no hint is
+                available (local-file path with no upstream metadata).
+        """
         self.logger.info(f"Splitting audio file: {file_path}")
         self.logger.debug(
             f"Config values: segment_length={self.config.segment_length}, "
             f"overlap_duration={self.config.overlap_duration}"
         )
 
-        import os
-        import subprocess
-        from concurrent.futures import ThreadPoolExecutor
-        from pathlib import Path
-
-        from mutagen._file import File
-
-        audio = File(file_path)
-        if audio is None:
-            self.logger.error(f"Could not read audio file: {file_path}")
-            return []
-
-        try:
-            duration = audio.info.length  # Duration in seconds
-
-        except AttributeError:
-            self.logger.error("Could not determine audio duration")
-            return []
+        if duration_hint and duration_hint > 0:
+            duration = duration_hint
+        else:
+            audio = File(file_path)
+            if audio is None:
+                self.logger.error(f"Could not read audio file: {file_path}")
+                return []
+            try:
+                duration = audio.info.length  # Duration in seconds
+            except AttributeError:
+                self.logger.error("Could not determine audio duration")
+                return []
 
         # Get configuration for segmentation from instance
         segment_duration = self.config.segment_length
         overlap_duration = self.config.overlap_duration
         step = segment_duration - overlap_duration
 
-        # Create temp directory for segments
-        temp_dir = Path(self.config.temp_dir)
+        # Per-invocation temp dir (created in __init__) — every concurrent
+        # run uses its own subdir so cleanup can't wipe peers' segments.
+        temp_dir = self.temp_dir
         temp_dir.mkdir(parents=True, exist_ok=True)
 
-        # Optimize ffmpeg settings for faster processing
-        base_cmd = [
-            "ffmpeg",
-            "-hide_banner",
-            "-nostdin",  # Force non-interactive mode
-            "-loglevel",
-            "error",
-            "-i",
-            file_path,
-            "-vn",  # Skip video processing
-            "-ar",
-            "44100",  # Standard sample rate
-            "-ac",
-            "2",  # Stereo
-            "-c:a",
-            "libmp3lame",  # Use MP3 encoder
-            "-q:a",
-            "5",  # Variable bitrate quality (0-9, lower is better)
-            "-map",
-            "0:a",  # Only process audio stream
-            "-threads",
-            str(os.cpu_count()),  # Use all CPU cores
-        ]
+        # Segment via stream-copy: ffmpeg slices the existing audio frames
+        # without re-encoding. ``-ss`` is placed BEFORE ``-i`` so ffmpeg
+        # does an input-seek (fast jump to the nearest preceding frame)
+        # rather than decoding from the start to find the offset. The
+        # DEFAULT_SEGMENT_PADDING absorbs the sub-frame alignment slop.
+        source_suffix = Path(file_path).suffix or ".mp3"
 
         # Generate segment parameters
         segment_params = []
@@ -218,12 +304,15 @@ class AsyncApp:
         while current_time < duration:
             segment_length = min(segment_duration, duration - current_time)
             segment_file = (
-                temp_dir / f"segment_{current_time:.0f}_{segment_length:.0f}.mp3"
+                temp_dir
+                / f"segment_{current_time:.0f}_{segment_length:.0f}{source_suffix}"
             )
 
             # Add small padding to improve recognition
-            start_time = max(0, current_time - 0.5)
-            end_time = min(duration, current_time + segment_length + 0.5)
+            start_time = max(0, current_time - DEFAULT_SEGMENT_PADDING)
+            end_time = min(
+                duration, current_time + segment_length + DEFAULT_SEGMENT_PADDING
+            )
             actual_length = end_time - start_time
 
             segment_params.append(
@@ -231,12 +320,23 @@ class AsyncApp:
                     "start_time": current_time,
                     "length": segment_length,
                     "file": segment_file,
-                    "cmd": base_cmd
-                    + [
+                    "cmd": [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-nostdin",
+                        "-loglevel",
+                        "error",
                         "-ss",
                         str(start_time),
+                        "-i",
+                        file_path,
                         "-t",
                         str(actual_length),
+                        "-vn",
+                        "-map",
+                        "0:a",
+                        "-c:a",
+                        "copy",
                         "-y",
                         str(segment_file),
                     ],
@@ -258,7 +358,11 @@ class AsyncApp:
                         )
 
                 result = subprocess.run(
-                    params["cmd"], capture_output=True, text=True, check=True
+                    params["cmd"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=FFMPEG_SEGMENT_TIMEOUT,
                 )
                 self.logger.debug(f"FFmpeg output: {result.stdout}")
 
@@ -274,6 +378,21 @@ class AsyncApp:
                         f"Output file is missing or too small"
                     )
                     return None
+
+            except subprocess.TimeoutExpired:
+                self.logger.error(
+                    f"ffmpeg timed out after {FFMPEG_SEGMENT_TIMEOUT}s at "
+                    f"{params['start_time']}s; cleaning up partial output"
+                )
+                if params["file"].exists():
+                    try:
+                        params["file"].unlink()
+                    except OSError as unlink_err:
+                        self.logger.debug(
+                            f"Could not remove partial segment "
+                            f"{params['file']}: {unlink_err}"
+                        )
+                return None
 
             except subprocess.CalledProcessError as e:
                 self.logger.error(
@@ -299,13 +418,23 @@ class AsyncApp:
             max_workers = min(cpu_count * 2, len(segment_params))
             self.logger.debug(f"Processing segments with {max_workers} workers")
 
+            total = len(segment_params)
+            done = 0
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit all tasks and gather results
-                future_segments = list(executor.map(create_segment, segment_params))
+                futures = [executor.submit(create_segment, p) for p in segment_params]
+                for fut in concurrent.futures.as_completed(futures):
+                    result = fut.result()
+                    if result is not None:
+                        segments.append(result)
+                    done += 1
+                    # Log every 10 segments so the user can see progress
+                    # without flooding the console on small jobs.
+                    if done % 10 == 0 and done != total:
+                        self.logger.info(f"Splitting: {done}/{total} segments done")
 
-                # Filter out failed segments
-                segments = [seg for seg in future_segments if seg is not None]
-
+            # Re-sort: ``as_completed`` returns out-of-order; downstream
+            # identification iterates segments in array order.
+            segments.sort(key=lambda s: s.start_time)
             self.logger.info(f"Split audio into {len(segments)} segments")
             return segments
 
@@ -366,11 +495,12 @@ class AsyncApp:
             if self.config.debug:
                 self.logger.error(traceback.format_exc())
 
-    async def cleanup(self):
-        """Cleanup resources"""
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
         try:
-            # Clean up temp directory
-            temp_dir = Path(self.config.temp_dir)
+            # Clean up THIS run's temp subdirectory only. Other concurrent
+            # runs' subdirs under the shared config.temp_dir are left alone.
+            temp_dir = self.temp_dir
             if temp_dir.exists():
                 # First try to remove all files
                 for file in temp_dir.glob("*"):
@@ -379,8 +509,6 @@ class AsyncApp:
                             file.unlink()
                             self.logger.debug(f"Removed temporary file: {file}")
                         elif file.is_dir():
-                            import shutil
-
                             shutil.rmtree(file)
                             self.logger.debug(f"Removed temporary directory: {file}")
                     except Exception as e:
@@ -389,8 +517,6 @@ class AsyncApp:
                 # Try to remove the directory itself
                 try:
                     # Use rmtree instead of rmdir to handle any remaining files
-                    import shutil
-
                     shutil.rmtree(temp_dir)
                     self.logger.debug("Removed temporary directory")
                 except Exception as e:
@@ -398,8 +524,10 @@ class AsyncApp:
                     # If rmtree fails, try to at least remove empty directory
                     try:
                         temp_dir.rmdir()
-                    except Exception:
-                        pass
+                    except Exception as rmdir_err:
+                        self.logger.debug(
+                            f"Could not remove temp directory {temp_dir}: {rmdir_err}"
+                        )
         except Exception as e:
             self.logger.warning(f"Error during cleanup: {e}")
 
@@ -410,20 +538,6 @@ class AsyncApp:
         except Exception as e:
             self.logger.warning(f"Error cleaning up identification manager: {e}")
 
-    async def close(self):
+    async def close(self) -> None:
         """Cleanup resources."""
         await self.cleanup()
-
-
-class ApplicationError(Exception):
-    """Base application error."""
-
-    pass
-
-
-class TrackIdentificationError(ApplicationError):
-    """Raised when track identification fails or produces no results."""
-
-    def __init__(self, message: str, context: dict = None):
-        super().__init__(message)
-        self.context = context or {}
