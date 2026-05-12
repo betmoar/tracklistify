@@ -25,7 +25,9 @@ FFMPEG_TRANSCODE_TIMEOUT = 300  # seconds; full-file transcode cutoff
 
 # Cache defaults
 DEFAULT_CACHE_TTL = 3600  # 1 hour
-DEFAULT_CACHE_MAX_SIZE = 1_000_000  # 1 million entries
+# Bytes, not entries: SizeStrategy measures len(json.dumps(value)) per entry,
+# and BaseCache treats max_size as a byte budget. 1_000_000 ≈ 1 MB.
+DEFAULT_CACHE_MAX_SIZE = 1_000_000
 
 # Rate limiter defaults
 DEFAULT_RATE_LIMIT_TIMEOUT = 30.0  # seconds

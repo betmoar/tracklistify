@@ -26,6 +26,9 @@ class TestNoSilentExceptions:
             ("cache/storage.py", "OSError"),
             # core/run.py has asyncio.CancelledError pass for task cancellation
             ("core/run.py", "CancelledError"),
+            # utils/logger.py closes prior handlers during reconfiguration;
+            # logging during teardown of the logger itself would be unsafe.
+            ("utils/logger.py", "handler.close"),
         ]
 
         for py_file in src_path.rglob("*.py"):
@@ -117,6 +120,6 @@ class TestExceptionLogging:
             content = f.read()
 
         # Should have logging for cooldown failures
-        assert "logger.debug" in content and "cooldown" in content.lower(), (
-            "Shazam should log cooldown configuration failures"
-        )
+        assert (
+            "logger.debug" in content and "cooldown" in content.lower()
+        ), "Shazam should log cooldown configuration failures"

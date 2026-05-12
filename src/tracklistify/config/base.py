@@ -161,7 +161,10 @@ class TrackIdentificationConfig(BaseConfig):
     # Caching settings
     cache_enabled: bool = field(default=True)
     cache_ttl: int = field(default=3600)
-    cache_max_size: int = field(default=1000)
+    # Byte budget for the cache (matches SizeStrategy / BaseCache semantics).
+    # Previously defaulted to 1000 — meant as "entries" but interpreted as
+    # bytes, which was so small the cache rejected every Shazam response.
+    cache_max_size: int = field(default=1_000_000)
     cache_storage_format: str = field(default="json")
     cache_compression_enabled: bool = field(default=True)
     cache_compression_level: int = field(default=6)

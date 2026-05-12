@@ -64,7 +64,7 @@ def test_default_config(monkeypatch):
     # Cache settings - CODE DEFAULTS
     assert config.cache_enabled is True
     assert config.cache_ttl == 3600
-    assert config.cache_max_size == 1000
+    assert config.cache_max_size == 1_000_000  # bytes (~1MB), matches SizeStrategy
     assert config.cache_storage_format == "json"
     assert config.cache_compression_enabled is True
     assert config.cache_compression_level == 6

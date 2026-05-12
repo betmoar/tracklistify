@@ -118,7 +118,7 @@ INLINE_COMMENTS: dict[str, str] = {
     "circuit_breaker_threshold": "consecutive failures",
     "circuit_breaker_reset_timeout": "seconds",
     "cache_ttl": "seconds",
-    "cache_max_size": "entries",
+    "cache_max_size": "bytes (~1MB default)",
     "cache_compression_level": "1..9",
     "cache_cleanup_interval": "seconds",
     "cache_max_age": "seconds",
