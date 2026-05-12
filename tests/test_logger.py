@@ -118,6 +118,33 @@ class TestLoggerConfiguration:
         set_logger(log_level="INFO", log_file=log_file_2)
         assert len(logging.getLogger().handlers) == 2
 
+    def test_reconfigure_closes_old_file_handler(self, tmp_path):
+        """Reconfiguration must close prior handlers, not just drop refs.
+
+        Regression: previous implementation called ``handlers.clear()`` which
+        removes handlers without ``.close()``-ing them — leaking the file
+        descriptor on the rotating-file log until GC ran (and on Windows
+        keeping the file locked).
+        """
+        log_file = tmp_path / "test.log"
+        set_logger(log_level="INFO", log_file=log_file)
+
+        # Grab the original file handler before reconfiguration.
+        original_file_handlers = [
+            h
+            for h in logging.getLogger().handlers
+            if hasattr(h, "stream") and hasattr(h, "baseFilename")
+        ]
+        assert original_file_handlers, "expected a file handler to be attached"
+        original = original_file_handlers[0]
+
+        set_logger(log_level="INFO", log_file=log_file)
+
+        # The pre-reconfig handler's underlying stream must be closed.
+        assert (
+            original.stream is None or original.stream.closed
+        ), "previous file handler should be closed on reconfigure"
+
     def test_log_level_changes_applied(self):
         """Test that log level changes are applied correctly."""
         set_logger(log_level="DEBUG", debug=True)

@@ -70,8 +70,15 @@ def set_logger(
     """
     logger = logging.getLogger()
 
-    # Clear existing handlers to prevent duplicates on reconfiguration
-    logger.handlers.clear()
+    # Close existing handlers before clearing to avoid leaked file descriptors
+    # (e.g. a previously attached RotatingFileHandler keeping a log file open).
+    # `handlers.clear()` alone removes references but doesn't close streams.
+    for existing in list(logger.handlers):
+        try:
+            existing.close()
+        except Exception:  # noqa: BLE001 - best-effort close on shutdown path
+            pass
+        logger.removeHandler(existing)
 
     # Set base level: debug > verbose > log_level (string parameter).
     if debug:
