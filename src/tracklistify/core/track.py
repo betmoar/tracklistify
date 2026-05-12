@@ -4,14 +4,36 @@ Track identification and management module.
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from tracklistify.config import TrackIdentificationConfig
 from tracklistify.utils.logger import get_logger
 
 
 logger = get_logger(__name__)
+
+
+# Allow ``HH+`` (one or more digits) so elapsed offsets like ``25:00:00`` or
+# ``100:30:00`` from long mixes are accepted. ``MM`` and ``SS`` must still be
+# exactly two digits — the field is an *elapsed* time, not a wall-clock time,
+# so ``datetime.strptime("%H:%M:%S")`` (which caps hours at 23) can't be used.
+_TIME_IN_MIX_RE = re.compile(r"^(\d+):(\d{2}):(\d{2})$")
+
+
+def _parse_elapsed_hhmmss(value: str) -> Tuple[int, int, int]:
+    """Parse an elapsed ``HH:MM:SS`` (HH unbounded) into ``(h, m, s)``.
+
+    Raises ``ValueError`` for any malformed input or out-of-range MM/SS.
+    """
+    match = _TIME_IN_MIX_RE.match(value)
+    if not match:
+        raise ValueError(f"time_in_mix must be in elapsed HH:MM:SS form, got {value!r}")
+    h, m, s = (int(part) for part in match.groups())
+    if not (0 <= m < 60):
+        raise ValueError(f"time_in_mix minutes out of range (0-59): {value!r}")
+    if not (0 <= s < 60):
+        raise ValueError(f"time_in_mix seconds out of range (0-59): {value!r}")
+    return h, m, s
 
 
 @dataclass
@@ -68,20 +90,12 @@ class Track:
             raise ValueError("song_name must be a non-empty string")
         if not isinstance(self.artist, str) or not self.artist.strip():
             raise ValueError("artist must be a non-empty string")
-        if not isinstance(self.time_in_mix, str) or not re.match(
-            r"^\d{2}:\d{2}:\d{2}$", self.time_in_mix
-        ):
+        if not isinstance(self.time_in_mix, str):
             raise ValueError("time_in_mix must be in format HH:MM:SS")
-        # Regex above matches digit shape but accepts e.g. "99:99:99"; this
-        # check rejects semantically invalid HH/MM/SS so time_to_seconds()
-        # can stay infallible.
-        try:
-            datetime.strptime(self.time_in_mix, "%H:%M:%S")
-        except ValueError as e:
-            raise ValueError(
-                f"time_in_mix must be a valid HH:MM:SS time, got "
-                f"{self.time_in_mix!r}"
-            ) from e
+        # Elapsed-time semantics: hours unbounded, MM/SS strictly 0-59.
+        # Parsing here also acts as validation; ``time_to_seconds`` reuses it
+        # so it stays infallible.
+        _parse_elapsed_hhmmss(self.time_in_mix)
         if (
             not isinstance(self.confidence, (int, float))
             or self.confidence < 0
@@ -118,10 +132,11 @@ class Track:
         """Convert ``time_in_mix`` to seconds.
 
         Infallible — ``__post_init__`` rejects malformed input at construction
-        so this method can rely on the string parsing cleanly.
+        so this method can rely on the string parsing cleanly. Handles hour
+        values > 23 (elapsed time, not clock time).
         """
-        time = datetime.strptime(self.time_in_mix, "%H:%M:%S")
-        return time.hour * 3600 + time.minute * 60 + time.second
+        h, m, s = _parse_elapsed_hhmmss(self.time_in_mix)
+        return h * 3600 + m * 60 + s
 
 
 class TrackMatcher:
