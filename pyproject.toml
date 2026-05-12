@@ -24,7 +24,7 @@ classifiers = [
 ]
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "aiohttp>=3.13.2",
+    "aiohttp>=3.13.4",
     "mutagen>=1.47.0",
     "pydub>=0.25.1",
     "python-dotenv>=1.2.1",
