@@ -182,6 +182,29 @@ class TestProgressDisplay:
 
         assert display._last_line_length == 0
 
+    def test_clear_overwrites_full_rendered_width(self, capsys):
+        """clear() must blank at least the previously rendered line length.
+
+        Regression: clearing a fixed 80 chars leaves residue when the
+        progress line was wider (e.g. very large total segment counts).
+        """
+        display = ProgressDisplay()
+        display.start(total=999_999)
+        display.update(current=500_000)
+        rendered_width = display._last_line_length
+
+        # Force a wider-than-default rendered line for the assertion.
+        assert rendered_width >= 0
+        display._last_line_length = max(rendered_width, 120)
+        capsys.readouterr()  # discard prior output
+        display.clear()
+
+        captured = capsys.readouterr().out
+        # The clear must include at least max(_last_line_length, 80) spaces.
+        # Strip the surrounding \r markers and count whitespace.
+        blanks = captured.strip("\r")
+        assert len(blanks) >= 120
+
     def test_multiple_updates(self):
         """Test multiple sequential updates."""
         display = ProgressDisplay()

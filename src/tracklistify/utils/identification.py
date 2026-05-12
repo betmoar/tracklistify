@@ -167,7 +167,10 @@ class ProgressDisplay:
     def clear(self) -> None:
         """Clear the progress display.
 
-        Resets the display line and cursor position.
+        Overwrites the actual rendered line length (tracked in
+        ``_last_line_length``) so wide lines don't leave a trailing
+        residue. Falls back to ``TERMINAL_LINE_WIDTH`` as a floor in case
+        ``clear()`` is called before any ``update()``.
 
         Examples:
             >>> display = ProgressDisplay()
@@ -175,8 +178,8 @@ class ProgressDisplay:
             >>> display.update(5)
             >>> display.clear()
         """
-        # Clear current line by overwriting with spaces
-        sys.stdout.write("\r" + " " * TERMINAL_LINE_WIDTH + "\r")
+        width = max(self._last_line_length, TERMINAL_LINE_WIDTH)
+        sys.stdout.write("\r" + " " * width + "\r")
         sys.stdout.flush()
         self._last_line_length = 0
 
