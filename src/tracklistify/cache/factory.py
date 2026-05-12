@@ -52,8 +52,11 @@ def create_cache(
 def get_cache(force_refresh: bool = False) -> BaseCache:
     """Get global cache instance.
 
-    This function is thread-safe using double-checked locking pattern.
-    Multiple threads can safely call this function concurrently.
+    Thread-safe via double-checked locking. The instance is built from
+    ``TrackIdentificationConfig`` (cache_dir / cache_ttl / cache_max_size)
+    so users that set ``TRACKLISTIFY_CACHE_DIR`` etc. actually see their
+    settings applied — the previous implementation called ``create_cache()``
+    with no args and silently wrote to ``~/.tracklistify/cache``.
 
     Args:
         force_refresh: If True, discard the existing instance and create
@@ -72,7 +75,16 @@ def get_cache(force_refresh: bool = False) -> BaseCache:
     # Slow path: need to (re)create instance (thread-safe)
     with _cache_lock:
         if force_refresh or _cache_instance is None:
-            _cache_instance = create_cache()
+            # Lazy import: cache layer must not import config at module load
+            # time (config.factory imports cache transitively elsewhere).
+            from tracklistify.config.factory import get_config
+
+            cfg = get_config()
+            _cache_instance = create_cache(
+                cache_dir=getattr(cfg, "cache_dir", None),
+                ttl=getattr(cfg, "cache_ttl", DEFAULT_CACHE_TTL),
+                max_size=getattr(cfg, "cache_max_size", DEFAULT_CACHE_MAX_SIZE),
+            )
 
     return _cache_instance
 

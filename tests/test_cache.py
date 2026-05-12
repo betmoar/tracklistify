@@ -233,6 +233,27 @@ async def test_global_cache_instance():
     assert cache1 is cache2  # Same instance
 
 
+def test_get_cache_honors_config_cache_dir(tmp_path, monkeypatch):
+    """get_cache() must build its instance from TrackIdentificationConfig.
+
+    Before the fix, get_cache() called create_cache() with no args, so the
+    user-configured cache_dir was silently ignored and everything wrote to
+    ~/.tracklistify/cache. Set TRACKLISTIFY_CACHE_DIR, force-refresh both
+    config and cache, then assert the storage is rooted at our path.
+    """
+    from tracklistify.cache.factory import get_cache as get_cache_factory
+    from tracklistify.config import get_config
+
+    custom = tmp_path / "custom_cache"
+    monkeypatch.setenv("TRACKLISTIFY_CACHE_DIR", str(custom))
+    get_config(force_refresh=True)
+    cache = get_cache_factory(force_refresh=True)
+    # JSONStorage roots files at ``_cache_dir``; resolve both sides so
+    # symlink / ~ expansion differences don't trip the comparison.
+    storage_path = Path(cache._storage._cache_dir)
+    assert storage_path.resolve() == custom.resolve()
+
+
 def test_cache_configuration():
     """Test cache configuration validation."""
     config = get_config()
