@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Local/package imports
 from ..config import get_config
-from .constants import TOKEN_REFILL_SLEEP
+from .constants import MAX_RATE_LIMIT_WINDOWS, TOKEN_REFILL_SLEEP
 
 # Rate limiting constants
 # 1ms threshold to detect actual rate limit
@@ -228,8 +228,8 @@ class RateLimiter:
                             # Successful requests that were rate-limited
                             limits.metrics.rate_limited_requests += 1
                             limits.metrics.last_rate_limit = time.monotonic()
-                            limits.metrics.rate_limit_windows.append(
-                                (token_wait_start, time.monotonic())
+                            self._record_rate_limit_window(
+                                limits, token_wait_start, time.monotonic()
                             )
                         return True
 
@@ -238,9 +238,7 @@ class RateLimiter:
 
             # Timeout exceeded - rate limiting failure
             limits.metrics.last_rate_limit = time.monotonic()
-            limits.metrics.rate_limit_windows.append(
-                (token_wait_start, time.monotonic())
-            )
+            self._record_rate_limit_window(limits, token_wait_start, time.monotonic())
             limits.semaphore.release()
             return False
         except BaseException:
@@ -256,6 +254,19 @@ class RateLimiter:
             if limits.semaphore is not None:
                 limits.semaphore.release()
 
+    def _record_rate_limit_window(
+        self, limits: ProviderLimits, start: float, end: float
+    ) -> None:
+        """Append a rate-limit window, keeping only the most recent ones.
+
+        Bounds the list at ``MAX_RATE_LIMIT_WINDOWS`` so a long-running process
+        doesn't accumulate windows without limit.
+        """
+        windows = limits.metrics.rate_limit_windows
+        windows.append((start, end))
+        if len(windows) > MAX_RATE_LIMIT_WINDOWS:
+            del windows[:-MAX_RATE_LIMIT_WINDOWS]
+
     def _refill_tokens(self, limits: ProviderLimits):
         """Refill rate limiting tokens based on elapsed time."""
         now = time.monotonic()  # Use monotonic for elapsed time calculations
@@ -267,6 +278,15 @@ class RateLimiter:
                     limits.max_requests_per_minute, limits.tokens + tokens_to_add
                 )
                 limits.last_update = now
+
+    def record_result(self, provider: Any, success: bool) -> None:
+        """Record the outcome of a request so the circuit breaker can react.
+
+        Public entry point for callers (e.g. the identification loop) to report
+        whether a provider request completed (``success=True``) or raised
+        (``success=False``). Delegates to the circuit-breaker state machine.
+        """
+        self._update_circuit_breaker(provider, success)
 
     def _update_circuit_breaker(self, provider: Any, success: bool):
         """Update circuit breaker state based on request success."""

@@ -212,7 +212,18 @@ class IdentificationManager:
                         )
                         continue
 
-                    track_info = await provider.identify_track(segment)
+                    try:
+                        track_info = await provider.identify_track(segment)
+                    except Exception:
+                        # The provider request itself failed — report it so the
+                        # circuit breaker can trip after repeated failures.
+                        limiter.record_result(provider_name, success=False)
+                        raise
+                    else:
+                        # Request completed; a None/no-match result still counts
+                        # as a successful request (resets the failure streak).
+                        limiter.record_result(provider_name, success=True)
+
                     if track_info is None:
                         logger.debug("Provider returned None for track identification")
                         continue

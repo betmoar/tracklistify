@@ -35,6 +35,9 @@ CIRCUIT_BREAKER_RESET_TIMEOUT = 60.0  # seconds
 CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5
 TOKEN_REFILL_SLEEP = 0.01  # seconds between refill checks
 REFILL_INTERVAL_THRESHOLD = 1.0  # seconds
+# Cap retained rate-limit windows so long-running processes don't grow the
+# metrics list without bound; only the most recent windows are kept.
+MAX_RATE_LIMIT_WINDOWS = 1000
 
 # Provider rate limits (requests per minute)
 SHAZAM_DEFAULT_RPM = 25
