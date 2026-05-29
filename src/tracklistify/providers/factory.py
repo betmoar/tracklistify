@@ -1,9 +1,11 @@
 """Provider factory for creating track identification providers."""
 
 # Standard library imports
+import os
 import threading
 
 # Local imports
+from tracklistify.core.exceptions import ProviderError
 
 _provider_factory = None
 _provider_lock = threading.Lock()
@@ -65,7 +67,22 @@ class ProviderFactory:
             elif provider_name == "acrcloud":
                 from tracklistify.providers.acrcloud import ACRCloudProvider
 
-                provider = ACRCloudProvider()
+                # ACRCloud credentials are read directly from the environment
+                # (see CREDENTIALS_BLOCK in scripts/generate_env_example.py),
+                # not from the config dataclass.
+                access_key = os.getenv("TRACKLISTIFY_ACR_ACCESS_KEY")
+                access_secret = os.getenv("TRACKLISTIFY_ACR_ACCESS_SECRET")
+                if not access_key or not access_secret:
+                    raise ProviderError(
+                        "ACRCloud provider requires TRACKLISTIFY_ACR_ACCESS_KEY "
+                        "and TRACKLISTIFY_ACR_ACCESS_SECRET environment variables."
+                    )
+                host = os.getenv("TRACKLISTIFY_ACR_HOST")
+                provider = (
+                    ACRCloudProvider(access_key, access_secret, host=host)
+                    if host
+                    else ACRCloudProvider(access_key, access_secret)
+                )
             else:
                 raise ValueError(f"Unknown provider: {provider_name}")
             self.providers[provider_name] = provider
