@@ -38,6 +38,8 @@ modernises the test suite, and tightens lint/format hygiene.
   their status.
 - `CLAUDE.md` at repo root with a comprehensive guide for AI-assisted
   development (project layout, conventions, common tasks).
+- `docs/IMPROVEMENT_PLAN.md` — technical documentation of the PR #44
+  optimizations/fixes plus a prioritized, risk-classified follow-up backlog.
 
 ### Changed
 
