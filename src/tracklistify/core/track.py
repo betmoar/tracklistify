@@ -210,35 +210,25 @@ class TrackMatcher:
         )
 
     def get_unique_tracks(self) -> List[Track]:
-        """Get list of unique tracks, sorted by time in mix."""
-        # Sort tracks by time in mix
+        """Get list of unique tracks, sorted by time in mix.
+
+        Keeps the highest-confidence version of each ``artist|song`` pair.
+        Single pass into a dict (O(n)) followed by one sort, replacing the
+        previous O(n^2) linear-scan-and-remove approach.
+        """
+        # Iterate in time order so that, among equal-confidence duplicates,
+        # the earliest occurrence wins (matching the previous behavior).
         sorted_tracks = sorted(self.tracks, key=lambda t: t.time_to_seconds())
 
-        # Filter out duplicates keeping only the highest confidence version
-        unique_tracks = []
-        seen_tracks = set()
-
+        best_by_key: Dict[str, Track] = {}
         for track in sorted_tracks:
-            # Create a unique key for the track
             track_key = f"{track.artist.lower()}|{track.song_name.lower()}"
-
-            # If seen this track before, or has higher confidence
-            if track_key not in seen_tracks:
-                seen_tracks.add(track_key)
-                unique_tracks.append(track)
-            else:
-                # Find existing track and keep the one with higher confidence
-                existing_track = next(
-                    t
-                    for t in unique_tracks
-                    if f"{t.artist.lower()}|{t.song_name.lower()}" == track_key
-                )
-                if track.confidence > existing_track.confidence:
-                    unique_tracks.remove(existing_track)
-                    unique_tracks.append(track)
+            existing = best_by_key.get(track_key)
+            if existing is None or track.confidence > existing.confidence:
+                best_by_key[track_key] = track
 
         # Sort final list by time in mix
-        return sorted(unique_tracks, key=lambda t: t.time_to_seconds())
+        return sorted(best_by_key.values(), key=lambda t: t.time_to_seconds())
 
     def _create_track_group(self, track: Track) -> List[Track]:
         """Initialize a new track group with a single track."""

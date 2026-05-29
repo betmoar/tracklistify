@@ -206,9 +206,10 @@ class SpotifyProvider(MetadataProvider):
             Dict containing detailed track information
         """
         try:
-            track = await self._api_request("GET", f"tracks/{track_id}")
-            audio_features = await self._api_request(
-                "GET", f"audio-features/{track_id}"
+            # The two lookups are independent; fetch them concurrently.
+            track, audio_features = await asyncio.gather(
+                self._api_request("GET", f"tracks/{track_id}"),
+                self._api_request("GET", f"audio-features/{track_id}"),
             )
 
             return {

@@ -23,18 +23,22 @@ class ShazamProvider(TrackIdentificationProvider):
     def __init__(self):
         self.shazam = Shazam()
         self._config = get_config()
+        # Resolve the inter-request cooldown once; it's static for the
+        # provider's lifetime, so there's no need to re-read it per segment.
+        try:
+            self._cooldown = float(
+                getattr(self._config, "shazam_cooldown_seconds", 2.25)
+            )
+        except (ValueError, AttributeError, TypeError) as e:
+            logger.debug(f"Failed to get cooldown config, using default: {e}")
+            self._cooldown = 2.25
 
     async def identify_track(self, audio_segment) -> Optional[Dict[str, Any]]:
         """Identify track from an audio segment."""
         try:
             # Brief cooldown to avoid hammering upstream between calls
-            try:
-                cooldown = float(getattr(self._config, "shazam_cooldown_seconds", 2.25))
-            except (ValueError, AttributeError, TypeError) as e:
-                logger.debug(f"Failed to get cooldown config, using default: {e}")
-                cooldown = 2.25
-            if cooldown and cooldown > 0:
-                await asyncio.sleep(cooldown)
+            if self._cooldown and self._cooldown > 0:
+                await asyncio.sleep(self._cooldown)
             logger.info(f"Identifying segment at {audio_segment.start_time}s")
 
             # Ensure the audio file path is valid

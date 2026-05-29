@@ -23,7 +23,11 @@ from tracklistify.core.types import AudioSegment
 from tracklistify.downloaders import DownloaderFactory
 from tracklistify.exporters import TracklistOutput
 from tracklistify.providers.factory import create_provider_factory
-from tracklistify.utils.constants import DEFAULT_SEGMENT_PADDING, FFMPEG_SEGMENT_TIMEOUT
+from tracklistify.utils.constants import (
+    DEFAULT_SEGMENT_PADDING,
+    FFMPEG_SEGMENT_TIMEOUT,
+    MIN_SEGMENT_FILE_SIZE,
+)
 from tracklistify.utils.identification import IdentificationManager
 from tracklistify.utils.logger import get_logger
 from tracklistify.utils.strings import sanitizer
@@ -350,7 +354,7 @@ class AsyncApp:
             try:
                 if params["file"].exists():
                     # Skip if file already exists and has content
-                    if params["file"].stat().st_size > 1000:
+                    if params["file"].stat().st_size > MIN_SEGMENT_FILE_SIZE:
                         return AudioSegment(
                             file_path=str(params["file"]),
                             start_time=int(params["start_time"]),
@@ -366,7 +370,10 @@ class AsyncApp:
                 )
                 self.logger.debug(f"FFmpeg output: {result.stdout}")
 
-                if params["file"].exists() and params["file"].stat().st_size > 1000:
+                if (
+                    params["file"].exists()
+                    and params["file"].stat().st_size > MIN_SEGMENT_FILE_SIZE
+                ):
                     return AudioSegment(
                         file_path=str(params["file"]),
                         start_time=int(params["start_time"]),

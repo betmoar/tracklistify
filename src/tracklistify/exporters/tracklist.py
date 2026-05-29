@@ -17,6 +17,11 @@ from tracklistify.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Precompiled filename-sanitization patterns (module-level so they're compiled
+# once rather than on every track/filename).
+_INVALID_FILENAME_CHARS_RE = re.compile(r'[<>:"/\\|?*@]')
+_MULTISPACE_RE = re.compile(r"\s+")
+
 
 class TracklistOutput:
     """Handles tracklist output in various formats."""
@@ -67,9 +72,9 @@ class TracklistOutput:
         # Clean up special characters but preserve spaces and basic punctuation
         def clean_string(s: str) -> str:
             # Replace invalid filename characters with spaces
-            s = re.sub(r'[<>:"/\\|?*@]', " ", s)
+            s = _INVALID_FILENAME_CHARS_RE.sub(" ", s)
             # Replace multiple spaces with single space
-            s = re.sub(r"\s+", " ", s)
+            s = _MULTISPACE_RE.sub(" ", s)
             # Strip leading/trailing spaces
             return s.strip()
 
