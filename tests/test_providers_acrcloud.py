@@ -97,3 +97,30 @@ async def test_invalid_json_raises_provider_error(provider, monkeypatch):
     _patch_session(provider, monkeypatch, _FakeResponse(200, "not-json"))
     with pytest.raises(ProviderError, match="parse"):
         await provider.identify_track(b"audio-bytes")
+
+
+@pytest.mark.asyncio
+async def test_accepts_audio_segment_reading_file(provider, monkeypatch, tmp_path):
+    """identify_track must accept an AudioSegment (protocol used by the loop)."""
+    from types import SimpleNamespace
+
+    seg_file = tmp_path / "seg.wav"
+    seg_file.write_bytes(b"RIFFfake-audio")
+    segment = SimpleNamespace(file_path=str(seg_file), start_time=42)
+
+    captured = {}
+
+    def fake_prepare(audio_data, start_time):
+        captured["audio_data"] = audio_data
+        captured["start_time"] = start_time
+        return {"data": {}}
+
+    monkeypatch.setattr(provider, "_prepare_request_data", fake_prepare)
+    body = '{"status": {"code": 1001, "msg": "No result"}}'
+    _patch_session(provider, monkeypatch, _FakeResponse(200, body))
+
+    result = await provider.identify_track(segment)
+
+    assert captured["audio_data"] == b"RIFFfake-audio"
+    assert captured["start_time"] == 42
+    assert result["metadata"]["music"] == []

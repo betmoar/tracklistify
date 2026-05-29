@@ -92,13 +92,36 @@ class ACRCloudProvider(TrackIdentificationProvider):
 
         return {"data": data}
 
-    async def identify_track(self, audio_data: bytes, start_time: float = 0) -> Dict:
+    @staticmethod
+    def _resolve_audio(audio_input, start_time: float):
+        """Normalize the identify_track input to ``(audio_bytes, start_time)``.
+
+        Accepts either an ``AudioSegment``-like object (with ``file_path`` and
+        ``start_time``) — the contract used by the identification loop and the
+        base provider protocol — or raw ``bytes`` for direct/back-compat use.
         """
-        Identify a track from audio data.
+        if isinstance(audio_input, (bytes, bytearray)):
+            return bytes(audio_input), start_time
+
+        file_path = getattr(audio_input, "file_path", None)
+        if not file_path:
+            raise ProviderError(
+                "ACRCloud identify_track requires audio bytes or an audio "
+                "segment with a 'file_path' attribute."
+            )
+        seg_start = getattr(audio_input, "start_time", start_time)
+        with open(file_path, "rb") as fh:
+            return fh.read(), seg_start
+
+    async def identify_track(self, audio_segment, start_time: float = 0) -> Dict:
+        """
+        Identify a track from an audio segment (or raw audio bytes).
 
         Args:
-            audio_data: Raw audio data bytes
-            start_time: Start time in seconds for the audio segment
+            audio_segment: An ``AudioSegment``-like object exposing ``file_path``
+                and ``start_time`` (the protocol used by the identification
+                loop), or raw audio ``bytes`` for direct use.
+            start_time: Fallback start time when raw bytes are supplied.
 
         Returns:
             Dict containing track information
@@ -110,6 +133,7 @@ class ACRCloudProvider(TrackIdentificationProvider):
             ProviderError: For other provider-related errors
         """
         try:
+            audio_data, start_time = self._resolve_audio(audio_segment, start_time)
             session = await self._get_session()
             request_data = self._prepare_request_data(audio_data, start_time)
 
