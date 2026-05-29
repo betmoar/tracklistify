@@ -60,6 +60,14 @@ class AsyncApp:
         self._sweep_stale_run_dirs()
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
+        # Per-run input metadata, populated by process_input(). Declared here so
+        # the attributes always exist (no getattr fallbacks needed downstream).
+        self.original_title = ""
+        self.uploader = ""
+        self.duration = 0.0
+        # CLI output-format override; None means "fall back to config".
+        self._output_formats = None
+
         # Always recreate identification_manager with fresh config
         self.identification_manager = self._build_identification_manager()
 
@@ -68,6 +76,14 @@ class AsyncApp:
         return IdentificationManager(
             config=self.config, provider_factory=self.provider_factory
         )
+
+    @staticmethod
+    def _coerce_float(value, default: float = 0.0) -> float:
+        """Best-effort float conversion, returning ``default`` on bad input."""
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
 
     def _sweep_stale_run_dirs(self) -> None:
         """Remove temp subdirs owned by PIDs that no longer exist.
@@ -132,9 +148,9 @@ class AsyncApp:
                 self.logger.info(f"Overriding fallback_enabled: {fallback_enabled}")
                 self.config.fallback_enabled = fallback_enabled
 
-            # Store formats for output. When formats is None, leave
-            # _output_formats unset so the save block falls back to
-            # self.config.output_format via getattr default.
+            # Store formats for output. When formats is None, _output_formats
+            # stays None (its __init__ default) and the save block falls back
+            # to self.config.output_format.
             if formats is not None:
                 self.logger.info(f"Output formats: {formats}")
                 self._output_formats = formats
@@ -181,10 +197,7 @@ class AsyncApp:
                     self.logger.debug(f"yt-dlp metadata keys: {list(metadata.keys())}")
                     self.original_title = sanitizer(metadata.get("title", ""))
                     self.uploader = sanitizer(metadata.get("uploader", ""))
-                    try:
-                        self.duration = float(metadata.get("duration", 0))
-                    except (TypeError, ValueError):
-                        self.duration = 0
+                    self.duration = self._coerce_float(metadata.get("duration", 0))
                 else:
                     self.logger.debug("No metadata available, using fallback values")
                     self.original_title = sanitizer(
@@ -193,10 +206,9 @@ class AsyncApp:
                     self.uploader = sanitizer(
                         getattr(downloader, "uploader", "Unknown artist")
                     )
-                    try:
-                        self.duration = float(getattr(downloader, "duration", 0))
-                    except (TypeError, ValueError):
-                        self.duration = 0
+                    self.duration = self._coerce_float(
+                        getattr(downloader, "duration", 0)
+                    )
 
             self.logger.info("Processing audio...")
 
@@ -205,7 +217,7 @@ class AsyncApp:
             # doesn't have to re-probe — mutagen doesn't read every
             # container we now allow under --stream-copy (e.g. .webm).
             audio_segments = self.split_audio(
-                local_path, duration_hint=getattr(self, "duration", 0) or None
+                local_path, duration_hint=self.duration or None
             )
             if not audio_segments:
                 raise ValueError("No audio segments were created")
@@ -219,7 +231,7 @@ class AsyncApp:
                 context = {
                     "segments_created": len(audio_segments),
                     "input_path": validated_path,
-                    "file_duration": getattr(self, "duration", "unknown"),
+                    "file_duration": self.duration,
                 }
                 raise TrackIdentificationError(
                     f"No tracks were identified in the audio file. "
@@ -236,9 +248,7 @@ class AsyncApp:
             self.logger.info("Saving output...")
             if len(tracks) > 0:
                 # Use _output_formats if set by CLI, otherwise fall back to config
-                output_format = getattr(
-                    self, "_output_formats", self.config.output_format
-                )
+                output_format = self._output_formats or self.config.output_format
                 await self.save_output(tracks, output_format)
             else:
                 raise ValueError(
