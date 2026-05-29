@@ -128,18 +128,12 @@ class ACRCloudProvider(TrackIdentificationProvider):
                 elif response.status != 200:
                     raise ProviderError(f"ACRCloud API error: {response.status}")
 
+                text_response = await response.text()
                 try:
-                    text_response = await response.text()
-                    try:
-                        result = json.loads(text_response)
-                    except json.JSONDecodeError:
-                        raise ProviderError(
-                            "Failed to parse ACRCloud response. "
-                            f"Response text: {text_response[:200]}"
-                        ) from None
-                except Exception as err:
+                    result = json.loads(text_response)
+                except json.JSONDecodeError as err:
                     raise ProviderError(
-                        f"Failed to parse ACRCloud response. "
+                        "Failed to parse ACRCloud response. "
                         f"Response text: {text_response[:200]}"
                     ) from err
 

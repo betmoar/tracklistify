@@ -61,7 +61,11 @@ class AsyncApp:
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
         # Always recreate identification_manager with fresh config
-        self.identification_manager = IdentificationManager(
+        self.identification_manager = self._build_identification_manager()
+
+    def _build_identification_manager(self) -> IdentificationManager:
+        """Create an IdentificationManager bound to the current config."""
+        return IdentificationManager(
             config=self.config, provider_factory=self.provider_factory
         )
 
@@ -122,9 +126,7 @@ class AsyncApp:
                 self.logger.info(f"Overriding primary provider: {provider}")
                 self.config.primary_provider = provider
                 # Recreate identification manager with updated config
-                self.identification_manager = IdentificationManager(
-                    config=self.config, provider_factory=self.provider_factory
-                )
+                self.identification_manager = self._build_identification_manager()
 
             if fallback_enabled is not None:
                 self.logger.info(f"Overriding fallback_enabled: {fallback_enabled}")
