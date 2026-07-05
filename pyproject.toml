@@ -78,7 +78,10 @@ skips = []
 name = "cz_conventional_commits"
 tag_format = "v$version"
 version_scheme = "pep440"
-version_provider = "poetry"
+# pep621 reads [project].version above; the previous value ("poetry") looked
+# for [tool.poetry].version, which no longer exists since the uv migration —
+# `cz bump` was broken.
+version_provider = "pep621"
 update_changelog_on_bump = true
 major_version_zero = true
 changelog_start_rev = "v0.6.8"

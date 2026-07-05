@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import os
+import shutil
 import signal
 import sys
 from pathlib import Path
@@ -48,8 +49,7 @@ async def main(args: argparse.Namespace) -> int:
             logger.warning("Second interrupt — forcing exit")
             os._exit(130)
         logger.info(
-            "Received shutdown signal — cancelling "
-            "(press Ctrl+C again to force exit)"
+            "Received shutdown signal — cancelling (press Ctrl+C again to force exit)"
         )
         if main_task is not None and not main_task.done():
             main_task.cancel()
@@ -207,6 +207,17 @@ def cli() -> None:
 
     # Log at the start of the CLI function
     logger.info("Starting CLI")
+
+    # Fail fast with an actionable message: every pipeline stage (download
+    # post-processing, segmentation, shazamio decoding via pydub) needs
+    # ffmpeg. Without this check the failure surfaces much later as a
+    # cryptic per-segment subprocess error.
+    if shutil.which("ffmpeg") is None:
+        logger.error(
+            "ffmpeg is required but was not found on PATH. Install it first "
+            "(e.g. `apt install ffmpeg`, `brew install ffmpeg`) and re-run."
+        )
+        sys.exit(1)
 
     # Load environment variables first
     env_path = get_root() / ".env"

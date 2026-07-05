@@ -284,6 +284,22 @@ class AsyncApp:
         segment_duration = self.config.segment_length
         overlap_duration = self.config.overlap_duration
         step = segment_duration - overlap_duration
+        # INVARIANT: step must be positive or the while-loop below never
+        # advances. Config validation enforces this at load time, but
+        # config attributes are mutable (CLI overrides mutate them), so
+        # guard again here — fail loud instead of looping forever.
+        if step <= 0:
+            raise ValueError(
+                f"segment_length ({segment_duration}) must exceed "
+                f"overlap_duration ({overlap_duration}); refusing to segment "
+                f"with a non-positive step of {step}s."
+            )
+        if shutil.which("ffmpeg") is None:
+            self.logger.error(
+                "ffmpeg not found on PATH — segmentation will fail. "
+                "Install it first (e.g. `apt install ffmpeg` or "
+                "`brew install ffmpeg`)."
+            )
 
         # Per-invocation temp dir (created in __init__) — every concurrent
         # run uses its own subdir so cleanup can't wipe peers' segments.

@@ -124,18 +124,21 @@ class BaseConfig:
     def _validate(self) -> None:
         """Validate all configuration values against defined rules.
 
-        This is a template method that subclasses can override to add
-        custom validation logic beyond the declarative rules.
-        Called automatically during __post_init__ after _setup_validation.
-
-        Subclasses should call super()._validate() first, then add
-        any additional validation that can't be expressed as rules.
+        This is a template method: it runs every rule registered in
+        ``_setup_validation`` against the dataclass fields. Subclasses
+        should call ``super()._validate()`` first, then add any
+        cross-field validation that can't be expressed as a single-field
+        rule.
 
         Raises:
-            ValueError: If any configuration value is invalid.
+            ValidationError: If any configuration value violates a rule.
         """
-        # Base class validation is handled by _validator
-        # Subclasses can override to add custom validation logic
+        # ConfigValidator.validate expects a plain dict; hand it only the
+        # declared dataclass fields (not private attrs like _validator).
+        values = {
+            name: getattr(self, name) for name in self.__class__.__dataclass_fields__
+        }
+        self._validator.validate(values)
 
 
 @dataclass
@@ -244,3 +247,18 @@ class TrackIdentificationConfig(BaseConfig):
         self._validator.add_rule(
             PathRule("temp_dir", path_requirements, create_if_missing=True)
         )
+
+    def _validate(self) -> None:
+        """Run declarative rules, then cross-field checks."""
+        super()._validate()
+
+        # INVARIANT: segmentation step = segment_length - overlap_duration
+        # must be positive, or AsyncApp.split_audio's while-loop never
+        # advances (infinite loop, unbounded memory). Guarded again at the
+        # split site because config attributes are mutable after init.
+        if self.overlap_duration >= self.segment_length:
+            raise ValueError(
+                f"overlap_duration ({self.overlap_duration}) must be smaller "
+                f"than segment_length ({self.segment_length}); the segmenter "
+                f"advances by segment_length - overlap_duration each step."
+            )

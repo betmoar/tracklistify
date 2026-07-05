@@ -16,15 +16,24 @@ sys.path.append(str(project_root))
 
 def main():
     """Generate configuration documentation."""
+    # Lazy import here so the module docstring stays honest even if docs.py
+    # moves. The generator documents whatever rules _setup_validation
+    # registered on the live config instance.
+    from tracklistify.config.docs import ConfigDocGenerator
+
     config = get_config()
 
     # Generate documentation
     docs_dir = project_root / "docs"
     docs_dir.mkdir(exist_ok=True)
 
-    # Generate main configuration documentation
+    # Generate main configuration documentation from the config's own
+    # validator (config.generate_documentation never existed — this script
+    # crashed with AttributeError before this was wired up).
     output_file = docs_dir / "configuration.md"
-    documentation = config.generate_documentation(str(output_file))
+    generator = ConfigDocGenerator(config._validator)
+    documentation = generator.generate_markdown()
+    output_file.write_text(documentation, encoding="utf-8")
 
     # Also update .env.example with latest configuration
     env_example = project_root / ".env.example"

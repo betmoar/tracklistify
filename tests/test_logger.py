@@ -64,9 +64,9 @@ class TestLoggerConfiguration:
         set_logger(log_level="DEBUG")
         handler_count_2 = len(logger.handlers)
 
-        assert (
-            handler_count_1 == handler_count_2
-        ), f"Handlers duplicated: {handler_count_1} vs {handler_count_2}"
+        assert handler_count_1 == handler_count_2, (
+            f"Handlers duplicated: {handler_count_1} vs {handler_count_2}"
+        )
 
     def test_multiple_calls_dont_duplicate_handlers(self):
         """Test that multiple set_logger calls don't duplicate handlers."""
@@ -77,9 +77,9 @@ class TestLoggerConfiguration:
         logger = logging.getLogger()
 
         # Should only have 1 console handler
-        assert (
-            len(logger.handlers) == 1
-        ), f"Expected 1 handler, got {len(logger.handlers)}"
+        assert len(logger.handlers) == 1, (
+            f"Expected 1 handler, got {len(logger.handlers)}"
+        )
 
     def test_file_handler_added_when_specified(self, tmp_path):
         """Test that file handler is added when log_file specified."""
@@ -141,9 +141,9 @@ class TestLoggerConfiguration:
         set_logger(log_level="INFO", log_file=log_file)
 
         # The pre-reconfig handler's underlying stream must be closed.
-        assert (
-            original.stream is None or original.stream.closed
-        ), "previous file handler should be closed on reconfigure"
+        assert original.stream is None or original.stream.closed, (
+            "previous file handler should be closed on reconfigure"
+        )
 
     def test_log_level_changes_applied(self):
         """Test that log level changes are applied correctly."""

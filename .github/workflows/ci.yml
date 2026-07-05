@@ -1,0 +1,63 @@
+# CI for tracklistify.
+#
+# This is the enforcement layer for the invariants documented in
+# docs/ARCHITECTURE.md. Pre-commit hooks only run on machines where they're
+# installed; this workflow is what actually gates merges. Keep the four jobs
+# in sync with the local commands in CLAUDE.md:
+#   lint    -> uv run ruff check src/ tests/ scripts/
+#   format  -> uv run ruff format --check src/ tests/ scripts/
+#   drift   -> uv run python scripts/generate_env_example.py --check
+#   test    -> uv run python -m pytest -q   (3.11 / 3.12 / 3.13)
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev
+      - name: Ruff lint
+        run: uv run ruff check src/ tests/ scripts/
+      - name: Ruff format check
+        run: uv run ruff format --check src/ tests/ scripts/
+
+  drift:
+    # .env.example is generated; hand-edits or new config fields that aren't
+    # mapped to a section fail here instead of silently drifting.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - name: .env.example is in sync with TrackIdentificationConfig
+        run: uv run python scripts/generate_env_example.py --check
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg (required by the audio pipeline + some tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --dev
+      # `uv run python -m pytest`, NOT `uv run pytest`: an ambient pytest can
+      # shadow the venv's and silently change asyncio strict-mode behavior.
+      - name: Run tests
+        run: uv run python -m pytest -q

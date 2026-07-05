@@ -14,11 +14,16 @@ Stack: Python 3.11–3.13, `uv` package manager, `pytest` (asyncio strict), `ruf
 | **Run tests** | `uv run python -m pytest -q` |
 | Run one test | `uv run python -m pytest tests/test_x.py::test_y -v` |
 | Coverage | `uv run python -m pytest --cov=tracklistify --cov-report=html tests/` |
-| Lint | `uv run ruff check src/ tests/` |
-| Format | `uv run ruff format src/ tests/` |
-| Format check | `uv run ruff format --check src/ tests/` |
+| Lint | `uv run ruff check src/ tests/ scripts/` |
+| Format | `uv run ruff format src/ tests/ scripts/` |
+| Format check | `uv run ruff format --check src/ tests/ scripts/` |
 | Run CLI | `uv run tracklistify <input>` |
 | Dead-code scan | `uv run vulture src/tracklistify` |
+| Regenerate `.env.example` | `uv run python scripts/generate_env_example.py` (`--check` in CI) |
+
+CI (`.github/workflows/ci.yml`) runs lint, format check, the `.env.example`
+drift check, and the test suite on Python 3.11–3.13. Keep it in sync with
+this table.
 
 **Always use `uv run python -m pytest`, not bare `pytest`.** A pyenv-ambient pytest 7.x will shadow the venv's pytest 8.x and silently break async-mode strict.
 
@@ -29,8 +34,8 @@ Stack: Python 3.11–3.13, `uv` package manager, `pytest` (asyncio strict), `ruf
 - **`uv run pytest` picks up pyenv's pytest 7.4** instead of the venv's 8.x — always `uv run python -m pytest`.
 - **`get_config()` is a module-level singleton.** Tests that mutate env must call `get_config(force_refresh=True)` *and* `monkeypatch.delenv("TRACKLISTIFY_*", raising=False)` for any vars they don't want bleeding in from local `.env`.
 - **Providers are async context managers.** Always `async with provider:` — bare `with` silently breaks cleanup.
-- **Rate-limiter release in `finally`.** `await limiter.acquire(...)` must always be matched by `limiter.release(provider)` or tokens leak.
-- **Logger naming:** `get_logger(__name__)` — never a literal module string. The package logger config inspects `__name__` for per-module level overrides.
+- **Rate-limiter release in `finally`.** `await limiter.acquire(...)` must always be matched by `limiter.release(provider)` or tokens leak. Report request outcomes via `limiter.record_result(provider, success)` or the circuit breaker never learns and never opens.
+- **Logger naming:** `get_logger(__name__)` — never a literal module string, so log lines attribute to the right module and the third-party noise caps (symphonia) stay scoped.
 - **Singletons are thread-safe via `threading.Lock`.** Don't add a parallel lock for "extra safety"; double-checked locking is already in place (`get_config`, cache factory, `get_global_rate_limiter`).
 - **`audioop-lts` is the 3.13 dep.** PEP 594 removed stdlib `audioop`; `pyproject.toml` has the conditional `python_version >= '3.13'` marker. Pydub imports `audioop` directly, so the shim is required.
 - **Ruff `include` path is `src/tracklistify/**/*.py`** (not `tracklistify/**/*.py`). Wrong glob silently lints zero files — burned us once.
@@ -39,6 +44,10 @@ Stack: Python 3.11–3.13, `uv` package manager, `pytest` (asyncio strict), `ruf
 - **Spotify `_api_request` accepts any 2xx and handles 204.** Don't narrow to `== 200`; mutation endpoints return 201, DELETEs return 204 with empty body.
 - **Spotify wrappers must re-raise `RateLimitError` / `AuthenticationError` unchanged.** Catch them before the generic `except Exception` or callers lose retry-after timing and 401-driven token refresh.
 - **`--stream-copy` (`-sc`) keeps the source codec end-to-end.** yt-dlp skips its MP3 transcode and segments stream-copy whatever YouTube served (opus/webm or m4a). Shazamio decodes via pydub/ffmpeg so any format works; ACRCloud historically prefers MP3 — if identification rates drop with `-sc` + ACRCloud, drop the flag for that run.
+- **Provider secrets are env-only, never config-dataclass fields** — keeps them out of `repr()` and validation error messages. ACRCloud: `TRACKLISTIFY_ACR_ACCESS_KEY`/`_SECRET` (+ optional `_HOST`), read in `providers/factory.py`. Follow this pattern for new providers.
+- **`config.min_confidence` (0–1) and `Track.confidence` (0–100) are different scales**, and the config knob is currently a deliberate no-op (`TrackMatcher` hardcodes 0). Read docs/BACKLOG.md P2 before wiring it.
+- **The cache subsystem is NOT wired into the pipeline.** `cache_enabled` changes nothing today; internals were made safe (TTL, index persistence) in the 2026-07 audit. Wiring plan: docs/BACKLOG.md P1.
+- **`tests/test_handoff_invariants.py` locks the load-bearing invariants** (validation enforced, positive segmentation step, provider constructibility, fallback chain, circuit-breaker wiring, cache TTL/index persistence). If one fails, read docs/ARCHITECTURE.md before "fixing" the test.
 
 ---
 
@@ -92,9 +101,16 @@ Don't commit unless explicitly asked. When asked, use heredoc commit messages fo
 
 ## Doing common tasks
 
-- **Add a provider:** subclass `TrackIdentificationProvider` from `providers/base.py`, register in `providers/factory.py::get_identification_provider`, add config fields to `TrackIdentificationConfig`, add tests with mocked `_api_request`.
-- **Add an output format:** add a method to `exporters/tracklist.py::TracklistOutput`, wire it into `save_all`, extend the `cli.py` `--formats` choices.
-- **Add a config option:** add a field to `TrackIdentificationConfig` (`config/base.py`) with a default; add validation in `__post_init__` if it has bounds; assign the field to a section in `scripts/generate_env_example.py::FIELD_SECTIONS`; run `uv run python scripts/generate_env_example.py` to refresh `.env.example`.
+**Follow `docs/PLAYBOOKS.md`** — it has the full step-by-step procedures with
+the traps spelled out (add a provider, add a config option, add an output
+format, touch split_audio / rate limiter / config loading, debug "no tracks
+identified"). The load-bearing map and landmines are in
+`docs/ARCHITECTURE.md`; known debt in `docs/BACKLOG.md`.
+
+Quick reminders (the playbooks have the detail):
+- **Provider:** `identify_track` takes an `AudioSegment` (not bytes), returns score on 0–100, registers in `KNOWN_PROVIDERS`; missing creds → `ConfigError` naming the env vars.
+- **Config option:** must be assigned in `generate_env_example.py::FIELD_SECTIONS` (CI drift job fails otherwise) — and something must actually *read* the field, or don't add it.
+- **Output format:** method on `TracklistOutput`, wire into `save()` + `save_all()`, extend `--formats` choices.
 
 For everything else, read the surrounding code — it's the source of truth, not this file.
 
