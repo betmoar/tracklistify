@@ -89,6 +89,9 @@ addopts = "-ra -q -v"
 testpaths = [
     "tests"
 ]
+markers = [
+    "integration: marks tests that hit live external services (skipped unless run explicitly)",
+]
 
 [tool.coverage.run]
 # Only measure our package code, not tests
