@@ -192,6 +192,7 @@ class TrackIdentificationConfig(BaseConfig):
     shazam_max_rpm: int = field(default=25)
     shazam_max_concurrent: int = field(default=1)
     shazam_cooldown_seconds: float = field(default=2.25)
+    shazam_proxy: str = field(default="")
 
     # Spotify rate limits (consumed by RateLimiter.register_provider)
     spotify_max_rpm: int = field(default=120)

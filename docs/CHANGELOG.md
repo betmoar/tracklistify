@@ -38,6 +38,11 @@ modernises the test suite, and tightens lint/format hygiene.
   their status.
 - `CLAUDE.md` at repo root with a comprehensive guide for AI-assisted
   development (project layout, conventions, common tasks).
+- `TRACKLISTIFY_SHAZAM_PROXY` config option — routes `ShazamProvider`
+  identification requests through an HTTP proxy via shazamio's
+  `recognize(..., proxy=...)`. Empty by default (direct connection);
+  `proxy` added to the sensitive-field patterns so a credential embedded
+  in the proxy URL is redacted in logs.
 
 ### Changed
 
