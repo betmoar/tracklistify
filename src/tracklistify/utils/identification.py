@@ -238,12 +238,33 @@ class IdentificationManager:
                         else "Unknown Artist"
                     )
 
+                    # Provider-supplied extras (isrc, genre, album/label/year,
+                    # platform ids, artwork) -- not every provider fills every
+                    # key, so drop the ones that come back empty.
+                    extra_metadata = {
+                        "isrc": metadata.get("external_ids", {}).get("isrc"),
+                        "album": metadata.get("album"),
+                        "label": metadata.get("label"),
+                        "release_date": metadata.get("release_date"),
+                        "genres": [
+                            g.get("name")
+                            for g in metadata.get("genres", [])
+                            if g.get("name")
+                        ]
+                        or None,
+                        "shazam_id": metadata.get("shazam_id"),
+                        "apple_music_id": metadata.get("apple_music_id"),
+                        "artwork_url": metadata.get("artwork_url"),
+                        "shazam_url": metadata.get("shazam_url"),
+                    }
+
                     try:
                         track = Track(
                             song_name=metadata.get("title", "Unknown Title"),
                             artist=artist_name,
                             time_in_mix=time_in_mix,
                             confidence=float(metadata.get("score", 100.0)),
+                            metadata={k: v for k, v in extra_metadata.items() if v},
                         )
                         self.track_matcher.add_track(track)
                         identified_tracks.append(track)
