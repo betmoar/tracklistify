@@ -74,6 +74,7 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
             "shazam_max_rpm",
             "shazam_max_concurrent",
             "shazam_cooldown_seconds",
+            "shazam_proxy",
             "acrcloud_max_rpm",
             "acrcloud_max_concurrent",
             "spotify_max_rpm",
@@ -126,10 +127,11 @@ INLINE_COMMENTS: dict[str, str] = {
     "output_format": "json | markdown | m3u",
     "download_quality": "kbps",
     "download_format": "mp3 | flac | ...",
+    "shazam_proxy": "e.g. http://127.0.0.1:8080",
 }
 
 # Fields rendered as commented-out (optional / not always set).
-COMMENTED_OUT_FIELDS: set[str] = {"fallback_providers"}
+COMMENTED_OUT_FIELDS: set[str] = {"fallback_providers", "shazam_proxy"}
 
 # Static trailing block for env vars read directly via os.getenv (not on the
 # dataclass).

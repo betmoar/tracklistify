@@ -43,7 +43,8 @@ class ShazamProvider(TrackIdentificationProvider):
                 return None
 
             # Perform track recognition using the updated method
-            result = await self.shazam.recognize(audio_segment.file_path)
+            proxy = getattr(self._config, "shazam_proxy", "") or None
+            result = await self.shazam.recognize(audio_segment.file_path, proxy=proxy)
             logger.debug(f"Shazam response: {result}")
 
             if not result or "matches" not in result:
