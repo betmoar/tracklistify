@@ -1,0 +1,30 @@
+# Dependabot configuration for Tracklistify.
+#
+# Goal: one grouped PR per week instead of N individual bump PRs.
+# - minor + patch updates collapse into a single PR (the noisy churn)
+# - major bumps get their own PR so they can be eyeballed individually
+#   (e.g. a 20 -> 21 jump warrants a separate look)
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      python-dependencies:
+        # Everything minor/patch rolls up into one PR.
+        patterns: ["*"]
+        update-types:
+          - "minor"
+          - "patch"
+      major-bumps:
+        # Major bumps stay separate for individual review.
+        patterns: ["*"]
+        update-types:
+          - "major"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
