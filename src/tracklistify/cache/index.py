@@ -5,6 +5,7 @@ Cache index management for efficient key-to-filename mapping.
 # Standard library imports
 import asyncio
 import json
+import os
 import time
 import zlib
 from pathlib import Path
@@ -68,6 +69,10 @@ class CacheIndex:
                 async with aiofiles.open(temp_file, "w") as f:
                     await f.write(json.dumps(self._index, indent=2))
                     await f.flush()
+                    # fsync before rename, matching JSONStorage.set(): a
+                    # crash between flush and rename must not leave a
+                    # truncated index that load() then treats as corrupt.
+                    os.fsync(f.fileno())
 
                 # Atomic replace
                 temp_file.replace(self._index_file)

@@ -127,14 +127,19 @@ class BaseCache(Generic[T]):
             ):
                 raise TypeError("Cache value must be JSON serializable")
 
-            # Create entry with metadata
+            # Create entry with metadata.
+            # TTL: fall back to the cache-level TTL when the caller doesn't
+            # pass one. Storing a literal None here disabled expiry entirely:
+            # TTLStrategy does metadata.get("ttl", default_ttl), and a
+            # present-but-None key shadows the default, so is_valid always
+            # returned True. Locked by tests/test_handoff_invariants.py.
             entry: CacheEntry[T] = {
                 "key": key,
                 "value": value,
                 "metadata": {
                     "created": time.time(),
                     "last_accessed": time.time(),
-                    "ttl": ttl,
+                    "ttl": ttl if ttl is not None else self._ttl,
                     "compression": compression,
                     "size": len(json.dumps(value)),
                 },

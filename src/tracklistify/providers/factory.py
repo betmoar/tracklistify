@@ -1,12 +1,20 @@
 """Provider factory for creating track identification providers."""
 
 # Standard library imports
+import os
 import threading
 
 # Local imports
+from tracklistify.core.exceptions import ConfigError
 
 _provider_factory = None
 _provider_lock = threading.Lock()
+
+# Provider names this factory knows how to build. Keep in sync with the
+# branches in ProviderFactory.get_identification_provider — the invariant
+# test in tests/test_handoff_invariants.py checks each name constructs
+# (or fails with a clear ConfigError, never a TypeError).
+KNOWN_PROVIDERS = ("shazam", "acrcloud")
 
 
 def create_provider_factory() -> "ProviderFactory":
@@ -65,9 +73,33 @@ class ProviderFactory:
             elif provider_name == "acrcloud":
                 from tracklistify.providers.acrcloud import ACRCloudProvider
 
-                provider = ACRCloudProvider()
+                # Credentials are read from the environment (documented in
+                # .env.example), NOT from the config dataclass — keeping
+                # secrets off the dataclass avoids leaking them via repr()
+                # or error messages.
+                access_key = os.getenv("TRACKLISTIFY_ACR_ACCESS_KEY")
+                access_secret = os.getenv("TRACKLISTIFY_ACR_ACCESS_SECRET")
+                if not access_key or not access_secret:
+                    raise ConfigError(
+                        "ACRCloud provider requires TRACKLISTIFY_ACR_ACCESS_KEY "
+                        "and TRACKLISTIFY_ACR_ACCESS_SECRET in the environment "
+                        "or .env file. Get credentials at "
+                        "https://console.acrcloud.com/ or use "
+                        "`--provider shazam` (no credentials needed)."
+                    )
+                host = os.getenv(
+                    "TRACKLISTIFY_ACR_HOST", "identify-eu-west-1.acrcloud.com"
+                )
+                provider = ACRCloudProvider(
+                    access_key=access_key,
+                    access_secret=access_secret,
+                    host=host,
+                )
             else:
-                raise ValueError(f"Unknown provider: {provider_name}")
+                raise ValueError(
+                    f"Unknown provider: {provider_name!r}. "
+                    f"Known providers: {', '.join(KNOWN_PROVIDERS)}"
+                )
             self.providers[provider_name] = provider
             return provider
 

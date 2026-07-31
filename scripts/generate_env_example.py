@@ -136,9 +136,16 @@ COMMENTED_OUT_FIELDS: set[str] = {"fallback_providers"}
 CREDENTIALS_BLOCK = """\
 # --- API credentials (do NOT commit real values) ------------------------
 # These are read directly by provider modules via os.getenv, not via the
-# dataclass. They are listed here for completeness.
+# dataclass (secrets are deliberately kept off the config dataclass so they
+# can't leak through repr() or validation error messages).
+#
+# Required for `--provider acrcloud` (providers/factory.py reads these):
 # TRACKLISTIFY_ACR_ACCESS_KEY=
 # TRACKLISTIFY_ACR_ACCESS_SECRET=
+# TRACKLISTIFY_ACR_HOST=identify-eu-west-1.acrcloud.com
+#
+# Spotify credentials: currently consumed only by the UNWIRED Spotify
+# downloader/exporter (see docs/BACKLOG.md); not needed for normal runs.
 # TRACKLISTIFY_SPOTIFY_CLIENT_ID=
 # TRACKLISTIFY_SPOTIFY_CLIENT_SECRET=
 # TRACKLISTIFY_SPOTIFY_COOKIES=~/.mozilla/firefox/profile/cookies.sqlite

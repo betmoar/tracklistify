@@ -135,6 +135,13 @@ class JSONStorage(CacheStorage[T]):
                 metadata["size"] = len(data)
                 await self._index.add_entry(key, filename, metadata)
 
+            # Persist the index NOW. It used to be saved only from
+            # cleanup()/clear(), so entries written by a process that
+            # exited normally were invisible to the next process (stale
+            # index -> reported misses) and then deleted as "orphans" by
+            # the next cleanup(). save() no-ops when the index is clean.
+            await self._index.save()
+
         except Exception as e:
             logger.error(f"Error writing cache entry: {str(e)}")
             # Clean up temp file only if it was created and still exists
@@ -159,6 +166,9 @@ class JSONStorage(CacheStorage[T]):
             async with self._get_lock(key):
                 if os.path.exists(file_path):
                     os.unlink(file_path)
+
+            # Persist the removal (see matching comment in set()).
+            await self._index.save()
         except Exception as e:
             logger.error(f"Error deleting cache entry: {str(e)}")
             raise

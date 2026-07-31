@@ -39,7 +39,7 @@ class TracklistOutput:
         self.tracks = tracks
         self._config = get_config()
         self.output_dir = Path(self._config.output_dir)
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def _format_filename(self, extension: str) -> str:
         """

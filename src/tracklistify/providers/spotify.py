@@ -124,8 +124,12 @@ class SpotifyProvider(MetadataProvider):
         ) as response:
             if response.status == 429:
                 retry_after = int(response.headers.get("Retry-After", 60))
+                # Pass retry_after as a structured attribute, not just in the
+                # message — callers honor RateLimitError.retry_after for backoff.
                 raise RateLimitError(
-                    f"Spotify rate limit exceeded. Retry after {retry_after}s"
+                    f"Spotify rate limit exceeded. Retry after {retry_after}s",
+                    provider="spotify",
+                    retry_after=retry_after,
                 )
             if response.status == 401:
                 self._access_token = None

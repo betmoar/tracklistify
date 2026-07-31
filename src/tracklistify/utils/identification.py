@@ -4,6 +4,7 @@ Track identification helper functions and utilities.
 
 # Standard library imports
 import asyncio
+import contextlib
 import sys
 import time
 from typing import List, Optional
@@ -192,76 +193,113 @@ class IdentificationManager:
         self.provider_factory = provider_factory or create_provider_factory()
         self.track_matcher = TrackMatcher()
 
+    def _provider_chain(self) -> List[str]:
+        """Resolve the ordered provider chain: primary, then fallbacks.
+
+        Fallback providers are only appended when ``fallback_enabled`` is
+        set (config default, or ``--no-fallback`` CLI override). Duplicates
+        of the primary are dropped so a segment is never retried on the
+        same provider.
+        """
+        chain = [self.config.primary_provider]
+        if getattr(self.config, "fallback_enabled", False):
+            for name in getattr(self.config, "fallback_providers", None) or []:
+                if name not in chain:
+                    chain.append(name)
+        return chain
+
+    def _track_from_info(self, track_info, segment) -> Optional[Track]:
+        """Build a ``Track`` from a provider response dict, or None.
+
+        Providers return ``{"metadata": {"music": [{title, artists,
+        score}]}}``; anything that doesn't parse into a valid Track (empty
+        music list, blank title/artist, out-of-range score) yields None so
+        the caller can fall back to the next provider.
+        """
+        if track_info is None:
+            return None
+        music_list = track_info.get("metadata", {}).get("music", [])
+        if not music_list or not music_list[0]:
+            logger.debug("No track metadata in provider response")
+            return None
+        metadata = music_list[0]
+
+        time_in_mix = format_seconds_to_hhmmss(int(segment.start_time))
+        artists_list = metadata.get("artists", [])
+        artist_name = (
+            artists_list[0].get("name", "Unknown Artist")
+            if artists_list
+            else "Unknown Artist"
+        )
+        try:
+            return Track(
+                song_name=metadata.get("title", "Unknown Title"),
+                artist=artist_name,
+                time_in_mix=time_in_mix,
+                confidence=float(metadata.get("score", 100.0)),
+            )
+        except (ValueError, TypeError) as e:
+            logger.error(f"Failed to create track from provider response: {e}")
+            return None
+
     async def identify_tracks(self, audio_segments):
-        provider_name = self.config.primary_provider
-        provider = self.provider_factory.get_identification_provider(provider_name)
+        provider_names = self._provider_chain()
+
+        # Instantiate providers up front. A broken PRIMARY is fatal (raise,
+        # with the factory's actionable message); a broken FALLBACK is
+        # skipped with a warning so it can't take down the whole run.
+        chain = []
+        for name in provider_names:
+            try:
+                provider = self.provider_factory.get_identification_provider(name)
+                chain.append((name, provider))
+            except Exception as e:
+                if name == self.config.primary_provider:
+                    raise
+                logger.warning(f"Skipping unusable fallback provider {name!r}: {e}")
+
         identified_tracks = []
         limiter = get_global_rate_limiter()
 
-        # ``async with provider`` ensures aiohttp sessions / shazamio resources
-        # are closed even if an exception escapes the loop.
-        async with provider:
+        # Enter every provider's async context so aiohttp/shazamio
+        # resources are closed even if an exception escapes the loop.
+        async with contextlib.AsyncExitStack() as stack:
+            for _, provider in chain:
+                await stack.enter_async_context(provider)
+
             for segment in audio_segments:
-                acquired = False
-                try:
-                    acquired = await limiter.acquire(provider_name)
-                    if not acquired:
-                        logger.warning(
-                            f"Rate limiter rejected request for {provider_name}; "
-                            "skipping segment"
-                        )
-                        continue
-
-                    track_info = await provider.identify_track(segment)
-                    if track_info is None:
-                        logger.debug("Provider returned None for track identification")
-                        continue
-
-                    # Extract track metadata with safe array access
-                    music_list = track_info.get("metadata", {}).get("music", [])
-                    if not music_list:
-                        logger.error("No track metadata found in provider response")
-                        continue
-                    metadata = music_list[0] if music_list else {}
-                    if not metadata:
-                        logger.error("Empty track metadata in provider response")
-                        continue
-
-                    # Format time in mix with proper zero-padding
-                    time_in_mix = format_seconds_to_hhmmss(int(segment.start_time))
-
-                    # Safely extract artist name with default
-                    artists_list = metadata.get("artists", [])
-                    artist_name = (
-                        artists_list[0].get("name", "Unknown Artist")
-                        if artists_list
-                        else "Unknown Artist"
-                    )
-
+                track = None
+                for provider_name, provider in chain:
+                    acquired = False
                     try:
-                        track = Track(
-                            song_name=metadata.get("title", "Unknown Title"),
-                            artist=artist_name,
-                            time_in_mix=time_in_mix,
-                            confidence=float(metadata.get("score", 100.0)),
-                        )
-                        self.track_matcher.add_track(track)
-                        identified_tracks.append(track)
-                    except ValueError as e:
-                        logger.error(f"Failed to create track: {e}")
-                        continue
+                        acquired = await limiter.acquire(provider_name)
+                        if not acquired:
+                            logger.warning(
+                                f"Rate limiter rejected request for "
+                                f"{provider_name}; trying next provider"
+                            )
+                            continue
+                        track_info = await provider.identify_track(segment)
+                        limiter.record_result(provider_name, success=True)
+                        track = self._track_from_info(track_info, segment)
+                        if track is not None:
+                            break
+                    except asyncio.CancelledError:
+                        raise
                     except Exception as e:
-                        logger.error(f"Unexpected error creating track: {e}")
+                        limiter.record_result(provider_name, success=False)
+                        logger.error(
+                            f"{provider_name} identification failed for "
+                            f"segment at {segment.start_time}s: {e}"
+                        )
                         continue
+                    finally:
+                        if acquired:
+                            limiter.release(provider_name)
 
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.error(f"Identification failed for segment: {e}")
-                    continue
-                finally:
-                    if acquired:
-                        limiter.release(provider_name)
+                if track is not None:
+                    self.track_matcher.add_track(track)
+                    identified_tracks.append(track)
 
         # Get unique tracks sorted by time in mix
         unique_tracks = self.track_matcher.get_unique_tracks()
@@ -277,21 +315,3 @@ class IdentificationManager:
         """Cleanup resources."""
         if self.provider_factory:
             await self.provider_factory.close_all()
-
-
-async def identify_tracks(audio_path: str) -> Optional[List[Track]]:
-    """
-    Identify tracks in an audio file.
-
-    Args:
-        audio_path: Path to audio file
-
-    Returns:
-        List[Track]: List of identified tracks, or None if identification failed
-    """
-    try:
-        manager = IdentificationManager()
-        return await manager.identify_tracks(audio_path)
-    except Exception as e:
-        logger.error(f"Track identification failed: {e}")
-        return None

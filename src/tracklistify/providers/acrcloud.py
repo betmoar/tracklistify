@@ -1,12 +1,16 @@
 """ACRCloud track identification provider."""
 
 # Standard library imports
+import asyncio
 import base64
 import hashlib
 import hmac
 import json
 import time
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Dict, Optional, Union
+
+from tracklistify.core.types import AudioSegment
 
 # Third-party imports
 import aiohttp
@@ -92,12 +96,19 @@ class ACRCloudProvider(TrackIdentificationProvider):
 
         return {"data": data}
 
-    async def identify_track(self, audio_data: bytes, start_time: float = 0) -> Dict:
+    async def identify_track(
+        self, audio_segment: Union[bytes, AudioSegment], start_time: float = 0
+    ) -> Dict:
         """
-        Identify a track from audio data.
+        Identify a track from an audio segment or raw audio bytes.
+
+        The identification pipeline (``IdentificationManager``) passes an
+        ``AudioSegment`` (an object with a ``file_path`` attribute); raw
+        ``bytes`` are also accepted for direct/legacy callers.
 
         Args:
-            audio_data: Raw audio data bytes
+            audio_segment: ``AudioSegment``-like object with a ``file_path``
+                attribute, or raw audio data bytes.
             start_time: Start time in seconds for the audio segment
 
         Returns:
@@ -110,6 +121,19 @@ class ACRCloudProvider(TrackIdentificationProvider):
             ProviderError: For other provider-related errors
         """
         try:
+            if isinstance(audio_segment, (bytes, bytearray)):
+                audio_data = bytes(audio_segment)
+            else:
+                file_path = getattr(audio_segment, "file_path", None)
+                if not file_path:
+                    raise ProviderError(
+                        "ACRCloud identify_track needs raw bytes or an "
+                        "AudioSegment with a file_path attribute; got "
+                        f"{type(audio_segment).__name__}"
+                    )
+                # File reads block; do them off the event loop.
+                audio_data = await asyncio.to_thread(Path(file_path).read_bytes)
+
             session = await self._get_session()
             request_data = self._prepare_request_data(audio_data, start_time)
 
@@ -186,7 +210,12 @@ class ACRCloudProvider(TrackIdentificationProvider):
                     "metadata": {"music": music_list},
                 }
 
-        except (AuthenticationError, RateLimitError, IdentificationError) as err:
+        except (
+            AuthenticationError,
+            RateLimitError,
+            IdentificationError,
+            ProviderError,
+        ) as err:
             raise err from None
         except Exception as err:
             raise ProviderError(f"ACRCloud provider error: {str(err)}") from err

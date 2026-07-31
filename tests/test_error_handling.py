@@ -120,6 +120,6 @@ class TestExceptionLogging:
             content = f.read()
 
         # Should have logging for cooldown failures
-        assert (
-            "logger.debug" in content and "cooldown" in content.lower()
-        ), "Shazam should log cooldown configuration failures"
+        assert "logger.debug" in content and "cooldown" in content.lower(), (
+            "Shazam should log cooldown configuration failures"
+        )
