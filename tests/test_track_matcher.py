@@ -336,14 +336,49 @@ class TestDedupInvariants:
         cfg.segment_length, cfg.overlap_duration = 60, 10
         assert track_matcher._dedup_window() == 100.0
 
-        # A positive override wins and actually changes clustering.
-        cfg.time_threshold = 30
-        assert track_matcher._dedup_window() == 30.0
+        # An override above the derived floor wins and widens the window.
+        # (Values below 2*step are floored — see the clamp test below.)
+        cfg.time_threshold = 400
+        assert track_matcher._dedup_window() == 400.0
 
         track_matcher.tracks = [
             _t("Song", "Artist", 0),
-            _t("Song", "Artist", 50),  # 50s apart: inside 100s, outside 30s
+            _t("Song", "Artist", 300),  # outside default 100s, inside 400s
         ]
-        assert len(track_matcher.get_unique_tracks()) == 2, (
-            "a narrowed time_threshold must actually narrow the dedup window"
+        assert len(track_matcher.get_unique_tracks()) == 1, (
+            "a widened time_threshold must actually widen the dedup window"
         )
+
+    def test_f06_window_override_is_floored_at_one_segmentation_step(
+        self, track_matcher, caplog
+    ):
+        """A window narrower than the step would disable dedup entirely.
+
+        Regression: the shipped .env.example carried TIME_THRESHOLD=30.0
+        while the step is 50s. When time_threshold became a live override,
+        every existing .env silently switched dedup OFF — adjacent
+        detections are one step (50s) apart, so a 30s window can never
+        merge them. Caught only by running against a real mix (41 tracks
+        emitted where 23 were correct).
+        """
+        import logging
+
+        cfg = track_matcher._config
+        cfg.segment_length, cfg.overlap_duration = 60, 10  # step = 50
+        cfg.time_threshold = 30.0  # narrower than the step
+
+        with caplog.at_level(logging.WARNING):
+            window = track_matcher._dedup_window()
+
+        assert window == 100.0, "override below 2*step must be floored there"
+        assert any(
+            "below the minimum useful dedup window" in r.getMessage()
+            for r in caplog.records
+        ), "clamping must warn so the user can fix their config"
+
+        # And the practical consequence: adjacent detections still merge.
+        track_matcher.tracks = [
+            _t("Work On It", "ANNIE", 650),
+            _t("Work On It", "ANNIE", 700),  # exactly one step later
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 1

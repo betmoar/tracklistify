@@ -245,15 +245,38 @@ class TrackMatcher:
         value, which is what that knob has always claimed to mean ("time
         threshold for merging similar tracks").
 
+        **The override is floored at the derived window (2 x step).** A
+        track normally spans several segments, so its detections arrive one
+        step apart and a cluster must reach across at least two of them.
+        Anything narrower does not merely tighten dedup — it breaks it: at
+        exactly one step a 3-segment track still emits two rows, and below
+        one step nothing merges at all. This is not theoretical: the
+        previous ``.env.example`` shipped ``TIME_THRESHOLD=30.0`` against a
+        50s step, so every existing ``.env`` carries a value that would
+        switch dedup off the moment this knob became live (observed: 41
+        rows emitted where 23 were correct). Clamping keeps those configs
+        working; only widening the window is reachable.
+
         Read per call rather than cached at construction: config attributes
         are mutable after load (CLI overrides mutate them), so a value
         captured in ``__init__`` can be stale by the time dedup runs.
         """
+        step = self._config.segment_length - self._config.overlap_duration
+        derived = 2.0 * step
         override = getattr(self._config, "time_threshold", 0) or 0
         if override > 0:
+            if override < derived:
+                logger.warning(
+                    f"time_threshold={override}s is below the minimum "
+                    f"useful dedup window ({derived:.0f}s = 2 x the {step}s "
+                    f"segmentation step); detections of one track would not "
+                    f"merge. Using {derived:.0f}s. Set "
+                    f"TRACKLISTIFY_TIME_THRESHOLD=0 to derive it "
+                    f"automatically, or a larger value to widen it."
+                )
+                return derived
             return float(override)
-        step = self._config.segment_length - self._config.overlap_duration
-        return 2.0 * step
+        return derived
 
     @property
     def min_confidence(self) -> float:
