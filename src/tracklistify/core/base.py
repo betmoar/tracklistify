@@ -232,6 +232,12 @@ class AsyncApp:
 
             self.logger.info("Processing audio...")
 
+            # Remember the source audio path so save_output can copy it into
+            # the per-set subfolder (makes the output self-contained + M3U
+            # playable). Captured here so all three input branches (local file,
+            # cache hit, fresh download) are covered.
+            self.audio_source_path = local_path
+
             # Process the downloaded file. Pass through the duration we got
             # from yt-dlp (or local-file fallback below) so split_audio
             # doesn't have to re-probe — mutagen doesn't read every
@@ -496,6 +502,32 @@ class AsyncApp:
             self.logger.error(f"Failed to process segments: {e}")
             return []
 
+    def _copy_audio_to_output(self, output_dir: Path, title: str) -> Optional[str]:
+        """Copy the source audio into the output subfolder.
+
+        Returns the relative filename of the copied audio (for the M3U), or
+        None if there is no source audio to copy. Best-effort: copy failures
+        are logged and skipped so the tracklist files still save.
+        """
+        src = getattr(self, "audio_source_path", None)
+        if not src:
+            return None
+        src_path = Path(src)
+        if not src_path.is_file():
+            self.logger.debug(f"Audio source missing, not copying: {src}")
+            return None
+        ext = src_path.suffix or ".mp3"
+        safe_title = sanitizer(title) if title else "audio"
+        dest_name = f"{safe_title}{ext}"
+        dest = output_dir / dest_name
+        try:
+            shutil.copy2(src_path, dest)
+            self.logger.debug(f"Copied audio to output: {dest}")
+            return dest_name
+        except OSError as e:
+            self.logger.warning(f"Could not copy audio to output: {e}")
+            return None
+
     async def save_output(self, tracks: List["Track"], format: str):
         """Save identified tracks to output files.
 
@@ -531,8 +563,17 @@ class AsyncApp:
         }
 
         try:
-            # Create output handler
+            # Create output handler (this also creates the per-set subfolder).
             output = TracklistOutput(mix_info=mix_info, tracks=tracks)
+
+            # Copy the source audio into the subfolder so the output is
+            # self-contained and the M3U has a real, playable file to point
+            # at. Best-effort: a missing source (e.g. cleaned up) is skipped
+            # — the tracklist files still save, just without the audio.
+            audio_filename = self._copy_audio_to_output(output.output_dir, title)
+            if audio_filename:
+                mix_info["audio_filename"] = audio_filename
+                output.mix_info = mix_info
 
             # Save in specified format
             if format == "all":
