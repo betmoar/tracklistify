@@ -382,3 +382,34 @@ class TestDedupInvariants:
             _t("Work On It", "ANNIE", 700),  # exactly one step later
         ]
         assert len(track_matcher.get_unique_tracks()) == 1
+
+    def test_i2_nonpositive_step_falls_back_instead_of_disabling_dedup(
+        self, track_matcher, caplog
+    ):
+        """A non-positive segmentation step must not yield a dead window.
+
+        Config validation rejects overlap >= segment at construction, but
+        plain attribute assignment afterwards is not re-validated (the same
+        hole split_audio guards for invariant I2). Without this floor the
+        window goes zero/negative and every track becomes its own cluster —
+        dedup silently off, the exact failure the time_threshold clamp
+        exists to prevent.
+        """
+        import logging
+
+        cfg = track_matcher._config
+        cfg.time_threshold = 0
+        cfg.segment_length, cfg.overlap_duration = 30, 60  # step = -30
+
+        with caplog.at_level(logging.WARNING):
+            window = track_matcher._dedup_window()
+
+        assert window > 0, "a non-positive step must not produce a dead window"
+        assert any("must exceed" in r.getMessage() for r in caplog.records)
+
+        # Dedup still functions on the fallback window.
+        track_matcher.tracks = [
+            _t("Song", "Artist", 0),
+            _t("Song", "Artist", 50),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 1

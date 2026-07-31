@@ -37,6 +37,12 @@ _TIME_IN_MIX_RE = re.compile(r"^(\d+):(\d{2}):(\d{2})$")
 
 _ARTIST_THRESHOLD = 0.34
 
+# Used only when the segmentation step is non-positive (a config that
+# validation should have rejected, but attribute assignment can produce
+# after the fact). Equals the default 2 * (60 - 10) so behavior matches a
+# stock config rather than silently disabling dedup.
+_FALLBACK_DEDUP_WINDOW = 100.0
+
 # Split on collaboration separators BEFORE normalization (so they survive to
 # drive the split). Word-boundary alternations (\band\b, \bfeat\b, ...) ensure
 # "Commander" is not split on its interior "and".
@@ -259,9 +265,23 @@ class TrackMatcher:
 
         Read per call rather than cached at construction: config attributes
         are mutable after load (CLI overrides mutate them), so a value
-        captured in ``__init__`` can be stale by the time dedup runs.
+        captured in ``__init__`` can be stale by the time dedup runs. For
+        the same reason the step is re-checked here rather than trusted:
+        config validation rejects ``overlap_duration >= segment_length`` at
+        construction, but plain attribute assignment afterwards is not
+        re-validated, and a non-positive step would yield a zero/negative
+        window that silently disables dedup. ``split_audio`` guards the
+        identical arithmetic for the identical reason (invariant I2).
         """
         step = self._config.segment_length - self._config.overlap_duration
+        if step <= 0:
+            logger.warning(
+                f"segment_length ({self._config.segment_length}) must exceed "
+                f"overlap_duration ({self._config.overlap_duration}); the "
+                f"derived dedup window would be {2 * step}s. Falling back to "
+                f"{_FALLBACK_DEDUP_WINDOW}s so dedup still runs."
+            )
+            return _FALLBACK_DEDUP_WINDOW
         derived = 2.0 * step
         override = getattr(self._config, "time_threshold", 0) or 0
         if override > 0:
