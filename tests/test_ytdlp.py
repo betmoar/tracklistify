@@ -147,3 +147,49 @@ async def test_prepare_filename_fallback_when_no_requested_downloads(
     # Unwrap happened (entry id), and the fallback reconstructed path resolves.
     assert dl.get_last_metadata()["id"] == "abc"
     assert out == str(reconstructed)
+
+
+@pytest.mark.asyncio
+async def test_multi_entry_set_warns_about_truncation(monkeypatch, tmp_path, caplog):
+    """F05: a multi-track set is truncated to entries[0] — that must be
+    visible at default verbosity, not buried at debug level.
+
+    A silently truncated set yields a tracklist for one track and caches it
+    under the set's URL with no TTL, which is indistinguishable from a
+    correct result.
+    """
+    import logging
+
+    track_path = tmp_path / "first.mp3"
+    track_path.write_bytes(b"audio")
+
+    set_info = {
+        "_type": "playlist",
+        "id": "set-id",
+        "entries": [
+            {
+                "id": "first",
+                "title": "First Track",
+                "uploader": "U",
+                "duration": 100,
+                "ext": "mp3",
+                "requested_downloads": [{"filepath": str(track_path)}],
+            },
+            {"id": "second", "title": "Second Track", "ext": "mp3"},
+            {"id": "third", "title": "Third Track", "ext": "mp3"},
+        ],
+    }
+
+    monkeypatch.setattr(
+        ytdlp, "yt_dlp", MagicMock(YoutubeDL=lambda opts: _FakeYdl(set_info, tmp_path))
+    )
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    with caplog.at_level(logging.WARNING):
+        await dl.download("https://soundcloud.com/user/sets/multi")
+
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warnings, "truncating a multi-entry set must warn at WARNING level"
+    assert "3-track set" in warnings[0].getMessage()
+    # Still returns the first entry.
+    assert dl.get_last_metadata()["id"] == "first"

@@ -21,12 +21,27 @@ Release dates are in YYYY-MM-DD format.
   Jaccard ≥ 0.34) within a proximity window derived from the segmentation
   step (`2 * (segment_length - overlap_duration)`, 100s by default), so
   adjacent-segment detections merge while a track genuinely played twice in
-  a set stays two entries.
+  a set stays two entries. Proximity is measured against each cluster's
+  **anchor**, which bounds a cluster's total span to the window; measuring
+  against any member instead makes the relation chain transitively and can
+  silently swallow an arbitrarily long stretch of the set.
 - **Stable representative selection.** Cluster representatives were chosen
   by strict `>` on confidence, so Shazam's per-run jitter could change which
   detection won — and therefore the reported `time_in_mix` — between runs of
-  identical audio. Selection now quantizes confidence into 5-point buckets
-  and breaks ties by earliest time, then lexicographically.
+  identical audio. Selection is now purely `(time, name, artist)`: the
+  earliest detection represents the cluster and confidence is not an input,
+  because every member is the same track and any confidence-derived term
+  reintroduces the jitter.
+- **`time_threshold` works again.** It was assigned and never read, while
+  `.env.example` advertised it as controlling merge behavior. It is now the
+  dedup-window override; the default drops from `30.0` to `0.0`, meaning
+  "derive from the segmentation step" (the old 30s default was narrower
+  than one 50s step and would have split adjacent-segment detections).
+  `max_duplicates` is now documented as unused.
+- **Multi-track SoundCloud sets warn instead of silently truncating.** Only
+  `entries[0]` is processed; previously the discarded count appeared only at
+  debug level, so a set silently produced a one-track tracklist and cached
+  it under the set's URL.
 - **`config.min_confidence` is no longer a no-op.** `TrackMatcher` hardcoded
   a 0 threshold, so the documented (and validated) knob did nothing. It is
   now applied, scaled from the config's 0.0–1.0 range to `Track.confidence`'s

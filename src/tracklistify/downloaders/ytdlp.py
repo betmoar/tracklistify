@@ -223,10 +223,23 @@ class YtDlpDownloader(Downloader):
                 if info.get("_type") == "playlist":
                     entries = info.get("entries") or []
                     if entries:
-                        logger.debug(
-                            f"Unwrapping {info.get('_type')} container "
-                            f"({len(entries)} entries) -> entries[0]"
-                        )
+                        if len(entries) > 1:
+                            # Only the first entry is processed. Warn at
+                            # default verbosity — a silently truncated set
+                            # produces a tracklist for one track and caches
+                            # it under the set's URL with no TTL, which
+                            # looks like a correct result.
+                            logger.warning(
+                                f"URL resolved to a {len(entries)}-track set; "
+                                f"processing only the first "
+                                f"({entries[0].get('title', 'unknown')!r}). "
+                                f"Pass a direct track URL to select another."
+                            )
+                        else:
+                            logger.debug(
+                                "Unwrapping single-entry playlist container "
+                                "-> entries[0]"
+                            )
                         info = entries[0]
 
                 # Persist full metadata for later access

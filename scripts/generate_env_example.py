@@ -112,8 +112,8 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
 INLINE_COMMENTS: dict[str, str] = {
     "segment_length": "10..300 seconds",
     "min_confidence": "0.0..1.0",
-    "time_threshold": "0.0..300.0 seconds, dedup window",
-    "max_duplicates": "0..10",
+    "time_threshold": "dedup window, seconds. 0 = derive as 2*(segment-overlap)",
+    "max_duplicates": "UNUSED - no effect on dedup",
     "overlap_duration": "0..30 seconds",
     "overlap_strategy": "weighted | longest",
     "min_segment_length": "minimum segment duration in seconds",

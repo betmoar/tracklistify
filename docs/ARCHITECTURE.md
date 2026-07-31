@@ -80,12 +80,22 @@ json/markdown/m3u via `TracklistOutput`, clean up the temp dir.
   same" iff their normalized titles are equal AND their artist token sets
   overlap with Jaccard ≥ `_ARTIST_THRESHOLD` (0.34) — this collapses
   Shazam's collaboration-string noise (`"A & B & C"` vs `"B, C"`) without
-  merging genuinely different artists (Jaccard 0.0). Merging also requires
-  time proximity within `2 * (segment_length - overlap_duration)` (100s
-  default), so the same track played twice in a set stays two tracks. The
-  cluster representative is picked by `_rep_key`: a 5-point confidence
-  deadband (absorbing Shazam's per-run jitter) then earliest time, so the
-  chosen `time_in_mix` is stable across runs of identical audio.
+  merging genuinely different artists (Jaccard 0.0).
+- **Cluster span is anchored, not chained.** A track joins a cluster only if
+  it is within `_dedup_window()` of that cluster's **anchor** (`cluster[0]`),
+  never of "any member". Testing against any member makes the relation
+  transitively chaining, and a run of near-neighbours then swallows an
+  arbitrarily long stretch — silently deleting genuinely distinct plays
+  (measured: 41 detections spanning an hour collapsed to 1 track). The
+  window is `2 * (segment_length - overlap_duration)` (100s default), or
+  `config.time_threshold` when set positive.
+- **`_rep_key` never reads confidence.** It is `(time, name, artist)` —
+  earliest detection wins. All cluster members are the same track, so
+  preferring a higher-confidence one buys nothing, while any
+  confidence-derived term reintroduces run-to-run instability (Shazam
+  scores identical audio differently per run). A 5-point quantization was
+  tried and still flipped on bucket-edge straddles (84.9 vs 85.0).
+  **Full procedure: `docs/playbooks/changing-dedup.md`.**
 - Segment filenames encode `start_time` and live in a per-run temp subdir
   named `<pid>-<hex8>`; the stale-dir sweeper (`_sweep_stale_run_dirs`)
   assumes that shape and kills only dirs whose PID is dead.

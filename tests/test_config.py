@@ -49,7 +49,9 @@ def test_default_config(monkeypatch):
     # Track identification settings - CODE DEFAULTS
     assert config.segment_length == 60
     assert config.min_confidence == 0.0  # Code default is 0.0 (keep all)
-    assert config.time_threshold == 30.0
+    # 0.0 = derive the dedup window from the segmentation step (see
+    # TrackMatcher._dedup_window); a positive value overrides it.
+    assert config.time_threshold == 0.0
     assert config.max_duplicates == 2
 
     # Provider settings - CODE DEFAULTS
@@ -464,7 +466,7 @@ def test_to_dict(monkeypatch):
 
     assert isinstance(config_dict, dict)
     # Value depends on test run order
-    assert config_dict["time_threshold"] in [30.0, 60.0]
+    assert config_dict["time_threshold"] in [0.0, 30.0, 60.0]
     assert config_dict["max_duplicates"] == 2
     # Value depends on test run order
     assert config_dict["min_confidence"] in [0.0, 0.5, 0.8]
@@ -497,7 +499,7 @@ def test_get_config():
     config1 = get_config()
     assert isinstance(config1, TrackIdentificationConfig)
     # Value depends on test run order
-    assert config1.time_threshold in [30.0, 60.0]
+    assert config1.time_threshold in [0.0, 30.0, 60.0]
 
     # Test singleton behavior
     config2 = get_config()

@@ -150,7 +150,12 @@ class TrackIdentificationConfig(BaseConfig):
     # Track identification specific fields
     segment_length: int = field(default=60)
     min_confidence: float = field(default=0.0)
-    time_threshold: float = field(default=30.0)
+    # 0.0 = derive the dedup window from the segmentation step
+    # (2 * (segment_length - overlap_duration)); a positive value overrides
+    # it. The old 30.0 default predates the window being wired at all — it
+    # is narrower than one segmentation step (50s), so it would split
+    # adjacent-segment detections of the same track.
+    time_threshold: float = field(default=0.0)
     max_duplicates: int = field(default=2)
     overlap_duration: int = field(default=10)
     overlap_strategy: str = field(default="weighted")

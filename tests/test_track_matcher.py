@@ -16,9 +16,13 @@ def setup_teardown():
 @pytest.fixture
 def config() -> TrackIdentificationConfig:
     config = get_config()
-    # Set specific test values
-    config.time_threshold = 30  # 30 seconds threshold for testing
-    config.max_duplicates = 3
+    # time_threshold is a real dedup-window override (see
+    # TrackMatcher._dedup_window). Leave it at 0 so these tests exercise the
+    # derived default, 2 * (segment_length - overlap_duration) = 100s.
+    # Setting it here would silently narrow the window for every test.
+    config.time_threshold = 0
+    config.segment_length = 60
+    config.overlap_duration = 10
     return config
 
 
@@ -58,16 +62,20 @@ class TestTrackMatcher:
         assert unique[0] == track
 
     def test_identical_tracks_within_window(self, track_matcher):
-        """Identical tracks within the dedup window collapse to one,
-        keeping the higher-confidence detection."""
+        """Identical tracks within the dedup window collapse to one.
+
+        The representative is the EARLIEST detection, not the highest
+        confidence: every cluster member is the same track by construction,
+        and any confidence-derived choice reintroduces run-to-run
+        instability (Shazam's confidence jitters per run). See _rep_key.
+        """
         track1 = create_track("Same Song", "Same Artist", "00:00:00", confidence=80.0)
         track2 = create_track("Same Song", "Same Artist", "00:00:10", confidence=90.0)
         track_matcher.tracks = [track1, track2]
 
         unique = track_matcher.get_unique_tracks()
         assert len(unique) == 1
-        # Higher confidence wins (5-pt deadband separates 80 from 90).
-        assert unique[0] == track2
+        assert unique[0] == track1  # earliest wins, deterministically
 
     def test_different_tracks_within_window(self, track_matcher):
         """Different songs within the window stay as two tracks."""
@@ -93,9 +101,15 @@ class TestTrackMatcher:
         # 300s > 2*(60-10)=100s window -> separate plays.
         assert len(unique) == 2
 
-    def test_confidence_based_selection(self, track_matcher):
-        """Among clustered duplicates, the highest-confidence detection
-        represents the cluster."""
+    def test_representative_selection_is_time_based_not_confidence_based(
+        self, track_matcher
+    ):
+        """Clustered duplicates collapse to the earliest detection.
+
+        Confidence deliberately does not influence selection — see _rep_key.
+        Whichever detection Shazam scored highest varies per run; the
+        earliest does not.
+        """
         track1 = create_track("Same Song", "Same Artist", "00:00:00", confidence=70.0)
         track2 = create_track("Same Song", "Same Artist", "00:00:10", confidence=90.0)
         track3 = create_track("Same Song", "Same Artist", "00:00:20", confidence=80.0)
@@ -103,7 +117,7 @@ class TestTrackMatcher:
 
         unique = track_matcher.get_unique_tracks()
         assert len(unique) == 1
-        assert unique[0] == track2  # Highest confidence track
+        assert unique[0] == track1  # earliest, regardless of confidence
 
     def test_similar_song_different_artist(self, track_matcher):
         """Same title, non-overlapping artists -> two tracks (Jaccard 0)."""
@@ -146,10 +160,11 @@ class TestTrackMatcher:
                     return True
             return False
 
-        # Highest-confidence representative from each cluster.
-        assert find_track(unique, "Song 1", confidence=90.0)  # First group
-        assert find_track(unique, "Song 2", confidence=85.0)  # Second group
-        assert find_track(unique, "Song 3", confidence=95.0)  # Third
+        # Earliest detection represents each cluster (confidence is not a
+        # selection input — see _rep_key).
+        assert find_track(unique, "Song 1", confidence=80.0)  # first group @0s
+        assert find_track(unique, "Song 2", confidence=85.0)  # second group @30s
+        assert find_track(unique, "Song 3", confidence=95.0)  # third
         assert find_track(unique, "Song 1", confidence=70.0)  # 5min-apart replay
 
     def test_min_confidence_filters_low_confidence(self, track_matcher):
@@ -211,3 +226,124 @@ class TestTrackMatcher:
         # 85 and 87 fall in the same 5-pt bucket (int(85/5)=17, int(87/5)=17);
         # earliest time wins the tiebreak -> the 00:00:00 track represents.
         assert unique[0] == base
+
+
+def _t(name, artist, secs, conf=80.0):
+    """Build a Track from an absolute second offset."""
+    h, rem = divmod(secs, 3600)
+    mi, s = divmod(rem, 60)
+    return Track(
+        song_name=name,
+        artist=artist,
+        time_in_mix=f"{h}:{mi:02d}:{s:02d}",
+        confidence=float(conf),
+    )
+
+
+class TestDedupInvariants:
+    """Guardrails for the implicit contracts the dedup rewrite depends on.
+
+    Each test names the contract it locks (see docs/ARCHITECTURE.md and
+    AUDIT_STATE.md). These exist because the audit found the code silently
+    violating the guarantees its own docstrings advertised.
+    """
+
+    def test_c3_cluster_span_is_bounded_by_the_window(self, track_matcher):
+        """C3: a cluster's total temporal span never exceeds the window.
+
+        Regression for the chaining bug: proximity was tested against ANY
+        cluster member, so each join extended the cluster's reach and a
+        chain of near-neighbours could swallow an arbitrarily long stretch
+        of the set — silently deleting genuinely distinct plays.
+        """
+        # 41 detections, each 90s from the last (inside the 100s window),
+        # spanning 300s..3900s. Pairwise they chain; the span is 60 minutes.
+        track_matcher.tracks = [
+            _t("Epic", "Faithless", s) for s in range(300, 3901, 90)
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) > 1, (
+            "chained detections collapsed into one cluster spanning an hour; "
+            "cluster span must be bounded by the window, not chained"
+        )
+
+    def test_c3_adjacent_segment_detections_still_merge(self, track_matcher):
+        """C3 (other side): bounding the span must NOT break the real fix.
+
+        The Berghain pair is one segmentation step apart (50s < 100s window)
+        and must still merge after the span bound is enforced.
+        """
+        track_matcher.tracks = [
+            _t("Berghain (Remix)", "Conrad Taylor & ROSALÍA & Björk", 1900, 85.0),
+            _t("Berghain (Remix)", "ROSALÍA, Björk", 1950, 88.0),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 1
+
+    def test_c4_constructor_scales_config_min_confidence(self):
+        """C4: config is 0.0-1.0, TrackMatcher is 0-100. The ctor scales."""
+        cfg = get_config()
+        cfg.min_confidence = 0.8
+        matcher = TrackMatcher(cfg)
+        assert matcher.min_confidence == 80.0, (
+            "constructor must scale the 0-1 config value onto the 0-100 "
+            "Track.confidence scale"
+        )
+
+    def test_c5_representative_stable_across_deadband_boundary(self, track_matcher):
+        """C5: representative selection is order- and jitter-independent.
+
+        Two detections of the same track straddling a confidence bucket
+        boundary (84.9 / 85.0) must yield the same representative no matter
+        which order they were added — otherwise Shazam's per-run jitter
+        changes the reported time_in_mix, the exact bug _rep_key exists to
+        prevent.
+        """
+        a = _t("Song", "Artist", 0, 84.9)
+        b = _t("Song", "Artist", 50, 85.0)
+
+        track_matcher.tracks = [a, b]
+        first = track_matcher.get_unique_tracks()
+
+        matcher2 = TrackMatcher(track_matcher._config)
+        matcher2.tracks = [b, a]
+        second = matcher2.get_unique_tracks()
+
+        assert len(first) == 1 and len(second) == 1
+        assert first[0].time_in_mix == second[0].time_in_mix, (
+            "representative flipped when input order changed across a "
+            "confidence-bucket boundary"
+        )
+
+    def test_f07_is_similar_to_agrees_with_dedup_predicate(self):
+        """F07: the public predicate must not drift from the shipping rule."""
+        merge_a = _t("Berghain (Remix)", "Conrad Taylor & ROSALÍA & Björk", 0)
+        merge_b = _t("Berghain (Remix)", "ROSALÍA, Björk", 50)
+        sep_a = _t("Same Song", "Artist 1", 0)
+        sep_b = _t("Same Song", "Artist 2", 50)
+
+        assert merge_a.is_similar_to(merge_b) is True
+        assert sep_a.is_similar_to(sep_b) is False
+
+    def test_f06_time_threshold_overrides_the_dedup_window(self, track_matcher):
+        """F06: `time_threshold` is a live knob again, not dead config.
+
+        It was assigned in __init__ and read nowhere, while .env.example and
+        config/docs.py still advertised it as controlling merge behavior.
+        """
+        cfg = track_matcher._config
+        # Default (no override): window is 2 * step = 2*(60-10) = 100s.
+        cfg.time_threshold = 0
+        cfg.segment_length, cfg.overlap_duration = 60, 10
+        assert track_matcher._dedup_window() == 100.0
+
+        # A positive override wins and actually changes clustering.
+        cfg.time_threshold = 30
+        assert track_matcher._dedup_window() == 30.0
+
+        track_matcher.tracks = [
+            _t("Song", "Artist", 0),
+            _t("Song", "Artist", 50),  # 50s apart: inside 100s, outside 30s
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 2, (
+            "a narrowed time_threshold must actually narrow the dedup window"
+        )

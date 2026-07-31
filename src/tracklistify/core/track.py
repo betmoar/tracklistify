@@ -89,18 +89,26 @@ def _tracks_match(t1: "Track", t2: "Track") -> bool:
     ) and _artists_match(t1.artist, t2.artist)
 
 
-def _rep_key(track: "Track") -> Tuple[int, int, str, str]:
+def _rep_key(track: "Track") -> Tuple[int, str, str]:
     """Deterministic representative-selection key for a dedup cluster.
 
-    Minimize this tuple to pick the cluster representative. The 5-point
-    confidence deadband quantizes Shazam's run-to-run confidence noise so the
-    winner no longer flips between runs of identical audio; within a deadband
-    bucket, earliest time wins (then lexicographic name/artist for total
-    determinism).
+    Minimize this tuple to pick the cluster representative: earliest time
+    wins, then lexicographic name/artist as a total-order tiebreak.
+
+    Confidence is deliberately NOT part of this key. Every member of a
+    cluster is the same track by construction (they passed ``_tracks_match``
+    and the proximity bound), so preferring a "better" detection buys
+    nothing — while any confidence-derived term reintroduces the exact
+    instability this function exists to prevent: Shazam returns slightly
+    different confidences per run, so the winner (and therefore the
+    reported ``time_in_mix``) flips between runs of identical audio. An
+    earlier version quantized confidence into 5-point buckets to absorb
+    that jitter, but two detections straddling a bucket edge (84.9 vs
+    85.0) still landed in different buckets and still flipped. Earliest
+    time is jitter-proof.
     """
     return (
-        -int(track.confidence / 5.0),  # higher confidence bucket first
-        track.time_to_seconds(),  # then earliest time
+        track.time_to_seconds(),  # earliest detection wins
         track.song_name.lower(),  # then lex name
         track.artist.lower(),  # then lex artist
     )
@@ -222,21 +230,48 @@ class TrackMatcher:
 
         self.tracks: List[Track] = []
         self._config = config or get_config()
-        self.time_threshold = self._config.time_threshold
         # Wire the config knob: config.min_confidence is 0.0-1.0, Track
         # confidence is 0-100. Default config 0.0 -> keep all tracks (no
         # behavior change vs the prior hardcoded 0).
         self._min_confidence = self._config.min_confidence * 100
-        self.max_duplicates = self._config.max_duplicates
+
+    def _dedup_window(self) -> float:
+        """Seconds within which two matching detections are the same play.
+
+        Defaults to twice the segmentation step
+        (``segment_length - overlap_duration``), because adjacent segments
+        are exactly one step apart and the same track routinely lands in
+        both. ``config.time_threshold`` overrides it when set to a positive
+        value, which is what that knob has always claimed to mean ("time
+        threshold for merging similar tracks").
+
+        Read per call rather than cached at construction: config attributes
+        are mutable after load (CLI overrides mutate them), so a value
+        captured in ``__init__`` can be stale by the time dedup runs.
+        """
+        override = getattr(self._config, "time_threshold", 0) or 0
+        if override > 0:
+            return float(override)
+        step = self._config.segment_length - self._config.overlap_duration
+        return 2.0 * step
 
     @property
     def min_confidence(self) -> float:
-        """Get the minimum confidence threshold."""
+        """Minimum confidence threshold, on the **0-100** scale.
+
+        This is ``Track.confidence``'s scale, NOT ``config.min_confidence``'s
+        0.0-1.0 scale. The constructor converts; see ``__init__``.
+        """
         return self._min_confidence
 
     @min_confidence.setter
     def min_confidence(self, value: float):
-        """Set the minimum confidence threshold with validation."""
+        """Set the threshold on the **0-100** scale (clamped).
+
+        Assigning ``config.min_confidence`` directly here is a bug — it is
+        0.0-1.0, so a value meant as "80%" silently becomes 0.8%, disabling
+        the filter. Scale it (`* 100`) or let ``__init__`` do it for you.
+        """
         # Clamp value between 0 and 100
         self._min_confidence = max(0, min(float(value), 100))
 
@@ -263,36 +298,45 @@ class TrackMatcher:
     def get_unique_tracks(self) -> List[Track]:
         """Get list of unique tracks, sorted by time in mix.
 
-        Greedy clustering: a track joins the first cluster where it is both
-        within the proximity window of some member AND matches that member by
-        identity. The proximity window is derived from the segmentation step
-        (``2 * (segment_length - overlap_duration)``), so adjacent-segment
-        detections of the same audio merge while genuinely distinct plays
-        (minutes apart) stay separate. One deterministic representative is
-        picked per cluster via ``_rep_key`` (5-point confidence deadband +
-        earliest-time tiebreak) so the chosen ``time_in_mix`` no longer flips
-        between runs of the same audio.
+        Greedy clustering: a track joins the first cluster whose **anchor**
+        (its earliest member) it is within the proximity window of, and whose
+        members it matches by identity. The window comes from
+        ``_dedup_window()`` — twice the segmentation step by default (so
+        adjacent-segment detections of the same audio merge), or
+        ``config.time_threshold`` when the user sets it.
+
+        Anchoring on ``cluster[0]`` rather than *any* member is what bounds a
+        cluster's total span to ``window`` seconds. Testing proximity against
+        any member makes the relation transitively chaining: each join extends
+        the cluster's reach, so a run of near-neighbours can swallow an
+        arbitrarily long stretch of the set and silently collapse genuinely
+        distinct plays of the same track into one row. That is a worse failure
+        than the duplicate it would have removed — a duplicate is visible in
+        the output, a deleted track is not.
+
+        One deterministic representative is picked per cluster via
+        ``_rep_key`` (earliest time), so the reported ``time_in_mix`` is
+        stable across runs of identical audio.
         """
         if not self.tracks:
             return []
 
-        step = self._config.segment_length - self._config.overlap_duration
-        window = 2 * step
+        window = self._dedup_window()
 
         sorted_tracks = sorted(self.tracks, key=lambda t: t.time_to_seconds())
         clusters: List[List[Track]] = []
 
         for track in sorted_tracks:
             placed = False
-            # Clusters are time-ordered (we append as tracks arrive sorted by
-            # time); scan recent clusters first. A track joins the first
-            # cluster where it is within the window of AND identity-matches a
-            # member.
+            t_secs = track.time_to_seconds()
+            # Both `sorted_tracks` and `clusters` are in ascending time order
+            # (clusters are appended as their anchors arrive), so scanning
+            # newest-first lets us stop as soon as an anchor falls out of the
+            # window — every earlier cluster is further away still.
             for cluster in reversed(clusters):
-                if any(
-                    abs(track.time_to_seconds() - m.time_to_seconds()) <= window
-                    for m in cluster
-                ) and any(_tracks_match(track, m) for m in cluster):
+                if t_secs - cluster[0].time_to_seconds() > window:
+                    break
+                if any(_tracks_match(track, m) for m in cluster):
                     cluster.append(track)
                     placed = True
                     break
