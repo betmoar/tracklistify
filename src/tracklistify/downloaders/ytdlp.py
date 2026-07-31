@@ -5,7 +5,6 @@ yt-dlp video downloader implementation.
 # Standard library imports
 import asyncio
 import os
-import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -163,32 +162,6 @@ class YtDlpDownloader(Downloader):
             elapsed = time.monotonic() - self._pp_started_at
             logger.info(f"Post-processing done in {elapsed:.1f}s")
             self._pp_started_at = None
-
-    def get_ydl_opts(self) -> dict:
-        """Get yt-dlp options with current configuration."""
-        # Prefer the per-invocation temp dir from AsyncApp; fall back to
-        # config (legacy callers) or system temp (last resort).
-        temp_dir = self.temp_dir or self.config.temp_dir or tempfile.gettempdir()
-
-        # Ensure temp directory exists
-        os.makedirs(temp_dir, exist_ok=True)
-
-        return {
-            "format": "bestaudio/best",
-            "postprocessors": [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": self.format,
-                    "preferredquality": self.quality,
-                }
-            ],
-            "ffmpeg_location": self.ffmpeg_path,
-            "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
-            "verbose": True,  # Always set to False to control output
-            "logger": self._logger,
-            "progress_hooks": [progress_hook],
-            "no_warnings": True,  # Suppress unnecessary warnings
-        }
 
     async def download(self, url: str) -> Optional[str]:
         """Download video from URL.

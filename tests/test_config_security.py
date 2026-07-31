@@ -121,6 +121,7 @@ class TestSecretMasking:
             "TRACKLISTIFY_SPOTIFY_TOKEN",
             "TRACKLISTIFY_SPOTIFY_CLIENT_SECRET",
             "TRACKLISTIFY_ACRCLOUD_ACCESS_KEY",
+            "TRACKLISTIFY_SHAZAM_PROXY",
         ]
 
         for key in sensitive:

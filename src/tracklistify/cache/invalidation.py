@@ -284,8 +284,14 @@ class SizeStrategy(InvalidationStrategy[T]):
             return False
 
     async def update_metadata(self, entry: CacheEntry[T]) -> CacheEntry[T]:
-        """Update entry metadata."""
+        """Update entry metadata.
+
+        The size is computed once at set-time; reuse it when present to
+        avoid re-serializing the value via json.dumps on every access.
+        """
         try:
+            if "size" in entry["metadata"]:
+                return entry
             entry = copy.deepcopy(entry)
             entry["metadata"]["size"] = len(json.dumps(entry["value"]))
             return entry
