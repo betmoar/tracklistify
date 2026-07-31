@@ -48,7 +48,7 @@ def test_default_config(monkeypatch):
 
     # Track identification settings - CODE DEFAULTS
     assert config.segment_length == 60
-    assert config.min_confidence == 0.5  # Code default is 0.5
+    assert config.min_confidence == 0.0  # Code default is 0.0 (keep all)
     assert config.time_threshold == 30.0
     assert config.max_duplicates == 2
 

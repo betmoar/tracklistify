@@ -196,7 +196,7 @@ class IdentificationManager:
         self._segment_digests: dict[str, str] = {}
         self.config = config or get_config()
         self.provider_factory = provider_factory or create_provider_factory()
-        self.track_matcher = TrackMatcher()
+        self.track_matcher = TrackMatcher(self.config)
         # Cache is optional: tests inject a double; production resolves the
         # global cache singleton. It's only consulted when
         # ``config.cache_enabled`` is set (checked per-call in identify_tracks).

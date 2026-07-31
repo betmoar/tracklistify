@@ -3,8 +3,9 @@ Track identification and management module.
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from tracklistify.config import TrackIdentificationConfig
 from tracklistify.utils.logger import get_logger
@@ -18,6 +19,91 @@ logger = get_logger(__name__)
 # exactly two digits — the field is an *elapsed* time, not a wall-clock time,
 # so ``datetime.strptime("%H:%M:%S")`` (which caps hours at 23) can't be used.
 _TIME_IN_MIX_RE = re.compile(r"^(\d+):(\d{2}):(\d{2})$")
+
+
+# --- Track-comparison helpers (single dedup authority) ---------------------
+#
+# Two tracks are "the same" iff their titles match exactly after normalization
+# AND their artist token-sets overlap sufficiently (Jaccard >= _ARTIST_THRESHOLD).
+# This collapses Shazam's run-to-run artist-string noise for collaborations:
+#   "Conrad Taylor & ROSALÍA & Björk & Yves Tumor"  vs
+#   "ROSALÍA, Björk & Yves Tumor"
+# tokenize to {conrad taylor, rosalia, bjork, yves tumor} vs
+# {rosalia, bjork, yves tumor} -> Jaccard 3/4 = 0.75 (>= threshold -> merge),
+# while "Artist 1" vs "Artist 2" -> 0.0 (no overlap -> separate).
+#
+# Empirically (see docs/BACKLOG.md P2): all merge cases score >= 0.50, all
+# separate cases score 0.00; 0.34 sits centered in the gap.
+
+_ARTIST_THRESHOLD = 0.34
+
+# Split on collaboration separators BEFORE normalization (so they survive to
+# drive the split). Word-boundary alternations (\band\b, \bfeat\b, ...) ensure
+# "Commander" is not split on its interior "and".
+_ARTIST_SEP = re.compile(
+    r"\s*(?:&|,|/|\\|\band\b|\bfeat\.?\b|\bft\.?\b|\bvs\.?\b|\bx\b|\+|\||;)\s*",
+    re.IGNORECASE,
+)
+
+
+def _normalize_token(s: str) -> str:
+    """Normalize a string for track comparison.
+
+    lowercase -> NFKC -> NFD strip combining marks (accent fold, so
+    "ROSALÍA" == "ROSALIA") -> punctuation-to-space -> collapse whitespace.
+    """
+    s = unicodedata.normalize("NFKC", s.lower())
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    s = re.sub(r"[^\w\s]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _artist_tokens(artist: str) -> Set[str]:
+    """Tokenize an artist string into a normalized token set."""
+    return {
+        _normalize_token(part)
+        for part in _ARTIST_SEP.split(artist.strip())
+        if part.strip()
+    }
+
+
+def _artists_match(a: str, b: str) -> bool:
+    """True iff the artist token sets overlap with Jaccard >= threshold."""
+    tokens_a = _artist_tokens(a)
+    tokens_b = _artist_tokens(b)
+    if not tokens_a or not tokens_b:
+        return False
+    return len(tokens_a & tokens_b) / len(tokens_a | tokens_b) >= _ARTIST_THRESHOLD
+
+
+def _tracks_match(t1: "Track", t2: "Track") -> bool:
+    """Identity match: same normalized title AND overlapping artists.
+
+    Title-match + artist-mismatch = different tracks (a DJ playing the same
+    song by different artists is two tracks). Time-blind; ``get_unique_tracks``
+    layers proximity on top.
+    """
+    return _normalize_token(t1.song_name) == _normalize_token(
+        t2.song_name
+    ) and _artists_match(t1.artist, t2.artist)
+
+
+def _rep_key(track: "Track") -> Tuple[int, int, str, str]:
+    """Deterministic representative-selection key for a dedup cluster.
+
+    Minimize this tuple to pick the cluster representative. The 5-point
+    confidence deadband quantizes Shazam's run-to-run confidence noise so the
+    winner no longer flips between runs of identical audio; within a deadband
+    bucket, earliest time wins (then lexicographic name/artist for total
+    determinism).
+    """
+    return (
+        -int(track.confidence / 5.0),  # higher confidence bucket first
+        track.time_to_seconds(),  # then earliest time
+        track.song_name.lower(),  # then lex name
+        track.artist.lower(),  # then lex artist
+    )
 
 
 def _parse_elapsed_hhmmss(value: str) -> Tuple[int, int, int]:
@@ -54,30 +140,13 @@ class Track:
         )
 
     def is_similar_to(self, other: "Track") -> bool:
-        """Check if two tracks are similar based on the configuration."""
-        if not self.config:
-            from tracklistify.config.factory import get_config
+        """Check if two tracks are the same track (time-blind identity).
 
-            self.config = get_config()
-        if not other.config:
-            other.config = self.config
-
-        # Normalize strings for comparison
-        def normalize(s: str) -> str:
-            return re.sub(r"[^\w\s]", "", s.lower())
-
-        this_song = normalize(self.song_name)
-        this_artist = normalize(self.artist)
-        other_song = normalize(other.song_name)
-        other_artist = normalize(other.artist)
-
-        # Check for exact matches of both song and artist
-        if this_song == other_song and this_artist == other_artist:
-            return True
-
-        # Tracks are NOT similar if they have different songs or artists
-        # regardless of time proximity
-        return False
+        Delegates to the module-level ``_tracks_match`` so there is one
+        definition of "the same string for matching purposes". Time proximity
+        is layered on separately by ``TrackMatcher.get_unique_tracks``.
+        """
+        return _tracks_match(self, other)
 
     def __post_init__(self):
         """Validate fields populated by the dataclass-generated __init__.
@@ -140,18 +209,25 @@ class Track:
 
 
 class TrackMatcher:
-    """Handles track matching and merging."""
+    """Handles track matching and merging.
 
-    def __init__(self):
+    Dedup authority is ``get_unique_tracks``: it clusters tracks that match by
+    identity (token-set artist Jaccard + normalized title) within a proximity
+    window, then picks one deterministic representative per cluster.
+    """
+
+    def __init__(self, config: Optional[TrackIdentificationConfig] = None):
         # Import locally to avoid circular import
         from tracklistify.config.factory import get_config
 
         self.tracks: List[Track] = []
-        config = get_config()
-        self.time_threshold = config.time_threshold
-        self._min_confidence = 0  # Keep all tracks with confidence > 0
-        self.max_duplicates = config.max_duplicates
-        self._config = config
+        self._config = config or get_config()
+        self.time_threshold = self._config.time_threshold
+        # Wire the config knob: config.min_confidence is 0.0-1.0, Track
+        # confidence is 0-100. Default config 0.0 -> keep all tracks (no
+        # behavior change vs the prior hardcoded 0).
+        self._min_confidence = self._config.min_confidence * 100
+        self.max_duplicates = self._config.max_duplicates
 
     @property
     def min_confidence(self) -> float:
@@ -165,9 +241,10 @@ class TrackMatcher:
         self._min_confidence = max(0, min(float(value), 100))
 
     def add_track(self, track: Track) -> None:
-        """
-        Add a track to the collection if it meets confidence threshold
-        and isn't a duplicate.
+        """Add a track to the collection if it meets the confidence threshold.
+
+        Dedup happens later in ``get_unique_tracks`` (the sole dedup
+        authority); here we only confidence-gate and append.
         """
         # Skip tracks below confidence threshold
         if track.confidence < self.min_confidence:
@@ -177,121 +254,50 @@ class TrackMatcher:
             )
             return
 
-        track_time = track.time_to_seconds()
-        similar_tracks = []
-
-        # Find all similar tracks within the time threshold
-        for existing_track in self.tracks:
-            time_diff = abs(track_time - existing_track.time_to_seconds())
-            if time_diff <= self.time_threshold and track.is_similar_to(existing_track):
-                similar_tracks.append(existing_track)
-
-        if similar_tracks:
-            # Find the track with the highest confidence
-            best_track = max(similar_tracks + [track], key=lambda t: t.confidence)
-
-            # If the new track is the best one, replace all similar tracks with it
-            if best_track == track:
-                for similar_track in similar_tracks:
-                    self.tracks.remove(similar_track)
-                self.tracks.append(track)
-                logger.debug(
-                    f"Replaced {len(similar_tracks)} similar tracks with higher "
-                    f"confidence version: {track.song_name} "
-                    f"(Confidence: {track.confidence:.1f}%)"
-                )
-            return
-
-        # If we get here, this is a new track
         self.tracks.append(track)
-        logger.info(
-            f"Added new track to matcher: {track.song_name} "
+        logger.debug(
+            f"Added track to matcher: {track.song_name} "
             f"(Confidence: {track.confidence:.1f}%)"
         )
 
     def get_unique_tracks(self) -> List[Track]:
         """Get list of unique tracks, sorted by time in mix.
 
-        Single pass into a dict keyed by ``artist|song`` (O(n)), replacing
-        the previous O(n^2) linear-scan + ``list.remove`` for each duplicate.
-        Tie-breaking is preserved: among equal keys, the highest-confidence
-        track wins (earliest-wins on ties since the input is pre-sorted by
-        time and dict insertion order is stable in Python 3.7+).
+        Greedy clustering: a track joins the first cluster where it is both
+        within the proximity window of some member AND matches that member by
+        identity. The proximity window is derived from the segmentation step
+        (``2 * (segment_length - overlap_duration)``), so adjacent-segment
+        detections of the same audio merge while genuinely distinct plays
+        (minutes apart) stay separate. One deterministic representative is
+        picked per cluster via ``_rep_key`` (5-point confidence deadband +
+        earliest-time tiebreak) so the chosen ``time_in_mix`` no longer flips
+        between runs of the same audio.
         """
-        sorted_tracks = sorted(self.tracks, key=lambda t: t.time_to_seconds())
-        best_by_key: Dict[str, Track] = {}
-        for track in sorted_tracks:
-            track_key = f"{track.artist.lower()}|{track.song_name.lower()}"
-            existing = best_by_key.get(track_key)
-            if existing is None or track.confidence > existing.confidence:
-                best_by_key[track_key] = track
-        return sorted(best_by_key.values(), key=lambda t: t.time_to_seconds())
-
-    def _create_track_group(self, track: Track) -> List[Track]:
-        """Initialize a new track group with a single track."""
-        return [track]
-
-    def _should_add_to_group(self, current_group: List[Track], track: Track) -> bool:
-        """Determine if a track should be added to the current group."""
-        last_track = current_group[-1]
-        time_diff = track.time_to_seconds() - last_track.time_to_seconds()
-        return (
-            time_diff <= self.time_threshold
-            and track.is_similar_to(last_track)
-            and len(current_group) < self.max_duplicates
-        )
-
-    def _add_to_group(self, current_group: List[Track], track: Track) -> None:
-        """Add a track to the current group and log the action."""
-        current_group.append(track)
-        logger.debug(f"Grouped similar track: {track.song_name} at {track.time_in_mix}")
-
-    def _get_best_track(self, group: List[Track]) -> Track:
-        """Select the track with highest confidence from a group."""
-        return max(group, key=lambda t: t.confidence)
-
-    def _is_unique_track(self, track: Track, merged_tracks: List[Track]) -> bool:
-        """Check if a track is unique in the merged list."""
-        return not any(track.is_similar_to(m) for m in merged_tracks)
-
-    def _add_to_merged_list(self, track: Track, merged_tracks: List[Track]) -> None:
-        """Add a track to the merged list and log the action."""
-        merged_tracks.append(track)
-        logger.debug(
-            f"Added merged track: {track.song_name} "
-            f"at {track.time_in_mix} "
-            f"(Confidence: {track.confidence:.1f}%)"
-        )
-
-    def merge_nearby_tracks(self) -> List[Track]:
-        """Merge similar tracks that appear close together in time."""
         if not self.tracks:
             return []
 
-        # Sort tracks by time
-        self.tracks.sort(key=lambda t: t.time_to_seconds())
-        logger.debug(
-            f"\nStarting track merging process with {len(self.tracks)} tracks..."
-        )
+        step = self._config.segment_length - self._config.overlap_duration
+        window = 2 * step
 
-        merged = []
-        current_group = self._create_track_group(self.tracks[0])
+        sorted_tracks = sorted(self.tracks, key=lambda t: t.time_to_seconds())
+        clusters: List[List[Track]] = []
 
-        for track in self.tracks[1:]:
-            if self._should_add_to_group(current_group, track):
-                self._add_to_group(current_group, track)
-            else:
-                if current_group:
-                    best_track = self._get_best_track(current_group)
-                    if self._is_unique_track(best_track, merged):
-                        self._add_to_merged_list(best_track, merged)
-                current_group = self._create_track_group(track)
+        for track in sorted_tracks:
+            placed = False
+            # Clusters are time-ordered (we append as tracks arrive sorted by
+            # time); scan recent clusters first. A track joins the first
+            # cluster where it is within the window of AND identity-matches a
+            # member.
+            for cluster in reversed(clusters):
+                if any(
+                    abs(track.time_to_seconds() - m.time_to_seconds()) <= window
+                    for m in cluster
+                ) and any(_tracks_match(track, m) for m in cluster):
+                    cluster.append(track)
+                    placed = True
+                    break
+            if not placed:
+                clusters.append([track])
 
-        # Handle last group
-        if current_group:
-            best_track = self._get_best_track(current_group)
-            if self._is_unique_track(best_track, merged):
-                self._add_to_merged_list(best_track, merged)
-
-        logger.debug(f"Track merging completed. Final track count: {len(merged)}")
-        return merged
+        reps = [min(cluster, key=_rep_key) for cluster in clusters]
+        return sorted(reps, key=lambda t: t.time_to_seconds())

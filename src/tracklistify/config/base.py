@@ -149,7 +149,7 @@ class TrackIdentificationConfig(BaseConfig):
 
     # Track identification specific fields
     segment_length: int = field(default=60)
-    min_confidence: float = field(default=0.5)
+    min_confidence: float = field(default=0.0)
     time_threshold: float = field(default=30.0)
     max_duplicates: int = field(default=2)
     overlap_duration: int = field(default=10)

@@ -24,9 +24,8 @@ def config() -> TrackIdentificationConfig:
 
 @pytest.fixture
 def track_matcher(config):
-    matcher = TrackMatcher()
-    matcher.time_threshold = config.time_threshold
-    matcher.max_duplicates = config.max_duplicates
+    # Inject the config so the matcher doesn't re-resolve the global singleton.
+    matcher = TrackMatcher(config)
     return matcher
 
 
@@ -47,112 +46,96 @@ def create_track(song_name, artist, time_in_mix, confidence=80.0):
 
 class TestTrackMatcher:
     def test_empty_tracks(self, track_matcher):
-        """Test merging with no tracks."""
-        assert track_matcher.merge_nearby_tracks() == []
+        """Dedup with no tracks returns an empty list."""
+        assert track_matcher.get_unique_tracks() == []
 
     def test_single_track(self, track_matcher):
-        """Test merging with a single track."""
+        """A single track is returned unchanged."""
         track = create_track("Test Song", "Test Artist", "00:00:00")
         track_matcher.tracks = [track]
-        merged = track_matcher.merge_nearby_tracks()
-        assert len(merged) == 1
-        assert merged[0] == track
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1
+        assert unique[0] == track
 
-    def test_identical_tracks_within_threshold(self, track_matcher):
-        """Test merging identical tracks within time threshold."""
+    def test_identical_tracks_within_window(self, track_matcher):
+        """Identical tracks within the dedup window collapse to one,
+        keeping the higher-confidence detection."""
         track1 = create_track("Same Song", "Same Artist", "00:00:00", confidence=80.0)
         track2 = create_track("Same Song", "Same Artist", "00:00:10", confidence=90.0)
         track_matcher.tracks = [track1, track2]
 
-        merged = track_matcher.merge_nearby_tracks()
-        assert len(merged) == 1
-        # Should keep the higher confidence track
-        assert merged[0] == track2
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1
+        # Higher confidence wins (5-pt deadband separates 80 from 90).
+        assert unique[0] == track2
 
-    def test_different_tracks_within_threshold(self, track_matcher):
-        """Test handling different tracks within time threshold."""
+    def test_different_tracks_within_window(self, track_matcher):
+        """Different songs within the window stay as two tracks."""
         track1 = create_track("Song 1", "Artist 1", "00:00:00")
         track2 = create_track("Song 2", "Artist 2", "00:00:10")
         track_matcher.tracks = [track1, track2]
 
-        merged = track_matcher.merge_nearby_tracks()
-        assert len(merged) == 2
-        assert track1 in merged
-        assert track2 in merged
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 2
+        assert track1 in unique
+        assert track2 in unique
 
-    def test_similar_tracks_outside_threshold(self, track_matcher):
-        """Test handling similar tracks outside time threshold."""
-        # Create tracks that are similar but far apart in time
+    def test_similar_tracks_outside_window(self, track_matcher):
+        """The same track replayed outside the dedup window stays as two
+        tracks (a DJ playing a track twice is two plays)."""
         track1 = create_track("Same Song", "Same Artist", "00:00:00", confidence=80.0)
         track2 = create_track(
             "Same Song", "Same Artist", "00:05:00", confidence=90.0
-        )  # Far apart
+        )  # 300s apart — outside the 100s default window
         track_matcher.tracks = [track1, track2]
 
-        merged = track_matcher.merge_nearby_tracks()
-        # Since tracks are similar, only keep the first one due to implementation
-        assert len(merged) == 1
-        assert merged[0].confidence == 80.0  # Keep the first track
-
-    def test_max_duplicates_limit(self, track_matcher):
-        """Test respecting max_duplicates limit."""
-        # Create tracks with increasing confidence
-        track1 = create_track("Same Song", "Same Artist", "00:00:00", confidence=80.0)
-        track2 = create_track(
-            "Same Song", "Same Artist", "00:00:02", confidence=84.0
-        )  # Highest confidence
-        track3 = create_track("Same Song", "Same Artist", "00:00:04", confidence=82.0)
-
-        track_matcher.tracks = [track1, track2, track3]
-        track_matcher.max_duplicates = 3
-
-        merged = track_matcher.merge_nearby_tracks()
-        assert len(merged) == 1
-        # Should keep track2 which has the highest confidence (84.0)
-        assert merged[0].confidence == 84.0
-        assert merged[0].time_in_mix == "00:00:02"
+        unique = track_matcher.get_unique_tracks()
+        # 300s > 2*(60-10)=100s window -> separate plays.
+        assert len(unique) == 2
 
     def test_confidence_based_selection(self, track_matcher):
-        """Test selecting tracks based on confidence."""
+        """Among clustered duplicates, the highest-confidence detection
+        represents the cluster."""
         track1 = create_track("Same Song", "Same Artist", "00:00:00", confidence=70.0)
         track2 = create_track("Same Song", "Same Artist", "00:00:10", confidence=90.0)
         track3 = create_track("Same Song", "Same Artist", "00:00:20", confidence=80.0)
         track_matcher.tracks = [track1, track2, track3]
 
-        merged = track_matcher.merge_nearby_tracks()
-        assert len(merged) == 1
-        assert merged[0] == track2  # Highest confidence track
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1
+        assert unique[0] == track2  # Highest confidence track
 
     def test_similar_song_different_artist(self, track_matcher):
-        """Test handling tracks with same song but different artists."""
+        """Same title, non-overlapping artists -> two tracks (Jaccard 0)."""
         track1 = create_track("Same Song", "Artist 1", "00:00:00")
         track2 = create_track("Same Song", "Artist 2", "00:00:10")
         track_matcher.tracks = [track1, track2]
 
-        merged = track_matcher.merge_nearby_tracks()
-        assert len(merged) == 2
-        assert track1 in merged
-        assert track2 in merged
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 2
+        assert track1 in unique
+        assert track2 in unique
 
     def test_complex_sequence(self, track_matcher):
-        """Test a complex sequence of tracks."""
+        """Mixed sequence: clustered duplicates collapse, a far-apart replay
+        of the same song stays separate."""
         tracks = [
-            # Group 1 - Similar songs within threshold
+            # Group 1 - clustered duplicates
             create_track("Song 1", "Artist 1", "00:00:00", confidence=80.0),
             create_track("Song 1", "Artist 1", "00:00:10", confidence=90.0),
-            # Group 2 - Different song
+            # Group 2 - different song, clustered duplicates
             create_track("Song 2", "Artist 2", "00:00:30", confidence=85.0),
             create_track("Song 2", "Artist 2", "00:00:40", confidence=75.0),
-            # Group 3 - Separate track
+            # Group 3 - separate track
             create_track("Song 3", "Artist 3", "00:02:00", confidence=95.0),
-            # Similar to Group 1 but will be filtered out since it's similar
-            # to an existing track
+            # Same song as Group 1, but 5 minutes apart -> separate play.
             create_track("Song 1", "Artist 1", "00:05:00", confidence=70.0),
         ]
         track_matcher.tracks = tracks
 
-        merged = track_matcher.merge_nearby_tracks()
-        assert len(merged) == 3  # Three groups after merging
+        unique = track_matcher.get_unique_tracks()
+        # Four groups: Song1@0s cluster, Song2@30s cluster, Song3, Song1@5min.
+        assert len(unique) == 4
 
         # Helper to find track by song name and confidence
         def find_track(tracks, song_name, confidence=None):
@@ -163,7 +146,68 @@ class TestTrackMatcher:
                     return True
             return False
 
-        # Check if highest confidence tracks from each group are present
-        assert find_track(merged, "Song 1", confidence=90.0)  # First group
-        assert find_track(merged, "Song 2", confidence=85.0)  # Second group
-        assert find_track(merged, "Song 3", confidence=95.0)  # Third group
+        # Highest-confidence representative from each cluster.
+        assert find_track(unique, "Song 1", confidence=90.0)  # First group
+        assert find_track(unique, "Song 2", confidence=85.0)  # Second group
+        assert find_track(unique, "Song 3", confidence=95.0)  # Third
+        assert find_track(unique, "Song 1", confidence=70.0)  # 5min-apart replay
+
+    def test_min_confidence_filters_low_confidence(self, track_matcher):
+        """Tracks below min_confidence are dropped by add_track."""
+        track_matcher.min_confidence = 75.0
+        low = create_track("Low", "Artist", "00:00:00", confidence=50.0)
+        high = create_track("High", "Artist", "00:00:10", confidence=90.0)
+        track_matcher.add_track(low)
+        track_matcher.add_track(high)
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1
+        assert unique[0] == high
+
+    def test_artist_variant_merge_berghain(self, track_matcher):
+        """Regression for the observed Shazam bug: the same track returns
+        different collaboration artist strings on adjacent segments. The
+        Jaccard token-set match collapses them to one track."""
+        t1 = create_track(
+            "Berghain (Remix)",
+            "Conrad Taylor & ROSALÍA & Björk & Yves Tumor",
+            "00:31:40",  # 1900s
+            confidence=85.0,
+        )
+        t2 = create_track(
+            "Berghain (Remix)",
+            "ROSALÍA, Björk & Yves Tumor",
+            "00:32:30",  # 1950s — exactly one 50s segmentation step apart
+            confidence=88.0,
+        )
+        track_matcher.tracks = [t1, t2]
+
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1, (
+            f"Expected the two Berghain variants to merge, got {len(unique)}"
+        )
+
+    def test_accent_fold_artist_merge(self, track_matcher):
+        """Diacritic variants of the same artist merge (ROSALÍA == ROSALIA)."""
+        t1 = create_track("Song", "ROSALÍA", "00:00:00")
+        t2 = create_track("Song", "ROSALIA", "00:00:10")
+        track_matcher.tracks = [t1, t2]
+
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1, "Accent-folded artist variants should merge"
+
+    def test_representative_is_deterministic_under_confidence_noise(
+        self, track_matcher
+    ):
+        """The 5-point confidence deadband keeps the representative stable
+        when Shazam's per-run confidence jitters by a few points: near-equal
+        confidence falls in one bucket and earliest-time wins deterministically."""
+        base = create_track("Song", "Artist", "00:00:00", confidence=85.0)
+        # Jittered neighbor: within the deadband of 85, slightly higher.
+        jittered_high = create_track("Song", "Artist", "00:00:50", confidence=87.0)
+        track_matcher.tracks = [base, jittered_high]
+
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1
+        # 85 and 87 fall in the same 5-pt bucket (int(85/5)=17, int(87/5)=17);
+        # earliest time wins the tiebreak -> the 00:00:00 track represents.
+        assert unique[0] == base
