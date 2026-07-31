@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 # Third-party imports
 from shazamio import Shazam
 
+from tracklistify.core.exceptions import ShazamError
 from tracklistify.providers.base import TrackIdentificationProvider
 
 # Local/package imports
@@ -95,8 +96,8 @@ class ShazamProvider(TrackIdentificationProvider):
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.error(f"Error during track identification: {e}")
-            return None
+            logger.error(f"Shazam identification failed: {e}")
+            raise ShazamError(f"Shazam identification failed: {e}", cause=e) from e
 
     async def enrich_metadata(self, track_info: Dict[str, Any]) -> Dict[str, Any]:
         """Enrich track metadata with additional information."""
