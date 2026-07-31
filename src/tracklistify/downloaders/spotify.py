@@ -3,7 +3,6 @@ Spotify audio downloader implementation.
 """
 
 # Standard library imports
-import asyncio
 import os
 import re
 import subprocess
@@ -248,7 +247,7 @@ class SpotifyDownloader(Downloader):
         """Clean filename by removing illegal characters."""
         return re.sub(ILLEGAL_CHARS_REGEX, ILLEGAL_CHARS_REPLACEMENT, filename)
 
-    def _set_metadata(self, file_path: str, metadata: Dict[str, Any]) -> None:
+    async def _set_metadata(self, file_path: str, metadata: Dict[str, Any]) -> None:
         """Set audio file metadata tags."""
         if self.format == AudioFormat.M4A:
             audio = MP4(file_path)
@@ -297,11 +296,8 @@ class SpotifyDownloader(Downloader):
         if metadata["album"].get("images"):
             cover_url = metadata["album"]["images"][0]["url"]
 
-            async def get_cover():
-                async with self._session.get(cover_url) as response:
-                    return await response.read()
-
-            cover_data = asyncio.run(get_cover())
+            async with self._session.get(cover_url) as response:
+                cover_data = await response.read()
             if self.format == AudioFormat.M4A:
                 audio["covr"] = [MP4Cover(cover_data, imageformat=MP4Cover.FORMAT_JPEG)]
 
@@ -392,7 +388,7 @@ class SpotifyDownloader(Downloader):
                 temp_path.rename(output_path)
 
             # Set metadata
-            self._set_metadata(output_path, metadata)
+            await self._set_metadata(output_path, metadata)
 
             logger.info(
                 f"Downloaded: {metadata['name']} by {metadata['artists'][0]['name']}"
