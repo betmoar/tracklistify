@@ -36,9 +36,9 @@ async def test_shazam_proxy_env_is_forwarded_to_recognize(monkeypatch):
 async def test_shazam_no_proxy_env_forwards_none(monkeypatch):
     """When TRACKLISTIFY_SHAZAM_PROXY is unset, recognize gets proxy=None.
 
-    This locks the empty-string-to-None coercion at shazam.py:46 — if a
-    future edit drops the ``or None``, recognize would receive proxy=""
-    instead of None, which is the wrong no-proxy sentinel.
+    This locks the empty-string-to-None coercion — if a future edit drops
+    the ``or None``, recognize would receive proxy="" instead of None,
+    which is the wrong no-proxy sentinel.
     """
     monkeypatch.delenv("TRACKLISTIFY_SHAZAM_PROXY", raising=False)
     monkeypatch.setenv("TRACKLISTIFY_SHAZAM_COOLDOWN_SECONDS", "0")
