@@ -71,6 +71,45 @@ class TestDownloadCacheWiring:
         assert app.duration == 100.0
 
     @pytest.mark.asyncio
+    async def test_cache_hit_materializes_correct_extension(
+        self, monkeypatch, tmp_path
+    ):
+        """The cached blob is extensionless; split_audio must get a path with
+        the sidecar's ext so ffmpeg picks the right muxer (esp. for
+        --stream-copy non-mp3 like webm/m4a)."""
+        app = _make_app(monkeypatch, tmp_path)
+        url = "https://youtu.be/dQw4w9WgXcQ"
+
+        audio = tmp_path / "src.webm"
+        audio.write_bytes(b"webm-bytes")
+        await app.download_cache.set(
+            url,
+            stream_copy=True,
+            audio_path=audio,
+            metadata={"title": "T", "uploader": "U", "duration": 10.0, "ext": "webm"},
+        )
+
+        downloader = MagicMock()
+        downloader.download = AsyncMock(return_value="/nope")
+        app.downloader_factory.create_downloader = MagicMock(return_value=downloader)
+
+        captured_path = []
+        original_split = app.split_audio
+
+        def spy_split(file_path, duration_hint=None):
+            captured_path.append(str(file_path))
+            return original_split(file_path, duration_hint=duration_hint)
+
+        app.split_audio = spy_split
+        await app.process_input(url, stream_copy=True)
+
+        assert captured_path, "split_audio was never called"
+        assert captured_path[0].endswith(".webm"), (
+            f"split_audio got {captured_path[0]!r} — extension must come from "
+            f"the sidecar, not the extensionless cache blob"
+        )
+
+    @pytest.mark.asyncio
     async def test_cache_miss_downloads_and_populates(self, monkeypatch, tmp_path):
         app = _make_app(monkeypatch, tmp_path)
         url = "https://youtu.be/dQw4w9WgXcQ"

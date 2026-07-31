@@ -79,9 +79,6 @@ alignment, config bug fixes, test modernisation, lint hygiene).
   `output/[date] Artist - Title/tracklist.{json,md,m3u}` (+ audio).
 - `AsyncApp.save_output` now wires `self.uploader` into `mix_info["artist"]`
   and passes `total_duration`.
-
-### Changed
-
 - `core/__init__.py` now eager-loads only leaf modules (`exceptions`, `types`)
   and lazy-loads `AsyncApp` / `Track` / `TrackMatcher` via PEP 562
   `__getattr__`. This is what unblocks `import tracklistify` — see Fixed below.

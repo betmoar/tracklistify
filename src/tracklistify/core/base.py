@@ -182,7 +182,23 @@ class AsyncApp:
                         self.logger.debug(f"Download cache get failed: {e}")
                         cached = None
                     if cached is not None:
-                        local_path = str(cached.audio_path)
+                        # The cached blob is extensionless (named by hash);
+                        # split_audio derives the ffmpeg muxer from the path
+                        # suffix, so materialize a hardlink with the sidecar's
+                        # ext. Falls back to the raw blob path on failure
+                        # (split_audio defaults to .mp3 when no suffix).
+                        blob = cached.audio_path
+                        ext = cached.metadata.get("ext", "")
+                        if ext:
+                            suffixed = blob.with_suffix(f".{ext}")
+                            try:
+                                if not suffixed.exists():
+                                    os.link(blob, suffixed)
+                                local_path = str(suffixed)
+                            except OSError:
+                                local_path = str(blob)
+                        else:
+                            local_path = str(blob)
                         metadata = cached.metadata
                         self.logger.info(f"Download cache hit: {local_path}")
 

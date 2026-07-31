@@ -191,6 +191,9 @@ class IdentificationManager:
     """Manages track identification using configured providers."""
 
     def __init__(self, config=None, provider_factory=None, cache=None):
+        # Memoize segment sha256 digests by file_path so _cache_key() doesn't
+        # re-read+re-hash the same file once per provider in the chain.
+        self._segment_digests: dict[str, str] = {}
         self.config = config or get_config()
         self.provider_factory = provider_factory or create_provider_factory()
         self.track_matcher = TrackMatcher()
@@ -347,18 +350,27 @@ class IdentificationManager:
         stable for identical audio. Returns None when caching is disabled
         or the segment file can't be read, so the caller degrades to live
         identification.
+
+        The digest is memoized per ``file_path`` so the segment is read +
+        hashed once even when multiple providers in the chain consult the
+        cache. Reads are chunked to avoid memory spikes on large segments.
         """
         if not getattr(self.config, "cache_enabled", False):
             return None
-        try:
-            with open(segment.file_path, "rb") as f:
-                segment_bytes = f.read()
-        except OSError as e:
-            logger.debug(
-                f"Cannot read segment for cache key ({segment.file_path}): {e}"
-            )
-            return None
-        digest = hashlib.sha256(segment_bytes).hexdigest()
+        digest = self._segment_digests.get(segment.file_path)
+        if digest is None:
+            try:
+                h = hashlib.sha256()
+                with open(segment.file_path, "rb") as f:
+                    for chunk in iter(lambda: f.read(1 << 16), b""):
+                        h.update(chunk)
+            except OSError as e:
+                logger.debug(
+                    f"Cannot read segment for cache key ({segment.file_path}): {e}"
+                )
+                return None
+            digest = h.hexdigest()
+            self._segment_digests[segment.file_path] = digest
         return f"{provider_name}:{digest}"
 
     async def close(self):
