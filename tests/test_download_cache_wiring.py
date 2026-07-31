@@ -71,28 +71,62 @@ class TestDownloadCacheWiring:
         assert app.duration == 100.0
 
     @pytest.mark.asyncio
-    async def test_cache_hit_materializes_correct_extension(
+    async def test_cache_hit_suffix_matches_actual_codec_not_sidecar(
         self, monkeypatch, tmp_path
     ):
-        """The cached blob is extensionless; split_audio must get a path with
-        the sidecar's ext so ffmpeg picks the right muxer (esp. for
-        --stream-copy non-mp3 like webm/m4a)."""
+        """The cached blob is extensionless; the sidecar's ext is the
+        *container* YouTube served, which may not match the actual audio
+        codec inside (e.g. an mp3 stream labeled webm). split_audio must
+        get a suffix matching the real codec (probed via ffprobe) so
+        ffmpeg's stream-copy muxer accepts it — not the sidecar's label.
+
+        Reproduces the regression where a webm-labeled mp3 stream produced
+        zero segments ("Only Vorbis or Opus ... supported for WebM").
+        """
+        import shutil
+        import subprocess
+
+        if not shutil.which("ffmpeg"):
+            pytest.skip("ffmpeg not installed")
+
         app = _make_app(monkeypatch, tmp_path)
         url = "https://youtu.be/dQw4w9WgXcQ"
 
-        audio = tmp_path / "src.webm"
-        audio.write_bytes(b"webm-bytes")
+        # Generate a real, tiny mp3 file (2s of silence) — this is the
+        # actual codec the cache will hold.
+        real_mp3 = tmp_path / "src.mp3"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=8000:cl=mono",
+                "-t",
+                "2",
+                "-c:a",
+                "mp3",
+                str(real_mp3),
+            ],
+            check=True,
+        )
         await app.download_cache.set(
             url,
             stream_copy=True,
-            audio_path=audio,
-            metadata={"title": "T", "uploader": "U", "duration": 10.0, "ext": "webm"},
+            audio_path=real_mp3,
+            # Deliberately WRONG: the container label, not the codec inside.
+            metadata={"title": "T", "uploader": "U", "duration": 2.0, "ext": "webm"},
         )
 
         downloader = MagicMock()
         downloader.download = AsyncMock(return_value="/nope")
         app.downloader_factory.create_downloader = MagicMock(return_value=downloader)
 
+        # Capture the path split_audio receives (the real one, not a stub).
         captured_path = []
         original_split = app.split_audio
 
@@ -104,9 +138,12 @@ class TestDownloadCacheWiring:
         await app.process_input(url, stream_copy=True)
 
         assert captured_path, "split_audio was never called"
-        assert captured_path[0].endswith(".webm"), (
-            f"split_audio got {captured_path[0]!r} — extension must come from "
-            f"the sidecar, not the extensionless cache blob"
+        # The suffix must be compatible with the real codec (mp3), NOT the
+        # lying sidecar label (webm). ffmpeg stream-copy into .webm would
+        # reject an mp3 stream.
+        assert not captured_path[0].endswith(".webm"), (
+            f"split_audio got {captured_path[0]!r} — suffix must match the "
+            f"probed codec (mp3), not the sidecar label (webm)"
         )
 
     @pytest.mark.asyncio

@@ -96,6 +96,55 @@ class AsyncApp:
         self.shutdown_event.set()
         self.executor.shutdown(wait=True)
 
+    # Map probed audio codec -> a file suffix whose ffmpeg muxer accepts that
+    # codec under -c:a copy. The cached download blob is extensionless, so
+    # split_audio (which derives the muxer from Path(file_path).suffix) needs a
+    # suffix that matches the *bytes*, not yt-dlp's container label (which can
+    # disagree — e.g. an mp3 stream served in a webm container).
+    _CODEC_SUFFIXES = {
+        "mp3": ".mp3",
+        "aac": ".m4a",
+        "opus": ".opus",
+        "vorbis": ".ogg",
+        "flac": ".flac",
+        "wav": ".wav",
+        "pcm_s16le": ".wav",
+        "pcm_s24le": ".wav",
+    }
+
+    def _probe_codec_suffix(self, path: Path) -> str:
+        """Probe ``path``'s audio codec via ffprobe; return a ffmpeg-safe suffix.
+
+        Returns ``""`` on any failure (probe missing, non-zero exit, unknown
+        codec) so the caller falls back to the extensionless blob path —
+        split_audio then defaults to ``.mp3``.
+        """
+        ffprobe = shutil.which("ffprobe")
+        if not ffprobe:
+            return ""
+        try:
+            result = subprocess.run(
+                [
+                    ffprobe,
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "a:0",
+                    "-show_entries",
+                    "stream=codec_name",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=FFMPEG_SEGMENT_TIMEOUT,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        codec = result.stdout.strip().lower()
+        return self._CODEC_SUFFIXES.get(codec, "")
+
     async def process_input(
         self,
         input_path: str,
@@ -182,15 +231,19 @@ class AsyncApp:
                         self.logger.debug(f"Download cache get failed: {e}")
                         cached = None
                     if cached is not None:
-                        # The cached blob is extensionless (named by hash);
+                        # The cached blob is extensionless (named by hash).
                         # split_audio derives the ffmpeg muxer from the path
-                        # suffix, so materialize a hardlink with the sidecar's
-                        # ext. Falls back to the raw blob path on failure
-                        # (split_audio defaults to .mp3 when no suffix).
+                        # suffix and uses -c:a copy, so the suffix must match
+                        # the *actual audio codec*, not the container label in
+                        # the sidecar (which can disagree — e.g. an mp3 stream
+                        # served inside a webm container). Probe the codec and
+                        # hardlink the blob to <hash>.<codec-suffix>. Falls
+                        # back to the raw blob path on any failure (split_audio
+                        # then defaults to .mp3).
                         blob = cached.audio_path
-                        ext = cached.metadata.get("ext", "")
-                        if ext:
-                            suffixed = blob.with_suffix(f".{ext}")
+                        suffix = self._probe_codec_suffix(blob)
+                        if suffix:
+                            suffixed = blob.with_suffix(suffix)
                             try:
                                 if not suffixed.exists():
                                     os.link(blob, suffixed)
