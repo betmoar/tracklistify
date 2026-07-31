@@ -44,9 +44,9 @@ class TestConfigSecurity:
             monkeypatch.setenv("TRACKLISTIFY_SEGMENT_LENGTH", malicious)
             with pytest.raises(ValueError) as exc_info:
                 TrackIdentificationConfig()
-            assert "Invalid" in str(
-                exc_info.value
-            ), f"Expected ValueError for: {malicious}"
+            assert "Invalid" in str(exc_info.value), (
+                f"Expected ValueError for: {malicious}"
+            )
 
     def test_valid_numeric_formats_accepted(self, monkeypatch, clean_env):
         """Ensure valid numeric formats still work."""
@@ -59,9 +59,9 @@ class TestConfigSecurity:
         for env_value, expected in valid_configs:
             monkeypatch.setenv("TRACKLISTIFY_SEGMENT_LENGTH", env_value)
             config = TrackIdentificationConfig()
-            assert (
-                config.segment_length == expected
-            ), f"Expected {expected}, got {config.segment_length}"
+            assert config.segment_length == expected, (
+                f"Expected {expected}, got {config.segment_length}"
+            )
 
     def test_valid_float_formats_accepted(self, monkeypatch, clean_env):
         """Ensure valid float formats work."""
@@ -74,9 +74,9 @@ class TestConfigSecurity:
         for env_value, expected in valid_configs:
             monkeypatch.setenv("TRACKLISTIFY_MIN_CONFIDENCE", env_value)
             config = TrackIdentificationConfig()
-            assert (
-                config.min_confidence == expected
-            ), f"Expected {expected}, got {config.min_confidence}"
+            assert config.min_confidence == expected, (
+                f"Expected {expected}, got {config.min_confidence}"
+            )
 
     def test_invalid_numeric_formats_rejected(self, monkeypatch, clean_env):
         """Ensure invalid numeric formats are rejected."""
@@ -93,9 +93,9 @@ class TestConfigSecurity:
             monkeypatch.setenv("TRACKLISTIFY_SEGMENT_LENGTH", invalid)
             with pytest.raises(ValueError) as exc_info:
                 TrackIdentificationConfig()
-            assert "Invalid" in str(
-                exc_info.value
-            ), f"Expected ValueError for: {invalid}"
+            assert "Invalid" in str(exc_info.value), (
+                f"Expected ValueError for: {invalid}"
+            )
 
     def test_scientific_notation_not_needed(self, monkeypatch, clean_env):
         """Scientific notation should not be needed for our use case."""
@@ -198,9 +198,9 @@ class TestSecretMasking:
             assert test_secret not in log_text, "Secret exposed in logs!"
 
             # Masked value should appear
-            assert (
-                "sup*****456" in log_text or "SPOTIFY_CLIENT_SECRET" in log_text
-            ), "Masked value or key name should appear"
+            assert "sup*****456" in log_text or "SPOTIFY_CLIENT_SECRET" in log_text, (
+                "Masked value or key name should appear"
+            )
 
             # Non-sensitive value should appear
             assert "true" in log_text, "Non-sensitive value should appear"
