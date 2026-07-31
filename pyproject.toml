@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build>=0.8.15,<0.9.0"]
+requires = ["uv_build>=0.11.32,<0.12.0"]
 build-backend = "uv_build"
 
 [project]
@@ -29,7 +29,7 @@ dependencies = [
     "pydub>=0.25.1",
     "python-dotenv>=1.2.2",
     "requests>=2.33.0",
-    "yt-dlp[default]>=2026.03.17",
+    "yt-dlp[default]>=2026.7.4",
     "shazamio>=0.8.1",
     "click>=8.4.2",
     # audioop was removed from the stdlib in Python 3.13 (PEP 594) but pydub

@@ -1579,7 +1579,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "requests", specifier = ">=2.33.0" },
     { name = "shazamio", specifier = ">=0.8.1" },
-    { name = "yt-dlp", extras = ["default"], specifier = ">=2026.3.17" },
+    { name = "yt-dlp", extras = ["default"], specifier = ">=2026.7.4" },
 ]
 
 [package.metadata.requires-dev]
