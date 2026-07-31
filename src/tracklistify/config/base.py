@@ -208,6 +208,7 @@ class TrackIdentificationConfig(BaseConfig):
     download_quality: str = field(default="192")
     download_format: str = field(default="mp3")
     download_max_retries: int = field(default=3)
+    download_cache_enabled: bool = field(default=True)
 
     def __post_init__(self):
         """Initialize configuration after dataclass creation.

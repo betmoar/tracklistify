@@ -75,6 +75,7 @@ class TrackIdentificationConfigDict(TypedDict):
     download_quality: str
     download_format: str
     download_max_retries: int
+    download_cache_enabled: bool
 
     # Base config settings
     output_dir: str

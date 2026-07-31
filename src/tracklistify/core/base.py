@@ -17,6 +17,7 @@ from typing import List, Optional
 from mutagen import File
 
 # Local/package imports
+from tracklistify.cache.download import DownloadCache
 from tracklistify.core.exceptions import TrackIdentificationError
 from tracklistify.core.track import Track
 from tracklistify.core.types import AudioSegment
@@ -43,6 +44,7 @@ class AsyncApp:
         self.config = config or get_config(force_refresh=True)
         self.provider_factory = create_provider_factory()
         self.downloader_factory = DownloaderFactory()
+        self.download_cache = DownloadCache(Path(self.config.cache_dir))
         self.logger = get_logger(__name__)
         self.shutdown_event = asyncio.Event()
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -163,16 +165,52 @@ class AsyncApp:
                 )
                 if downloader is None:
                     raise ValueError("Failed to create downloader")
-                self.logger.info("Downloading audio...")
-                local_path = await downloader.download(validated_path)
+
+                # Download cache (URL-keyed, per-provider canonical). A hit
+                # skips the network entirely and reads metadata from the
+                # sidecar; a miss downloads then populates the cache. Gated
+                # by config.download_cache_enabled. Failures degrade to a
+                # live download — never abort the run.
+                local_path = None
+                metadata = None
+                if self.config.download_cache_enabled:
+                    try:
+                        cached = await self.download_cache.get(
+                            validated_path, stream_copy
+                        )
+                    except Exception as e:
+                        self.logger.debug(f"Download cache get failed: {e}")
+                        cached = None
+                    if cached is not None:
+                        local_path = str(cached.audio_path)
+                        metadata = cached.metadata
+                        self.logger.info(f"Download cache hit: {local_path}")
+
                 if local_path is None:
-                    raise ValueError("local_path cannot be None")
-                self.logger.info(f"Downloaded audio to: {local_path}")
+                    self.logger.info("Downloading audio...")
+                    downloaded = await downloader.download(validated_path)
+                    if downloaded is None:
+                        raise ValueError("local_path cannot be None")
+                    self.logger.info(f"Downloaded audio to: {downloaded}")
+                    local_path = downloaded
+                    metadata = (
+                        getattr(downloader, "get_last_metadata", lambda: None)() or {}
+                    )
+                    # Populate the cache (best-effort).
+                    if self.config.download_cache_enabled:
+                        try:
+                            await self.download_cache.set(
+                                validated_path,
+                                stream_copy,
+                                Path(local_path),
+                                metadata,
+                            )
+                        except Exception as e:
+                            self.logger.debug(f"Download cache set failed: {e}")
 
                 # Store metadata for output
-                metadata = getattr(downloader, "get_last_metadata", lambda: None)()
                 if metadata:
-                    self.logger.debug(f"yt-dlp metadata keys: {list(metadata.keys())}")
+                    self.logger.debug(f"metadata keys: {list(metadata.keys())}")
                     self.original_title = sanitizer(metadata.get("title", ""))
                     self.uploader = sanitizer(metadata.get("uploader", ""))
                     try:

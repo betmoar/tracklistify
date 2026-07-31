@@ -103,6 +103,7 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
             "download_quality",
             "download_format",
             "download_max_retries",
+            "download_cache_enabled",
         ],
     ),
 ]
