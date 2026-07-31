@@ -193,3 +193,47 @@ async def test_multi_entry_set_warns_about_truncation(monkeypatch, tmp_path, cap
     assert "3-track set" in warnings[0].getMessage()
     # Still returns the first entry.
     assert dl.get_last_metadata()["id"] == "first"
+
+
+@pytest.mark.asyncio
+async def test_download_is_bounded_to_a_single_playlist_entry(monkeypatch, tmp_path):
+    """yt-dlp must be told to fetch only the first entry.
+
+    ``extract_info(url, download=True)`` on a playlist URL downloads EVERY
+    entry before returning, so unwrapping the returned info dict does not
+    prevent the fetch. Against a real 15-track SoundCloud /sets/ URL this
+    pulled 606MB across 6 tracks before being killed. The mocked tests
+    above cannot see this — they stub extract_info entirely — so assert the
+    option that bounds it.
+    """
+    captured = {}
+
+    class _CapturingYdl(_FakeYdl):
+        pass
+
+    def _factory(opts):
+        captured.update(opts)
+        return _CapturingYdl(
+            {
+                "id": "x",
+                "title": "T",
+                "uploader": "U",
+                "duration": 1,
+                "ext": "mp3",
+                "requested_downloads": [{"filepath": str(audio)}],
+            },
+            tmp_path,
+        )
+
+    audio = tmp_path / "x.mp3"
+    audio.write_bytes(b"a")
+
+    monkeypatch.setattr(ytdlp, "yt_dlp", MagicMock(YoutubeDL=_factory))
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    await dl.download("https://soundcloud.com/user/sets/whatever")
+
+    assert captured.get("playlist_items") == "1", (
+        "ydl_opts must set playlist_items='1' or a /sets/ URL downloads "
+        "every track in the set"
+    )

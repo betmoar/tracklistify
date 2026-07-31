@@ -187,6 +187,14 @@ class YtDlpDownloader(Downloader):
             "progress_hooks": [progress_hook],
             "postprocessor_hooks": [self._postprocessor_hook],
             "no_warnings": True,  # Suppress unnecessary warnings
+            # Bound the fetch to the first entry. A SoundCloud ``/sets/``
+            # URL is a playlist, and ``extract_info(download=True)`` would
+            # otherwise download EVERY track in it before returning —
+            # unwrapping the returned metadata afterwards is far too late.
+            # Observed against a real 15-track set: 606MB pulled across 6
+            # tracks before the run was killed. We only ever process one
+            # track, so fetch exactly one.
+            "playlist_items": "1",
         }
 
         # Only attach the MP3 transcode postprocessor when stream-copy is
