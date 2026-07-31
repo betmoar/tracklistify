@@ -16,6 +16,13 @@ on:
     branches: [main]
   pull_request:
 
+# Least-privilege: every job only reads the repo. No job publishes releases,
+# pushes commits, or deploys — so the GITHUB_TOKEN needs nothing beyond
+# contents: read. Without this block the token inherits the repo default
+# (broader write scopes), which CodeQL flags as actions/missing-workflow-permissions.
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
