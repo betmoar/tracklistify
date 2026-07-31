@@ -39,6 +39,7 @@ SENSITIVE_PATTERNS = [
     "client_id",
     "auth",
     "credential",
+    "proxy",
 ]
 
 
