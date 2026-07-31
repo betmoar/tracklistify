@@ -4,21 +4,42 @@ From the 2026-07 handoff audit. Ordered by priority. Each item has enough
 context to be picked up cold. "Fixed" items are listed at the bottom so
 nobody re-audits them from scratch.
 
-## P1 — wire the cache into identification — DONE
+## P2 — TrackMatcher dedup misses artist-string variants
 
-Wired in `feat/wire-cache-identification`. `IdentificationManager.identify_tracks`
-now consults `get_cache()` before each provider call (key
-`f"{provider}:{sha256(segment_bytes)}"`) and stores successful responses;
-all cache I/O is best-effort (failures degrade to live, never abort), gated
-by `config.cache_enabled`. Covered by `tests/test_cache_wiring.py` (9 cases).
+Same track can appear twice in output when Shazam returns different artist
+strings across overlapping segments. Observed: `Berghain (Remix)` appeared
+at both 1900s (`Conrad Taylor & ROSALÍA & Björk & Yves Tumor`) and 1950s
+(`ROSALÍA, Björk & Yves Tumor`) — same track, 50s apart. `TrackMatcher`
+failed to merge because (a) the artist strings differ after normalization,
+so `is_similar_to`'s exact-match path fails, and (b) 50s apart exceeds
+`time_threshold` (30s default), so the proximity path wouldn't catch it
+either even with matching strings. Run-to-run candidate ordering variance
+(Shazam returns slightly different confidences) means *which* candidate
+wins a merge cluster can shift, changing the representative `time_in_mix`
+between runs of the same audio.
 
-**Remaining internal cache debt (fix opportunistically):**
-`SizeStrategy` treats the whole-cache byte budget as a per-entry limit and
-nothing enforces aggregate size (no eviction); compression detection sniffs
-zlib magic bytes instead of using the stored `compression` flag (breaks if
-anyone wires `cache_compression_level` ≠ 6); `BaseCache.get()` rewrites the
-entry file on every hit (write amplification); `_stats["entries"]`
-over-counts overwrites.
+Levers: fuzzy title matching (so `Berghain (Remix)` merges regardless of
+artist noise), or raise `time_threshold`, or both. Pre-existing behavior —
+not introduced by the cache work. Confirmed against the Sara Landry
+SoundCloud mix.
+
+## P2 — downloader: SoundCloud `/sets/` + robust output path
+
+From [discover-dmc commit e0231a5](https://github.com/discover-dmc/tracklistify/commit/e0231a5767ab7bdee04193a6e6046d17e4dabc0d)
+(no code overlap with this repo's cache work — touches `downloaders/ytdlp.py` only):
+
+1. **Single-entry playlist unwrap:** SoundCloud `/sets/` URLs extract as a
+   playlist container (`info["_type"] == "playlist"`); the container's
+   id/ext/duration describe the *set*, not the track. Without unwrapping
+   to `entries[0]`, wrong metadata propagates. The download cache makes
+   this worse: the wrong title/duration now persists across runs via the
+   sidecar. Unwrap before `self.last_metadata = info`.
+2. **Prefer `info["requested_downloads"][0]["filepath"]`** over
+   reconstructing the output path — strictly more robust against muxing
+   extension changes. Current code reconstructs via `prepare_filename`.
+
+Both compose cleanly with the download cache. Pull in together; add a test
+for the `/sets/` URL shape against the cache key.
 
 ## P2 — decide `min_confidence` semantics
 
@@ -100,10 +121,32 @@ field description. Low value — consider generating from
   mark (warning noise); register it in pyproject or drop it.
 - `pytest-asyncio` will eventually require `asyncio_default_fixture_loop_scope`;
   set it explicitly in `[tool.pytest.ini_options]` when upgrading.
+- **Cache debt (identification + download):** the download cache has no
+  TTL or eviction (v1 unbounded; `cache_max_size` is 1MB and too small for
+  audio — manual `rm -rf cache_dir/downloads`). `download_quality`/
+  `download_format` are not wired through the factory, so they're excluded
+  from the download cache key (re-runs at different quality serve the old
+  file until the key is extended). On the identification cache,
+  `SizeStrategy` treats the byte budget as per-entry (no aggregate
+  eviction); compression detection sniffs zlib magic instead of the stored
+  flag; `BaseCache.get()` rewrites the entry on every hit (write
+  amplification); `_stats["entries"]` over-counts overwrites.
 
 ---
 
-## Fixed in the 2026-07 audit (do not re-fix; locked by tests)
+## Fixed
+
+### 2026-07 cache + output work (`feat/wire-cache-identification`, PR #65)
+
+| Fix | Where | Test |
+|---|---|---|
+| Identification cache never called by production code | `utils/identification.py::IdentificationManager` | `tests/test_cache_wiring.py` |
+| Downloaded audio re-fetched every run | `cache/download.py`, `core/base.py::process_input` | `tests/test_download_cache*.py` |
+| Output was a flat dir; M3U emitted comments only (no playable URI, EXTINF always -1) | `exporters/tracklist.py`, `core/base.py::save_output` | `tests/test_output_subfolders.py`, `tests/test_m3u_playable.py` |
+| Mixcloud stored no metadata (`get_last_metadata()` returned None) | fixed via download-cache sidecar | `tests/test_download_cache_wiring.py` |
+| Folder names said "Unknown Artist" (uploader never wired into output) | `core/base.py::save_output` → `mix_info["artist"]` | `tests/test_output_subfolders.py` |
+
+### Fixed in the 2026-07 audit (do not re-fix; locked by tests)
 
 | Fix | Where | Test |
 |---|---|---|

@@ -98,6 +98,25 @@ json/markdown/m3u via `TracklistOutput`, clean up the temp dir.
    `config.cache_enabled`. (The data-loss bugs that made wiring dangerous
    were fixed in the 2026-07 audit: TTL disabled by stored `None`, index
    never persisted — locked by tests I7/I8.)
+6. **Download cache is URL-keyed and per-provider canonicalized.** Before
+   downloading, `process_input` checks a `DownloadCache`
+   (`cache_dir/downloads/<sha256>` + `.meta.json` sidecar) keyed by
+   `sha256(f"{canonicalize_url(url)}|stream_copy={stream_copy}")`.
+   Canonicalization (`downloaders/cache_key.py`) is offline and
+   per-provider: YouTube URLs collapse to `yt:<video_id>` (all shapes —
+   watch?v=, youtu.be/, /shorts/, /embed/, /live/); SoundCloud to
+   `sc:<host><path>`; Mixcloud to `mc:<user>_<slug>`; unknown to
+   `raw:<clean_url>`. On a hit the network is skipped and metadata flows
+   from the sidecar. Separate from `BaseCache` (which rejects binary
+   blobs). No TTL/eviction in v1. Gated by `config.download_cache_enabled`.
+7. **Output is self-contained per set.** Each run produces
+   `output/[date] Artist - Title/` containing `tracklist.{json,md,m3u}`
+   **and the source audio** (copied in via `_copy_audio_to_output`). The
+   folder is movable — the M3U references the audio by relative filename,
+   not absolute path. The M3U uses VLC `#EXTVLCOPT:start-time` for
+   per-track seeking (single source file; the standard DJ-mix pattern);
+   EXTINF duration is the inter-track gap, last track uses
+   `total_duration − last_start`.
 3. **`downloaders/spotify.py` and `exporters/spotify.py` are dead ends.**
    No factory routes Spotify URLs, and the exporter needs a user-auth
    token while `SpotifyProvider` only does client-credentials (which can
