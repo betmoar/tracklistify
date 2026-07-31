@@ -75,19 +75,32 @@ json/markdown/m3u via `TracklistOutput`, clean up the temp dir.
   `get_config(force_refresh=True)` *and* clear `TRACKLISTIFY_*` env vars.
 - Confidence is 0–100 on `Track`, but `config.min_confidence` is 0.0–1.0.
   **These scales are different.** See landmine below.
+- **`get_unique_tracks` is the sole dedup authority.** `add_track` only
+  confidence-gates and appends; it does not dedup. Two tracks are "the
+  same" iff their normalized titles are equal AND their artist token sets
+  overlap with Jaccard ≥ `_ARTIST_THRESHOLD` (0.34) — this collapses
+  Shazam's collaboration-string noise (`"A & B & C"` vs `"B, C"`) without
+  merging genuinely different artists (Jaccard 0.0). Merging also requires
+  time proximity within `2 * (segment_length - overlap_duration)` (100s
+  default), so the same track played twice in a set stays two tracks. The
+  cluster representative is picked by `_rep_key`: a 5-point confidence
+  deadband (absorbing Shazam's per-run jitter) then earliest time, so the
+  chosen `time_in_mix` is stable across runs of identical audio.
 - Segment filenames encode `start_time` and live in a per-run temp subdir
   named `<pid>-<hex8>`; the stale-dir sweeper (`_sweep_stale_run_dirs`)
   assumes that shape and kills only dirs whose PID is dead.
 
 ## Landmines (non-obvious, will bite)
 
-1. **`config.min_confidence` is currently NOT applied.**
-   `TrackMatcher.__init__` hardcodes `_min_confidence = 0` ("keep all
-   tracks"). This appears deliberate (commit 2a37054-era behavior), so the
-   audit did not change it, but it means the documented config knob is a
-   no-op AND its unit (0–1) differs from Track confidence (0–100). If you
-   wire it up: `self._min_confidence = config.min_confidence * 100`, and
-   expect output to shrink. Decide, don't drift — see BACKLOG P2.
+1. **`config.min_confidence` is wired, with a scale gotcha.**
+   `TrackMatcher.__init__` scales it `config.min_confidence * 100` (config
+   is 0–1, Track confidence is 0–100). Default `0.0` keeps all tracks; the
+   default was lowered from `0.5` to `0.0` so output is unchanged until a
+   user turns the knob. Dedup itself is **not** here — `get_unique_tracks`
+   is the sole dedup authority (token-set artist Jaccard + proximity), so
+   see the dedup section. Raising `min_confidence` filters at `add_track`
+   time. Note the `mock_config` fixture must stay `0.0` or it filters the
+   whole suite.
 2. **The cache is keyed by content, not path.** `identify_tracks` caches
    every successful provider response under
    `f"{provider_name}:{sha256(segment_bytes)}"`. Temp segment paths are

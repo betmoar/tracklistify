@@ -4,55 +4,6 @@ From the 2026-07 handoff audit. Ordered by priority. Each item has enough
 context to be picked up cold. "Fixed" items are listed at the bottom so
 nobody re-audits them from scratch.
 
-## P2 — TrackMatcher dedup misses artist-string variants
-
-Same track can appear twice in output when Shazam returns different artist
-strings across overlapping segments. Observed: `Berghain (Remix)` appeared
-at both 1900s (`Conrad Taylor & ROSALÍA & Björk & Yves Tumor`) and 1950s
-(`ROSALÍA, Björk & Yves Tumor`) — same track, 50s apart. `TrackMatcher`
-failed to merge because (a) the artist strings differ after normalization,
-so `is_similar_to`'s exact-match path fails, and (b) 50s apart exceeds
-`time_threshold` (30s default), so the proximity path wouldn't catch it
-either even with matching strings. Run-to-run candidate ordering variance
-(Shazam returns slightly different confidences) means *which* candidate
-wins a merge cluster can shift, changing the representative `time_in_mix`
-between runs of the same audio.
-
-Levers: fuzzy title matching (so `Berghain (Remix)` merges regardless of
-artist noise), or raise `time_threshold`, or both. Pre-existing behavior —
-not introduced by the cache work. Confirmed against the Sara Landry
-SoundCloud mix.
-
-## P2 — downloader: SoundCloud `/sets/` + robust output path
-
-From [discover-dmc commit e0231a5](https://github.com/discover-dmc/tracklistify/commit/e0231a5767ab7bdee04193a6e6046d17e4dabc0d)
-(no code overlap with this repo's cache work — touches `downloaders/ytdlp.py` only):
-
-1. **Single-entry playlist unwrap:** SoundCloud `/sets/` URLs extract as a
-   playlist container (`info["_type"] == "playlist"`); the container's
-   id/ext/duration describe the *set*, not the track. Without unwrapping
-   to `entries[0]`, wrong metadata propagates. The download cache makes
-   this worse: the wrong title/duration now persists across runs via the
-   sidecar. Unwrap before `self.last_metadata = info`.
-2. **Prefer `info["requested_downloads"][0]["filepath"]`** over
-   reconstructing the output path — strictly more robust against muxing
-   extension changes. Current code reconstructs via `prepare_filename`.
-
-Both compose cleanly with the download cache. Pull in together; add a test
-for the `/sets/` URL shape against the cache key.
-
-## P2 — decide `min_confidence` semantics
-
-`config.min_confidence` (0.0–1.0) is documented and validated but ignored:
-`TrackMatcher` hardcodes 0. Options:
-- (a) Wire it: `TrackMatcher.__init__` sets `self._min_confidence =
-  config.min_confidence * 100`. Behavior change: default 0.5 would drop
-  sub-50% matches — decide whether the default should become 0.0 to
-  preserve current output.
-- (b) Remove the field and its env var.
-Recommendation: (a) with default lowered to 0.0, so the knob works but
-nothing changes until a user turns it.
-
 ## P2 — Spotify enrichment is built but unreachable
 
 `SpotifyProvider` (search/enrich, client-credentials auth) works but no
@@ -65,6 +16,17 @@ pipeline stage calls `enrich_metadata`. The natural hook: after
 `/me/playlists`, which client-credentials tokens can NEVER access. Wiring it
 requires implementing the authorization-code flow (user consent, token
 refresh). Don't attempt as a drive-by; it's a feature project.
+
+**Scope note (from the 2026-07 exploration):** the hook alone is invisible.
+No exporter serializes `Track.metadata` — `_save_json` emits a fixed field
+list, markdown and M3U build their own strings. Wiring enrichment without
+also extending `_save_json` leaves the enriched data sitting unused. Also:
+`enrich_metadata` takes a plain dict keyed on `title`/`artist` (a `Track`
+uses `song_name`), mutates in place, and deliberately re-raises
+`RateLimitError`/`AuthenticationError` — the caller must catch those two.
+Keep Spotify **out** of `KNOWN_PROVIDERS` (it has no `identify_track`, so
+`-p spotify` would crash); use a separate `Optional[SpotifyProvider]`
+accessor that returns `None` when creds are absent.
 
 ## P3 — delete or rescue `downloaders/spotify.py`
 
@@ -135,6 +97,33 @@ field description. Low value — consider generating from
 ---
 
 ## Fixed
+
+### 2026-07 P2 correctness batch (`fix/p2-dedup-confidence-downloader`)
+
+| Fix | Where | Test |
+|---|---|---|
+| Dedup missed artist-string variants (`Berghain (Remix)` twice, 50s apart) — the shipping `get_unique_tracks` keyed on exact `artist\|song` and was time-blind | `core/track.py::TrackMatcher.get_unique_tracks` | `tests/test_track_matcher.py::test_artist_variant_merge_berghain` |
+| Representative `time_in_mix` flipped between runs (strict `>` on noisy confidence) | `core/track.py::_rep_key` (5-pt deadband + earliest-time tiebreak) | `test_representative_is_deterministic_under_confidence_noise` |
+| `config.min_confidence` was a no-op (hardcoded 0); default 0.5 → 0.0 so output is unchanged until the knob is turned | `core/track.py::TrackMatcher.__init__`, `config/base.py` | `test_min_confidence_filters_low_confidence` |
+| `TrackMatcher` re-resolved the global config, ignoring an injected one | `utils/identification.py` passes `self.config` | `tests/test_track_matcher.py` fixture |
+| SoundCloud `/sets/` container metadata propagated (wrong title/duration/filename) | `downloaders/ytdlp.py::download` unwraps `_type == "playlist"` → `entries[0]` | `tests/test_ytdlp.py` |
+| Output path reconstructed via `prepare_filename` missed muxing ext changes | prefer `requested_downloads[0]["filepath"]` | `tests/test_ytdlp.py` |
+| Stale pre-fix `/sets/` metadata served forever (cache has no TTL) | `cache/download.py::KEY_VERSION` in key material | `tests/test_download_cache.py` |
+
+**Dead code removed:** `merge_nearby_tracks` + its six helpers
+(`_create_track_group`, `_should_add_to_group`, `_add_to_group`,
+`_get_best_track`, `_is_unique_track`, `_add_to_merged_list`). These had
+zero production callers — the backlog's original framing of the dedup bug
+described *these*, not the shipping `get_unique_tracks`, which is why the
+proposed levers (fuzzy `is_similar_to`, raise `time_threshold`) would not
+have fixed anything. `add_track` no longer dedups; it confidence-gates and
+appends.
+
+**Known limitation (accepted, not fixed):** `"Berghain"` vs
+`"Berghain (Remix)"` will not merge — titles must match exactly after
+normalization. No fuzzy ratio separates that case from the
+correctly-separate `"(Remix)"` vs `"(Radio Edit)"` pair (both score 0.727),
+so exact-after-normalize is the only rule correct on both.
 
 ### 2026-07 cache + output work (`feat/wire-cache-identification`, PR #65)
 

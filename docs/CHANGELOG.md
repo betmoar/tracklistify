@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Release dates are in YYYY-MM-DD format.
 
+## [Unreleased]
+
+### Fixed
+
+- **Dedup now merges artist-string variants.** The same track appeared twice
+  in output when Shazam returned different collaboration artist strings on
+  adjacent segments (`Berghain (Remix)` at 1900s as
+  `Conrad Taylor & ROSALÍA & Björk & Yves Tumor` and at 1950s as
+  `ROSALÍA, Björk & Yves Tumor`). `get_unique_tracks` — the shipping dedup
+  path — keyed on exact `artist|song` strings and ignored time entirely.
+  It now clusters by identity (normalized-title equality + artist token-set
+  Jaccard ≥ 0.34) within a proximity window derived from the segmentation
+  step (`2 * (segment_length - overlap_duration)`, 100s by default), so
+  adjacent-segment detections merge while a track genuinely played twice in
+  a set stays two entries.
+- **Stable representative selection.** Cluster representatives were chosen
+  by strict `>` on confidence, so Shazam's per-run jitter could change which
+  detection won — and therefore the reported `time_in_mix` — between runs of
+  identical audio. Selection now quantizes confidence into 5-point buckets
+  and breaks ties by earliest time, then lexicographically.
+- **`config.min_confidence` is no longer a no-op.** `TrackMatcher` hardcoded
+  a 0 threshold, so the documented (and validated) knob did nothing. It is
+  now applied, scaled from the config's 0.0–1.0 range to `Track.confidence`'s
+  0–100. The default drops from `0.5` to `0.0` so existing output is
+  unchanged until a user raises it.
+- **SoundCloud `/sets/` URLs no longer propagate container metadata.** These
+  extract as a playlist whose id/ext/duration describe the *set*, not the
+  track; the downloader now unwraps to `entries[0]` before anything reads the
+  info dict. Previously the wrong title/duration reached the output folder
+  name, the M3U, and — via the sidecar — persisted in the download cache.
+- **Output path resolution prefers `requested_downloads[0]["filepath"]`**
+  (the path yt-dlp actually wrote) over reconstructing it with
+  `prepare_filename`, which missed extension changes made during muxing.
+- **Download cache entries are version-stamped** (`KEY_VERSION` in the key
+  material), invalidating stale pre-fix `/sets/` metadata that would
+  otherwise be served indefinitely — the cache has no TTL or eviction.
+
+### Removed
+
+- Dead `TrackMatcher.merge_nearby_tracks` and its six private helpers. They
+  had no production callers; `get_unique_tracks` is now the sole dedup
+  authority and `add_track` only confidence-gates and appends.
+
+### Changed
+
+- `TrackMatcher.__init__` accepts an optional config, and
+  `IdentificationManager` passes its own — previously the matcher always
+  re-resolved the global singleton, so an injected config never reached it.
+
 ## [0.8.2] - 2026-07-31
 
 End-to-end caching and self-contained output: wires the existing
