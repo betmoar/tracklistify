@@ -4,29 +4,15 @@ From the 2026-07 handoff audit. Ordered by priority. Each item has enough
 context to be picked up cold. "Fixed" items are listed at the bottom so
 nobody re-audits them from scratch.
 
-## P1 — wire the cache into identification
+## P1 — wire the cache into identification — DONE
 
-**What:** `cache/` (~1600 lines, tested, config-backed) is not called by any
-production code. Every run re-queries Shazam for every segment, even on
-reruns of the same file. `cache_enabled=true` in config is currently a no-op.
+Wired in `feat/wire-cache-identification`. `IdentificationManager.identify_tracks`
+now consults `get_cache()` before each provider call (key
+`f"{provider}:{sha256(segment_bytes)}"`) and stores successful responses;
+all cache I/O is best-effort (failures degrade to live, never abort), gated
+by `config.cache_enabled`. Covered by `tests/test_cache_wiring.py` (9 cases).
 
-**Why it's safe now:** the two data-loss bugs that made wiring dangerous were
-fixed in this audit (TTL-None disabling expiry; index never persisted →
-entries invisible cross-process and then deleted as "orphans" by cleanup).
-Invariant tests I7/I8 lock both.
-
-**How:** in `IdentificationManager.identify_tracks`, before the provider
-loop for a segment:
-1. `key = f"{provider_name}:{sha256(segment file bytes)}"` (hash the bytes,
-   not the path — temp paths are per-run).
-2. `cached = await cache.get(key)`; on hit, feed it to `_track_from_info`.
-3. On provider success, `await cache.set(key, track_info)`.
-4. Cache failures must degrade to identification, never abort the run
-   (`try/except` around both get and set, log at debug).
-Gate on `config.cache_enabled`. Add tests mirroring the fallback tests'
-stub pattern.
-
-**Remaining internal debt (fix opportunistically, don't block wiring):**
+**Remaining internal cache debt (fix opportunistically):**
 `SizeStrategy` treats the whole-cache byte budget as a per-entry limit and
 nothing enforces aggregate size (no eviction); compression detection sniffs
 zlib magic bytes instead of using the stored `compression` flag (breaks if

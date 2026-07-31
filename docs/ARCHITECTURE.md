@@ -54,8 +54,8 @@ json/markdown/m3u via `TracklistOutput`, clean up the temp dir.
 - **I6** Every provider request outcome is reported to
   `RateLimiter.record_result` so the circuit breaker actually learns.
 - **I7/I8** Cache TTL expiry works and the cache index is persisted on
-  every mutation. (The cache is still NOT wired into the pipeline — see
-  landmine below.)
+  every mutation. The cache is consulted in `identify_tracks` (see landmine
+  2 for the keying contract).
 
 ## Implicit contracts (assumed, not checked — tread carefully)
 
@@ -88,11 +88,16 @@ json/markdown/m3u via `TracklistOutput`, clean up the temp dir.
    no-op AND its unit (0–1) differs from Track confidence (0–100). If you
    wire it up: `self._min_confidence = config.min_confidence * 100`, and
    expect output to shrink. Decide, don't drift — see BACKLOG P2.
-2. **The cache subsystem (`cache/`, ~1600 lines) is not wired into any
-   production path.** Nothing calls `get_cache()` outside tests. Internal
-   data-loss bugs (TTL disabled, index never persisted) were fixed in the
-   2026-07 audit so it is now *safe* to wire, but identification results
-   are still re-fetched on every run. Wiring plan in BACKLOG P1.
+2. **The cache is keyed by content, not path.** `identify_tracks` caches
+   every successful provider response under
+   `f"{provider_name}:{sha256(segment_bytes)}"`. Temp segment paths are
+   per-run, so the path is unhashable; the bytes are stable for identical
+   audio. Cache I/O failures (get/set) are swallowed at debug level and
+   degrade to live identification — never abort the run. No-match responses
+   (provider returned `None` or empty music) are not cached. Gated by
+   `config.cache_enabled`. (The data-loss bugs that made wiring dangerous
+   were fixed in the 2026-07 audit: TTL disabled by stored `None`, index
+   never persisted — locked by tests I7/I8.)
 3. **`downloaders/spotify.py` and `exporters/spotify.py` are dead ends.**
    No factory routes Spotify URLs, and the exporter needs a user-auth
    token while `SpotifyProvider` only does client-credentials (which can

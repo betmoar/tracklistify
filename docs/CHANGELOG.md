@@ -43,6 +43,12 @@ modernises the test suite, and tightens lint/format hygiene.
   `recognize(..., proxy=...)`. Empty by default (direct connection);
   `proxy` added to the sensitive-field patterns so a credential embedded
   in the proxy URL is redacted in logs.
+- Identification results are now cached. `IdentificationManager.identify_tracks`
+  consults the cache (`get_cache()`) before each provider call, keyed by
+  `f"{provider}:{sha256(segment_bytes)}"`, and stores successful responses
+  for reuse across reruns. Cache I/O is best-effort (failures degrade to
+  live identification, never abort the run); gated by the existing
+  `cache_enabled` config flag. Closes the P1 backlog item.
 
 ### Changed
 

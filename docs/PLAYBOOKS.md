@@ -67,10 +67,10 @@ arrival for its entire life pre-2026-07. The pipeline passes segments.
    `INLINE_COMMENTS` entry for units/bounds.
 4. `uv run python scripts/generate_env_example.py`
 5. **Actually consume the field.** Grep for an existing consumer before
-   assuming; this codebase already shipped `min_confidence`,
-   `fallback_*` (pre-2026-07), `overlap_strategy`, `min_segment_length`,
-   and most `cache_*` fields as no-ops. A config option nobody reads is a
-   lie to the user — if you can't wire it now, don't add it.
+   assuming; this codebase has shipped documented config knobs that were
+   no-ops (`min_confidence`, `fallback_*` pre-2026-07,
+   `overlap_strategy`, `min_segment_length`). A config option nobody
+   reads is a lie to the user — if you can't wire it now, don't add it.
 
 **The trap:** step 5. The env example and dataclass make an option *look*
 supported long before anything reads it.

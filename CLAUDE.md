@@ -46,7 +46,7 @@ this table.
 - **`--stream-copy` (`-sc`) keeps the source codec end-to-end.** yt-dlp skips its MP3 transcode and segments stream-copy whatever YouTube served (opus/webm or m4a). Shazamio decodes via pydub/ffmpeg so any format works; ACRCloud historically prefers MP3 — if identification rates drop with `-sc` + ACRCloud, drop the flag for that run.
 - **Provider secrets are env-only, never config-dataclass fields** — keeps them out of `repr()` and validation error messages. ACRCloud: `TRACKLISTIFY_ACR_ACCESS_KEY`/`_SECRET` (+ optional `_HOST`), read in `providers/factory.py`. Follow this pattern for new providers.
 - **`config.min_confidence` (0–1) and `Track.confidence` (0–100) are different scales**, and the config knob is currently a deliberate no-op (`TrackMatcher` hardcodes 0). Read docs/BACKLOG.md P2 before wiring it.
-- **The cache subsystem is NOT wired into the pipeline.** `cache_enabled` changes nothing today; internals were made safe (TTL, index persistence) in the 2026-07 audit. Wiring plan: docs/BACKLOG.md P1.
+- **The cache is wired into identification.** `IdentificationManager.identify_tracks` consults `get_cache()` before each provider call (key `f"{provider}:{sha256(segment_bytes)}"`) and stores successful responses. All cache I/O is best-effort (failures degrade to live identification, never abort). Gated by `config.cache_enabled`.
 - **`tests/test_handoff_invariants.py` locks the load-bearing invariants** (validation enforced, positive segmentation step, provider constructibility, fallback chain, circuit-breaker wiring, cache TTL/index persistence). If one fails, read docs/ARCHITECTURE.md before "fixing" the test.
 
 ---
