@@ -295,8 +295,8 @@ class AsyncApp:
                 f"with a non-positive step of {step}s."
             )
         if shutil.which("ffmpeg") is None:
-            self.logger.error(
-                "ffmpeg not found on PATH — segmentation will fail. "
+            raise RuntimeError(
+                "ffmpeg not found on PATH — segmentation cannot proceed. "
                 "Install it first (e.g. `apt install ffmpeg` or "
                 "`brew install ffmpeg`)."
             )

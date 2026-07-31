@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from typing import Dict, Optional, Union
 
+from tracklistify.core.types import AudioSegment
+
 # Third-party imports
 import aiohttp
 from aiohttp import ClientTimeout, FormData
@@ -95,7 +97,7 @@ class ACRCloudProvider(TrackIdentificationProvider):
         return {"data": data}
 
     async def identify_track(
-        self, audio_segment: Union[bytes, object], start_time: float = 0
+        self, audio_segment: Union[bytes, AudioSegment], start_time: float = 0
     ) -> Dict:
         """
         Identify a track from an audio segment or raw audio bytes.
