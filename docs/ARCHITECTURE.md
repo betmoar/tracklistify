@@ -54,8 +54,8 @@ json/markdown/m3u via `TracklistOutput`, clean up the temp dir.
 - **I6** Every provider request outcome is reported to
   `RateLimiter.record_result` so the circuit breaker actually learns.
 - **I7/I8** Cache TTL expiry works and the cache index is persisted on
-  every mutation. (The cache is still NOT wired into the pipeline — see
-  landmine below.)
+  every mutation. The cache is consulted in `identify_tracks` (see landmine
+  2 for the keying contract).
 
 ## Implicit contracts (assumed, not checked — tread carefully)
 
@@ -88,11 +88,35 @@ json/markdown/m3u via `TracklistOutput`, clean up the temp dir.
    no-op AND its unit (0–1) differs from Track confidence (0–100). If you
    wire it up: `self._min_confidence = config.min_confidence * 100`, and
    expect output to shrink. Decide, don't drift — see BACKLOG P2.
-2. **The cache subsystem (`cache/`, ~1600 lines) is not wired into any
-   production path.** Nothing calls `get_cache()` outside tests. Internal
-   data-loss bugs (TTL disabled, index never persisted) were fixed in the
-   2026-07 audit so it is now *safe* to wire, but identification results
-   are still re-fetched on every run. Wiring plan in BACKLOG P1.
+2. **The cache is keyed by content, not path.** `identify_tracks` caches
+   every successful provider response under
+   `f"{provider_name}:{sha256(segment_bytes)}"`. Temp segment paths are
+   per-run, so the path is unhashable; the bytes are stable for identical
+   audio. Cache I/O failures (get/set) are swallowed at debug level and
+   degrade to live identification — never abort the run. No-match responses
+   (provider returned `None` or empty music) are not cached. Gated by
+   `config.cache_enabled`. (The data-loss bugs that made wiring dangerous
+   were fixed in the 2026-07 audit: TTL disabled by stored `None`, index
+   never persisted — locked by tests I7/I8.)
+6. **Download cache is URL-keyed and per-provider canonicalized.** Before
+   downloading, `process_input` checks a `DownloadCache`
+   (`cache_dir/downloads/<sha256>` + `.meta.json` sidecar) keyed by
+   `sha256(f"{canonicalize_url(url)}|stream_copy={stream_copy}")`.
+   Canonicalization (`downloaders/cache_key.py`) is offline and
+   per-provider: YouTube URLs collapse to `yt:<video_id>` (all shapes —
+   watch?v=, youtu.be/, /shorts/, /embed/, /live/); SoundCloud to
+   `sc:<host><path>`; Mixcloud to `mc:<user>_<slug>`; unknown to
+   `raw:<clean_url>`. On a hit the network is skipped and metadata flows
+   from the sidecar. Separate from `BaseCache` (which rejects binary
+   blobs). No TTL/eviction in v1. Gated by `config.download_cache_enabled`.
+7. **Output is self-contained per set.** Each run produces
+   `output/[date] Artist - Title/` containing `tracklist.{json,md,m3u}`
+   **and the source audio** (copied in via `_copy_audio_to_output`). The
+   folder is movable — the M3U references the audio by relative filename,
+   not absolute path. The M3U uses VLC `#EXTVLCOPT:start-time` for
+   per-track seeking (single source file; the standard DJ-mix pattern);
+   EXTINF duration is the inter-track gap, last track uses
+   `total_duration − last_start`.
 3. **`downloaders/spotify.py` and `exporters/spotify.py` are dead ends.**
    No factory routes Spotify URLs, and the exporter needs a user-auth
    token while `SpotifyProvider` only does client-credentials (which can

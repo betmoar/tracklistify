@@ -5,10 +5,12 @@ Track identification helper functions and utilities.
 # Standard library imports
 import asyncio
 import contextlib
+import hashlib
 import sys
 import time
 from typing import List, Optional
 
+from tracklistify.cache.factory import get_cache
 from tracklistify.config.factory import get_config
 
 # Local/package imports
@@ -188,10 +190,17 @@ class ProgressDisplay:
 class IdentificationManager:
     """Manages track identification using configured providers."""
 
-    def __init__(self, config=None, provider_factory=None):
+    def __init__(self, config=None, provider_factory=None, cache=None):
+        # Memoize segment sha256 digests by file_path so _cache_key() doesn't
+        # re-read+re-hash the same file once per provider in the chain.
+        self._segment_digests: dict[str, str] = {}
         self.config = config or get_config()
         self.provider_factory = provider_factory or create_provider_factory()
         self.track_matcher = TrackMatcher()
+        # Cache is optional: tests inject a double; production resolves the
+        # global cache singleton. It's only consulted when
+        # ``config.cache_enabled`` is set (checked per-call in identify_tracks).
+        self._cache = cache if cache is not None else get_cache()
 
     def _provider_chain(self) -> List[str]:
         """Resolve the ordered provider chain: primary, then fallbacks.
@@ -270,6 +279,21 @@ class IdentificationManager:
             for segment in audio_segments:
                 track = None
                 for provider_name, provider in chain:
+                    # Cache lookup (best-effort, content-addressed by segment
+                    # bytes + provider — temp paths are per-run). A hit
+                    # short-circuits both the rate limiter and the network.
+                    cache_key = self._cache_key(provider_name, segment)
+                    if cache_key is not None:
+                        try:
+                            cached = await self._cache.get(cache_key)
+                        except Exception as e:
+                            logger.debug(f"Cache get failed: {e}")
+                            cached = None
+                        if cached is not None:
+                            track = self._track_from_info(cached, segment)
+                            if track is not None:
+                                break
+
                     acquired = False
                     try:
                         acquired = await limiter.acquire(provider_name)
@@ -283,6 +307,13 @@ class IdentificationManager:
                         limiter.record_result(provider_name, success=True)
                         track = self._track_from_info(track_info, segment)
                         if track is not None:
+                            # Best-effort cache of the raw provider response.
+                            # Failures degrade to live-only; never abort.
+                            if cache_key is not None:
+                                try:
+                                    await self._cache.set(cache_key, track_info)
+                                except Exception as e:
+                                    logger.debug(f"Cache set failed: {e}")
                             break
                     except asyncio.CancelledError:
                         raise
@@ -310,6 +341,37 @@ class IdentificationManager:
             )
         )
         return unique_tracks
+
+    def _cache_key(self, provider_name: str, segment) -> Optional[str]:
+        """Build a content-addressed cache key, or None to skip caching.
+
+        The key is ``f"{provider_name}:{sha256(segment_bytes)}"`` — temp
+        segment paths are per-run, so the path is unhashable; the bytes are
+        stable for identical audio. Returns None when caching is disabled
+        or the segment file can't be read, so the caller degrades to live
+        identification.
+
+        The digest is memoized per ``file_path`` so the segment is read +
+        hashed once even when multiple providers in the chain consult the
+        cache. Reads are chunked to avoid memory spikes on large segments.
+        """
+        if not getattr(self.config, "cache_enabled", False):
+            return None
+        digest = self._segment_digests.get(segment.file_path)
+        if digest is None:
+            try:
+                h = hashlib.sha256()
+                with open(segment.file_path, "rb") as f:
+                    for chunk in iter(lambda: f.read(1 << 16), b""):
+                        h.update(chunk)
+            except OSError as e:
+                logger.debug(
+                    f"Cannot read segment for cache key ({segment.file_path}): {e}"
+                )
+                return None
+            digest = h.hexdigest()
+            self._segment_digests[segment.file_path] = digest
+        return f"{provider_name}:{digest}"
 
     async def close(self):
         """Cleanup resources."""

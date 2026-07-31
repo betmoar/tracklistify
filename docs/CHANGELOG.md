@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Release dates are in YYYY-MM-DD format.
 
-## [Unreleased]
+## [0.8.2] - 2026-07-31
 
-Audit-driven hardening of 0.7.0: makes the package importable, aligns concrete
-providers with their abstract base classes, fixes silent configuration bugs,
-modernises the test suite, and tightens lint/format hygiene.
+End-to-end caching and self-contained output: wires the existing
+identification cache into the pipeline, adds a URL-keyed download cache so
+re-runs skip the network, restructures output into per-set subfolders
+(audio + tracklist + playable M3U), and fixes Mixcloud metadata. Builds on
+the audit-driven hardening of 0.7.0 (importability, provider ABC
+alignment, config bug fixes, test modernisation, lint hygiene).
 
 ### Added
 
@@ -43,9 +46,39 @@ modernises the test suite, and tightens lint/format hygiene.
   `recognize(..., proxy=...)`. Empty by default (direct connection);
   `proxy` added to the sensitive-field patterns so a credential embedded
   in the proxy URL is redacted in logs.
+- Identification results are now cached. `IdentificationManager.identify_tracks`
+  consults the cache (`get_cache()`) before each provider call, keyed by
+  `f"{provider}:{sha256(segment_bytes)}"`, and stores successful responses
+  for reuse across reruns. Cache I/O is best-effort (failures degrade to
+  live identification, never abort the run); gated by the existing
+  `cache_enabled` config flag. Closes the P1 backlog item.
+- Downloaded audio is now cached. A new `DownloadCache`
+  (`cache_dir/downloads/<sha256>` + `.meta.json` sidecar) keys on a
+  per-provider canonical URL + `stream_copy` flag, so re-running the same
+  URL skips the network entirely and reads metadata from the sidecar.
+  Canonicalization is offline: YouTube URLs (watch?v=, youtu.be/, /shorts/,
+  /embed/, /live/, m./music.) collapse to `yt:<video_id>`; SoundCloud to
+  `sc:<host><path>`; Mixcloud to `mc:<user>_<slug>`. Also fixes Mixcloud,
+  which previously stored no metadata. Gated by new
+  `download_cache_enabled` (default `true`).
+- Output is now self-contained per set. Each run produces
+  `output/[date] Artist - Title/` containing `tracklist.{json,md,m3u}`
+  **and the source audio file**, replacing the previous flat layout. The
+  uploader (from yt-dlp metadata) now populates the artist slot — folder
+  names no longer say "Unknown Artist". The subfolder is movable.
+- The M3U playlist is now playable. It points at the real audio file in
+  the subfolder and uses VLC `#EXTVLCOPT:start-time` for per-track seeking;
+  EXTINF duration is the inter-track gap (last track uses
+  `total_duration − last_start`). Previously it emitted only comments with
+  no playable URI lines and EXTINF was always `-1`.
 
 ### Changed
 
+- **Breaking:** output structure changed from flat
+  `output/[date] Artist - Title.{json,md,m3u}` to
+  `output/[date] Artist - Title/tracklist.{json,md,m3u}` (+ audio).
+- `AsyncApp.save_output` now wires `self.uploader` into `mix_info["artist"]`
+  and passes `total_duration`.
 - `core/__init__.py` now eager-loads only leaf modules (`exceptions`, `types`)
   and lazy-loads `AsyncApp` / `Track` / `TrackMatcher` via PEP 562
   `__getattr__`. This is what unblocks `import tracklistify` — see Fixed below.
