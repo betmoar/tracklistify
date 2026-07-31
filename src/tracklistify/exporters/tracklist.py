@@ -42,18 +42,18 @@ class TracklistOutput:
         self.mix_info = mix_info or {}
         self.tracks = tracks
         self._config = get_config()
-        self.output_dir = Path(self._config.output_dir)
+        # Each run produces a self-contained subfolder under output_dir,
+        # named from the mix metadata. The folder is the identity; files
+        # inside use fixed names (tracklist.{ext}).
+        self.output_dir = Path(self._config.output_dir) / self._format_subfolder_name()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def _format_filename(self, extension: str) -> str:
-        """
-        Generate filename in format: [YYYYMMDD] Artist - Description.extension
+    def _format_subfolder_name(self) -> str:
+        """Build the per-set subfolder name from mix metadata.
 
-        Args:
-            extension: File extension without dot
-
-        Returns:
-            Formatted filename
+        Format: ``[YYYYMMDD] Artist - Description`` (same stem as the old
+        flat filename, minus the extension). Used as the self-contained
+        output directory for a single run.
         """
         # Get date in YYYYMMDD format
         mix_date = self.mix_info.get("date", datetime.now().strftime("%Y-%m-%d"))
@@ -90,8 +90,16 @@ class TracklistOutput:
         if venue:
             description = f"{title} | {venue}"
 
-        # Format filename
-        return f"[{mix_date}] {artist} - {description}.{extension}"
+        return f"[{mix_date}] {artist} - {description}"
+
+    def _format_filename(self, extension: str) -> str:
+        """Build a filename inside the subfolder.
+
+        Files use fixed names (``tracklist.{ext}``) since the subfolder is
+        the identity. Kept for backwards compatibility with callers/tests
+        that build paths from the formatted name.
+        """
+        return f"tracklist.{extension}"
 
     def save(self, format_type: str) -> Optional[Path]:
         """

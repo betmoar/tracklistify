@@ -481,11 +481,15 @@ class AsyncApp:
             else:
                 title = "Identified Mix"
 
-        # Prepare mix info using the downloaded title
+        # Prepare mix info using the downloaded title and uploader.
+        # uploader comes from yt-dlp metadata (set in process_input); it
+        # populates the artist slot in the subfolder name and output formats.
         mix_info = {
             "title": title,
+            "artist": getattr(self, "uploader", "") or "",
             "date": datetime.now().strftime("%Y-%m-%d"),
             "track_count": len(tracks),
+            "total_duration": getattr(self, "duration", 0) or 0,
         }
 
         try:
