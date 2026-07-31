@@ -211,24 +211,52 @@ class YtDlpDownloader(Downloader):
                     logger.error("Failed to extract video information")
                     raise ValueError("Failed to extract video information")
 
+                # Unwrap single-entry playlist containers (notably
+                # SoundCloud ``/sets/`` URLs). yt-dlp returns a playlist
+                # dict whose id/ext/duration describe the *set*, not the
+                # track; without unwrapping to ``entries[0]`` the wrong
+                # metadata propagates into last_metadata (→ cache sidecar +
+                # mix_info) and ``prepare_filename`` builds a path from the
+                # set id. ``outtmpl`` is ``%(id)s.%(ext)s``, so the
+                # container's id yields the wrong filename too. Unwrap
+                # before anything reads ``info`` downstream.
+                if info.get("_type") == "playlist":
+                    entries = info.get("entries") or []
+                    if entries:
+                        logger.debug(
+                            f"Unwrapping {info.get('_type')} container "
+                            f"({len(entries)} entries) -> entries[0]"
+                        )
+                        info = entries[0]
+
                 # Persist full metadata for later access
                 self.last_metadata = info
 
-                # Prepare output path. With stream_copy=True, yt-dlp keeps
-                # the source extension; otherwise the FFmpegExtractAudio
-                # postprocessor rewrites the file as ``.<self.format>``.
-                filename = ydl.prepare_filename(info)
-                if self.stream_copy:
-                    candidate = Path(filename)
-                    if not candidate.exists():
-                        # Fall back to globbing — yt-dlp may have renamed
-                        # the extension during muxing.
-                        matches = list(candidate.parent.glob(candidate.stem + ".*"))
-                        if matches:
-                            candidate = matches[0]
-                    output_path = str(candidate)
-                else:
-                    output_path = str(Path(filename).with_suffix(f".{self.format}"))
+                # Resolve the output path. Prefer the path yt-dlp actually
+                # wrote (``requested_downloads[0]["filepath"]``) — strictly
+                # more robust than reconstructing via ``prepare_filename``,
+                # which misses extension changes the muxing postprocessor
+                # makes (notably the MP3 transcode). Fall back to the
+                # reconstruct+glob path when ``requested_downloads`` is
+                # absent (older yt-dlp / stream-copy cases).
+                output_path: Optional[str] = None
+                requested = info.get("requested_downloads") or []
+                if requested and requested[0].get("filepath"):
+                    output_path = requested[0]["filepath"]
+
+                if output_path is None:
+                    filename = ydl.prepare_filename(info)
+                    if self.stream_copy:
+                        candidate = Path(filename)
+                        if not candidate.exists():
+                            # Fall back to globbing — yt-dlp may have
+                            # renamed the extension during muxing.
+                            matches = list(candidate.parent.glob(candidate.stem + ".*"))
+                            if matches:
+                                candidate = matches[0]
+                        output_path = str(candidate)
+                    else:
+                        output_path = str(Path(filename).with_suffix(f".{self.format}"))
 
                 # Set instance variables for external use
                 self.title = info.get("title", "Unknown title")

@@ -11,12 +11,12 @@ import json
 
 import pytest
 
-from tracklistify.cache.download import DownloadCache
+from tracklistify.cache.download import KEY_VERSION, DownloadCache
 from tracklistify.downloaders.cache_key import canonicalize_url
 
 
 def _sha(url: str, stream_copy: bool) -> str:
-    key_material = f"{canonicalize_url(url)}|stream_copy={stream_copy}"
+    key_material = f"{canonicalize_url(url)}|stream_copy={stream_copy}|{KEY_VERSION}"
     return hashlib.sha256(key_material.encode()).hexdigest()
 
 

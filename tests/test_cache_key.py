@@ -87,6 +87,20 @@ class TestSoundCloudCanonicalization:
         url = "https://soundcloud.com/user/track/"
         assert canonicalize_url(url) == "sc:soundcloud.com/user/track"
 
+    def test_sets_path_preserved(self):
+        """``/sets/`` URLs are a distinct cache key from the unwrapped track.
+
+        Canonicalization is path-verbatim: the container URL
+        ``user/sets/foo`` does not collapse to the track URL ``user/track``.
+        This is intentional — the download cache is keyed on the original
+        URL, and the downloader unwraps the container at fetch time (see
+        test_ytdlp.py). A version stamp in the cache key material
+        (cache/download.py) handles invalidation across metadata-shape
+        changes rather than collapsing the URL here.
+        """
+        url = "https://soundcloud.com/user/sets/foo"
+        assert canonicalize_url(url) == "sc:soundcloud.com/user/sets/foo"
+
 
 class TestMixcloudCanonicalization:
     def test_basic_slug(self):
