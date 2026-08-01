@@ -4,11 +4,11 @@ From the 2026-07 handoff audit. Ordered by priority. Each item has enough
 context to be picked up cold. "Fixed" items are listed at the bottom so
 nobody re-audits them from scratch.
 
-## P2 — parenthetical title variants survive dedup as separate rows
+## P2 — bracketed/parenthetical title variants survive dedup as separate rows
 
 Identity requires titles to be **exactly equal** after normalization
 (`_tracks_match`), so a track detected under two title spellings emits two
-rows. Confirmed on real output twice, not hypothetical:
+rows. Confirmed on real output, not hypothetical:
 
 | Time | Title A | Title B |
 |---|---|---|
@@ -19,6 +19,10 @@ Both pairs are ~50s apart (one segmentation step) with matching artists —
 the proximity and artist gates already agree they belong together; only
 the title check splits them. A reader sees one track played once and gets
 two lines.
+
+**Suffixes appear in `[...]` as well as `(...)`** — e.g. `Stereo Murder
+[Live At Tomorrowland]` in the same run. Handle both bracket styles or
+the fix covers half the cases.
 
 **Why this was left alone during the dedup rewrite:** the suffixes are not
 uniformly noise. `(Mixed)`, `(Club Mix)`, `(Radio Edit)`, `(Extended
@@ -31,12 +35,26 @@ are the same edit distance. This needs a **semantic** rule, not a fuzzier
 threshold.
 
 **Suggested approach:** strip a curated allowlist of non-distinguishing
-parentheticals before comparison (`mixed`, `club mix`, `extended mix`,
-`radio edit`, `original mix`, `feat.`/`ft.`/`featuring …`) and keep
+suffixes before comparison (`mixed`, `club mix`, `extended mix`, `radio
+edit`, `original mix`, `live at …`, `feat.`/`ft.`/`featuring …`) and keep
 everything else — notably anything containing `remix`, `bootleg`,
 `edit by`, `vip` — as title-distinguishing. Strip for the *comparison
 only*; the representative must keep its original title, since the
 displayed name should be what Shazam actually returned.
+
+**Implementation constraint — strip BEFORE normalizing.** `_normalize_token`
+maps punctuation to spaces, so by the time it has run the delimiters are
+already gone and the suffix is indistinguishable from part of the title:
+
+```
+"Stereo Murder [Live At Tomorrowland]" -> "stereo murder live at tomorrowland"
+"Outside World (Club Mix)"             -> "outside world club mix"
+```
+
+A stripper that runs after normalization has no brackets left to anchor
+on and would have to substring-match, which will eat legitimate titles
+(a track actually called `Club Mix`). Operate on the raw title, matching
+`\((...)\)` and `\[(...)\]`, then normalize the remainder.
 
 Guard both directions with tests, as with the chaining rule: a merge case
 and a must-not-merge case. Do **not** attack this by loosening the artist
@@ -71,13 +89,21 @@ Keep Spotify **out** of `KNOWN_PROVIDERS` (it has no `identify_track`, so
 accessor that returns `None` when creds are absent.
 
 **Concrete goal, now that links are the driver:** a canonical Spotify
-track URL per track. Shazam already gives us a *search* deeplink for free
-(`spotify_search_uri`, shipped 2026-08-01) — this item is what upgrades it
+track URL per track. Shazam already gives us a *search* URL for free
+(`spotify_search_url`, shipped 2026-08-01) — this item is what upgrades it
 to a real `https://open.spotify.com/track/<id>`. `search_track` already
 returns `spotify_id`, so the URL is string construction, not another API
 call. Note `search_track` does **not** return `external_urls` even though
 `get_track_details` does (`spotify.py:227`) — add the field there rather
 than making a second request per track.
+
+**Measured payoff (fresh-cache run, 2026-08-01, 20-track Tomorrowland
+set):** Shazam supplied a Spotify search URL for only **12/20** tracks —
+`hub.providers` is simply absent from ~40% of responses, and it varies
+between calls for the same audio (one track had no link on the first run
+and one on the next). But **7 of the 8 tracks missing a link do carry an
+ISRC**. An ISRC-first lookup would take link coverage from 12/20 to
+roughly 19/20, which is the concrete argument for doing this.
 
 **Hook after `get_unique_tracks()`, not per segment.** Dedup runs first,
 so a 3h mix enriches ~22 unique tracks instead of ~216 raw detections —
@@ -181,7 +207,7 @@ problem than to the simple client-credentials enrichment above.
 ## P3 — decide the `metadata` link schema before more platforms land
 
 `Track.metadata` currently carries flat, per-platform keys: `shazam_url`,
-`apple_music_id`, `spotify_search_uri`, `deezer_search_uri`. That is fine
+`apple_music_id`, `spotify_search_url`, `deezer_search_url`. That is fine
 at four and gets ugly at eight, and every consumer of the JSON has to
 know each key by name.
 
