@@ -249,6 +249,23 @@ class YtDlpDownloader(Downloader):
                                 "-> entries[0]"
                             )
                         info = entries[0]
+                    else:
+                        # Zero entries with the container still in hand.
+                        # Falling through would leave ``info`` as the *set*
+                        # — silently reinstating the exact wrong-metadata
+                        # bug the unwrap above exists to fix, and then
+                        # building an output path from the set id that no
+                        # file was ever written to. Reachable for a
+                        # private, deleted, or geo-blocked set, where
+                        # yt-dlp returns the container with an empty
+                        # ``tracks`` list. Fail loudly instead.
+                        logger.error(
+                            f"URL resolved to a playlist container with no "
+                            f"downloadable entries (id="
+                            f"{info.get('id', 'unknown')!r}); it may be "
+                            f"private, deleted, or region-locked."
+                        )
+                        raise ValueError(f"No downloadable entries found for {url}")
 
                 # Persist full metadata for later access
                 self.last_metadata = info
@@ -264,6 +281,18 @@ class YtDlpDownloader(Downloader):
                 requested = info.get("requested_downloads") or []
                 if requested and requested[0].get("filepath"):
                     output_path = requested[0]["filepath"]
+                elif requested:
+                    # yt-dlp reported a download but gave no path. Distinct
+                    # from "no requested_downloads at all" (the documented
+                    # older-yt-dlp fallback), and worth saying so — this is
+                    # the branch that silently degrades to the weaker
+                    # reconstruct path in exactly the muxing cases the
+                    # filepath preference was added to handle.
+                    logger.debug(
+                        f"requested_downloads present but carries no "
+                        f"filepath ({requested[0]!r}); falling back to "
+                        f"prepare_filename reconstruction."
+                    )
 
                 if output_path is None:
                     filename = ydl.prepare_filename(info)
@@ -275,6 +304,20 @@ class YtDlpDownloader(Downloader):
                             matches = list(candidate.parent.glob(candidate.stem + ".*"))
                             if matches:
                                 candidate = matches[0]
+                            else:
+                                # Reconstruct missed and the glob found
+                                # nothing: returning this path would report
+                                # success for a file that does not exist,
+                                # and the failure would first surface in
+                                # split_audio as "Could not read audio
+                                # file" — several frames from the cause.
+                                logger.error(
+                                    f"Download reported success but no file "
+                                    f"was found at {candidate} or matching "
+                                    f"{candidate.stem}.* in "
+                                    f"{candidate.parent}"
+                                )
+                                raise ValueError(f"Downloaded file not found for {url}")
                         output_path = str(candidate)
                     else:
                         output_path = str(Path(filename).with_suffix(f".{self.format}"))

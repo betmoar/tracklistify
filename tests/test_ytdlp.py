@@ -237,3 +237,86 @@ async def test_download_is_bounded_to_a_single_playlist_entry(monkeypatch, tmp_p
         "ydl_opts must set playlist_items='1' or a /sets/ URL downloads "
         "every track in the set"
     )
+
+
+@pytest.mark.asyncio
+async def test_empty_playlist_container_raises(monkeypatch, tmp_path):
+    """A playlist container with zero entries must fail loudly.
+
+    Reachable for a private, deleted, or region-locked ``/sets/`` URL:
+    yt-dlp returns ``_type == "playlist"`` with an empty tracks list.
+    Falling through would leave the *set's* metadata in last_metadata —
+    silently reinstating the bug the unwrap exists to fix — and build an
+    output path from the set id that no file was ever written to.
+    """
+    set_info = {
+        "_type": "playlist",
+        "id": "empty-set",
+        "title": "Private Set",
+        "entries": [],
+    }
+    monkeypatch.setattr(
+        ytdlp, "yt_dlp", MagicMock(YoutubeDL=lambda opts: _FakeYdl(set_info, tmp_path))
+    )
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    with pytest.raises(ValueError, match="No downloadable entries"):
+        await dl.download("https://soundcloud.com/user/sets/private-set")
+
+
+@pytest.mark.asyncio
+async def test_missing_output_file_raises_instead_of_returning_dead_path(
+    monkeypatch, tmp_path
+):
+    """No requested_downloads, no reconstructed file, no glob match -> raise.
+
+    Returning the reconstructed path would report success for a file that
+    does not exist; the failure would first surface in split_audio as
+    "Could not read audio file", several frames from the cause.
+    """
+    info = {
+        "id": "ghost",
+        "title": "Ghost Track",
+        "uploader": "Nobody",
+        "duration": 100,
+        "ext": "mp3",
+        # No requested_downloads, and no file on disk at ghost.mp3.
+    }
+    monkeypatch.setattr(
+        ytdlp, "yt_dlp", MagicMock(YoutubeDL=lambda opts: _FakeYdl(info, tmp_path))
+    )
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    with pytest.raises(ValueError, match="Downloaded file not found"):
+        await dl.download("https://soundcloud.com/user/ghost")
+
+
+@pytest.mark.asyncio
+async def test_requested_downloads_without_filepath_falls_back(
+    monkeypatch, tmp_path, caplog
+):
+    """requested_downloads present but carrying no filepath: fall back to
+    reconstruction, and say so — this is distinct from the documented
+    "no requested_downloads at all" case."""
+    audio = tmp_path / "partial.mp3"
+    audio.write_bytes(b"audio")
+    info = {
+        "id": "partial",
+        "title": "Partial",
+        "uploader": "Someone",
+        "duration": 50,
+        "ext": "mp3",
+        "requested_downloads": [{"filepath": None}],
+    }
+    monkeypatch.setattr(
+        ytdlp, "yt_dlp", MagicMock(YoutubeDL=lambda opts: _FakeYdl(info, tmp_path))
+    )
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    with caplog.at_level("DEBUG"):
+        out = await dl.download("https://soundcloud.com/user/partial")
+
+    assert out == str(audio)
+    assert any("carries no filepath" in r.message for r in caplog.records), (
+        "the degraded-path fallback must be logged, not silent"
+    )
