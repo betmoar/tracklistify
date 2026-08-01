@@ -23,6 +23,11 @@ from .time_formatter import format_seconds_to_hhmmss
 
 logger = get_logger(__name__)
 
+# Below this many segments a zero-match run is unremarkable — a short clip
+# genuinely may contain nothing identifiable, and warning there would cry
+# wolf. A full mix returning nothing at all is worth flagging.
+_MIN_SEGMENTS_FOR_MISS_RATE_WARNING = 10
+
 
 def format_duration(duration: float) -> str:
     """Format duration in seconds to HH:MM:SS.
@@ -396,6 +401,24 @@ class IdentificationManager:
                 f"{len(identified_tracks)} total matches"
             )
         )
+
+        # A broken pipeline and an unidentifiable set look identical from
+        # here: both end with zero matches. The per-segment no-match line
+        # is deliberately debug (it is the normal case in a DJ mix), and
+        # Shazam answers a degraded request with HTTP 200 and an empty
+        # ``matches`` list rather than an error — so a dead proxy, a
+        # geo-blocked endpoint or an expired signature scheme produces a
+        # clean "0 tracks" run with nothing above debug to explain it.
+        # Scattered misses are normal; a near-total miss rate is a signal.
+        total = len(audio_segments)
+        if total >= _MIN_SEGMENTS_FOR_MISS_RATE_WARNING and not identified_tracks:
+            logger.warning(
+                f"No segment out of {total} produced a match. That is "
+                f"expected for a set of unreleased IDs, but it is also what "
+                f"a broken request pipeline looks like — re-run with "
+                f"--debug to see the raw provider responses, and check "
+                f"TRACKLISTIFY_SHAZAM_PROXY if one is configured."
+            )
         return unique_tracks
 
     def _cache_key(self, provider_name: str, segment) -> Optional[str]:

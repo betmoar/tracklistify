@@ -21,7 +21,27 @@ logger = get_logger(__name__)
 
 # Pulls the track/artist terms out of Deezer's structured deeplink query,
 # which decodes to: {track:'Some Title' artist:'A, B'}
-_DEEZER_TERM_RE = re.compile(r"(?:track|artist):'([^']*)'")
+#
+# The closing quote is matched by LOOKAHEAD on what must follow a field —
+# another ``track:'``/``artist:'``, the closing brace, or end of string —
+# rather than by ``[^']*``. Deezer does not escape apostrophes inside the
+# values, so a naive non-greedy match truncates at the first one in the
+# text itself: "Don't Stop" yielded "Don". Apostrophes are common enough
+# in titles ("Can't Get Enough", "Ain't Nobody") that this was a live bug.
+_DEEZER_TERM_RE = re.compile(
+    r"(?:track|artist):'(.*?)'(?=\s+(?:track|artist):'|\s*\}|$)"
+)
+
+
+def _quote_term(term: str) -> str:
+    """Percent-encode a search term for use as a single URL path segment.
+
+    ``quote`` defaults to ``safe="/"``, which leaves a slash in the term
+    intact — a title like ``50/50`` would then split the path and produce
+    ``/search/50/50%20...``, a different (wrong) route. Nothing in a free
+    text search term should survive as a path delimiter, so nothing is safe.
+    """
+    return quote(term, safe="")
 
 
 def _web_search_url(platform: str, uri: str) -> Optional[str]:
@@ -30,10 +50,12 @@ def _web_search_url(platform: str, uri: str) -> Optional[str]:
     Shazam ships platform links as proprietary schemes —
     ``spotify:search:<url-encoded terms>`` and
     ``deezer-query://www.deezer.com/play?query={track:'..' artist:'..'}``.
-    Both open the native app, but neither is clickable from a JSON file, a
-    terminal, or a browser, which is where a tracklist actually gets read.
-    The https forms below are universal links: the OS still hands them to
-    the installed app, and they degrade to the web player otherwise.
+    Neither is clickable from a JSON file, a terminal, or a browser, which
+    is where a tracklist actually gets read, and ``deezer-query://`` is
+    useless without the app installed. Both domains are registered for
+    universal links, so an installed app may still claim these URLs; the
+    property being relied on here is only the weaker one — they always
+    resolve in a browser, which the app-scheme URIs never do.
 
     Returns None when the URI is missing or not in the expected shape —
     a malformed deeplink is not worth failing an identification over.
@@ -50,7 +72,7 @@ def _web_search_url(platform: str, uri: str) -> Optional[str]:
             terms = unquote(uri[len(prefix) :]).strip()
             if not terms:
                 return None
-            return f"https://open.spotify.com/search/{quote(terms)}"
+            return f"https://open.spotify.com/search/{_quote_term(terms)}"
 
         if platform == "deezer":
             query = parse_qs(urlparse(uri).query).get("query", [""])[0]
@@ -59,7 +81,7 @@ def _web_search_url(platform: str, uri: str) -> Optional[str]:
             ).strip()
             if not terms:
                 return None
-            return f"https://www.deezer.com/search/{quote(terms)}"
+            return f"https://www.deezer.com/search/{_quote_term(terms)}"
     except Exception as e:  # malformed deeplink: skip the field, keep the track
         logger.debug(f"Could not build {platform} web URL from {uri!r}: {e}")
     return None
@@ -178,10 +200,23 @@ class ShazamProvider(TrackIdentificationProvider):
             # https by _web_search_url so they are clickable from the JSON.
             provider_uris = {}
             for prov in hub.get("providers") or []:
-                prov_type = (prov.get("type") or "").strip().lower()
+                if not isinstance(prov, dict):
+                    continue
+                raw_type = prov.get("type")
+                # ``.strip()`` on a non-string raises, and this loop sits in
+                # identify_track's outer try — so a single numeric or
+                # object-valued ``type`` in one deeplink entry would escalate
+                # to ShazamError and discard an otherwise-good match
+                # (title, artist, ISRC all valid). A cosmetic sub-field must
+                # never cost the identification.
+                prov_type = (
+                    raw_type.strip().lower() if isinstance(raw_type, str) else ""
+                )
                 if not prov_type:
                     continue
                 for action in prov.get("actions") or []:
+                    if not isinstance(action, dict):
+                        continue
                     uri = action.get("uri")
                     if uri:
                         provider_uris.setdefault(prov_type, uri)

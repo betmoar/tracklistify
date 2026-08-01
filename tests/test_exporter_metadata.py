@@ -67,3 +67,28 @@ def test_metadata_survives_round_trip_with_unicode(mix_info):
     )
     data = _load(TracklistOutput(mix_info, [track]))
     assert data["tracks"][0]["metadata"]["genres"] == ["Techno", "Hård Techno"]
+
+
+def test_non_serializable_metadata_degrades_instead_of_corrupting(mix_info):
+    """A non-JSON-serializable metadata value must not destroy the export.
+
+    ``json.dump`` streams, so a TypeError partway through would leave a
+    truncated file that still looks like a finished tracklist — and this
+    runs after the entire expensive identification pass. Track.metadata is
+    opaque pass-through and the planned Spotify/MusicBrainz enrichment
+    (BACKLOG P2/P3) will feed it library objects like datetimes.
+    """
+    from datetime import datetime
+
+    track = Track(
+        song_name="Berghain",
+        artist="Sara Landry",
+        time_in_mix="00:01:00",
+        confidence=90.0,
+        metadata={"released": datetime(2024, 5, 1), "label": "HEKATE"},
+    )
+    data = _load(TracklistOutput(mix_info, [track]))
+
+    # The file is complete and valid; the odd field degraded to its repr.
+    assert data["tracks"][0]["metadata"]["label"] == "HEKATE"
+    assert "2024-05-01" in data["tracks"][0]["metadata"]["released"]

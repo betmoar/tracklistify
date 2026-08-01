@@ -122,12 +122,16 @@ def _shazam_payload(**track_overrides):
                 },
             ],
         },
+        # Deliberately NOT in Album/Label/Released order, with an unrelated
+        # entry first: extraction is keyed on each item's "title", and a
+        # positional rewrite must fail this fixture.
         "sections": [
             {
                 "metadata": [
+                    {"title": "Written By", "text": "Someone Else"},
+                    {"title": "Released", "text": "2024"},
                     {"title": "Album", "text": "Hyperdrive"},
                     {"title": "Label", "text": "HEKATE"},
-                    {"title": "Released", "text": "2024"},
                 ]
             }
         ],
@@ -293,6 +297,34 @@ async def test_shazam_missing_providers_yields_none_not_crash(monkeypatch):
             "%7Btrack%3A%27Kickdrum+Junkie%27%20artist%3A%27Revoxx%27%7D",
             "https://www.deezer.com/search/Kickdrum%20Junkie%20Revoxx",
         ),
+        # Apostrophes inside the value. Deezer does not escape them, so a
+        # naive [^']* match truncated "Don't Stop" to "Don" and produced a
+        # search for the wrong track.
+        (
+            "deezer",
+            "deezer-query://www.deezer.com/play?query="
+            "%7Btrack%3A%27Don%27t%20Stop%27%20artist%3A%27Rock%27n%27Roll%27%7D",
+            "https://www.deezer.com/search/Don%27t%20Stop%20Rock%27n%27Roll",
+        ),
+        # A slash must not survive as a path delimiter — "AC/DC" would
+        # otherwise route to /search/AC with a stray /DC segment.
+        (
+            "spotify",
+            "spotify:search:AC%2FDC%20Thunderstruck",
+            "https://open.spotify.com/search/AC%2FDC%20Thunderstruck",
+        ),
+        (
+            "deezer",
+            "deezer-query://www.deezer.com/play?query="
+            "%7Btrack%3A%27Thunderstruck%27%20artist%3A%27AC%2FDC%27%7D",
+            "https://www.deezer.com/search/Thunderstruck%20AC%2FDC",
+        ),
+        # Non-ASCII must round-trip as UTF-8 percent-encoding.
+        (
+            "spotify",
+            "spotify:search:Caf%C3%A9%20Tacvba",
+            "https://open.spotify.com/search/Caf%C3%A9%20Tacvba",
+        ),
         # Malformed / missing input must yield None, never raise: a bad
         # deeplink is not worth failing an identification over.
         ("spotify", None, None),
@@ -318,3 +350,57 @@ def test_web_search_url_does_not_double_encode():
     url = _web_search_url("spotify", "spotify:search:A%20B%20%26%20C")
     assert "%2520" not in url
     assert url == "https://open.spotify.com/search/A%20B%20%26%20C"
+
+
+@pytest.mark.asyncio
+async def test_malformed_provider_entry_does_not_lose_the_match(monkeypatch):
+    """A junk hub.providers entry must not cost the whole identification.
+
+    ``(123 or "").strip()`` raises AttributeError, and this loop sits in
+    identify_track's outer try — so one numeric ``type`` in one deeplink
+    entry would escalate to ShazamError and discard a match whose title,
+    artist and ISRC were all perfectly valid. A cosmetic sub-field must
+    never outrank the identification.
+    """
+    monkeypatch.setenv("TRACKLISTIFY_SHAZAM_COOLDOWN_SECONDS", "0")
+    clear_config()
+    try:
+        get_config(force_refresh=True)
+        provider = ShazamProvider()
+        monkeypatch.setattr(
+            provider.shazam,
+            "recognize",
+            AsyncMock(
+                return_value=_shazam_payload(
+                    hub={
+                        "actions": [],
+                        "providers": [
+                            {"type": 123, "actions": [{"uri": "x://y"}]},
+                            "not-a-dict",
+                            {"type": "", "actions": [{"uri": "x://blank"}]},
+                            {"actions": [{"uri": "x://missing-type"}]},
+                            {
+                                "type": "  SPOTIFY  ",
+                                "actions": ["junk", {"uri": "spotify:search:Real"}],
+                            },
+                        ],
+                    }
+                )
+            ),
+        )
+
+        entry = (
+            await provider.identify_track(
+                SimpleNamespace(file_path="segment.mp3", start_time=0)
+            )
+        )["metadata"]["music"][0]
+
+        # The match survived intact...
+        assert entry["title"] == "Berghain"
+        assert entry["external_ids"]["isrc"] == "USABC1234567"
+        # ...and the one well-formed entry still resolved, whitespace and
+        # casing normalized, junk entries skipped.
+        assert entry["spotify_search_url"] == ("https://open.spotify.com/search/Real")
+        assert entry["deezer_search_url"] is None
+    finally:
+        clear_config()

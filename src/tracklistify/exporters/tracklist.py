@@ -168,8 +168,20 @@ class TracklistOutput:
             ],
         }
 
+        # Serialize fully in memory before touching the file. ``json.dump``
+        # streams, so a TypeError partway through leaves a truncated file
+        # that looks like a finished tracklist — and this runs AFTER the
+        # whole expensive identification pass, so a corrupt write is the
+        # most costly moment to fail.
+        #
+        # ``default=str`` is the safety net: ``Track.metadata`` is opaque
+        # pass-through, currently only ever provider strings, but the
+        # planned Spotify/MusicBrainz enrichment (BACKLOG P2/P3) will feed
+        # it values like datetimes straight from a client library. Falling
+        # back to str() degrades one field instead of losing the export.
+        payload = json.dumps(data, indent=4, ensure_ascii=False, default=str)
         with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+            f.write(payload)
 
         logger.info("Analysis Summary:")
         logger.info(f"- Total tracks: {data['analysis_info']['track_count']}")

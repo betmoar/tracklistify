@@ -329,3 +329,58 @@ class TestExtraMetadata:
         assert track is not None
         assert track.metadata["isrc"] == "USABC1234567"
         assert track.metadata["album"] == "Hyperdrive"
+
+
+class TestZeroMatchWarning:
+    """A broken pipeline and an unidentifiable set both end at zero matches.
+
+    The per-segment no-match line is deliberately debug (it is the normal
+    case in a DJ mix), and Shazam answers a degraded request with HTTP 200
+    and an empty ``matches`` list rather than an error — so a dead proxy or
+    geo-blocked endpoint produces a clean "0 tracks" run with nothing above
+    debug to explain it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_full_miss_on_a_long_run_warns(self, caplog):
+        import logging
+        from types import SimpleNamespace
+
+        from tracklistify.config import get_config
+        from tracklistify.utils.identification import IdentificationManager
+
+        mgr = IdentificationManager(config=get_config(), provider_factory=object())
+        mgr._provider_chain = lambda: []
+        segments = [SimpleNamespace(start_time=i * 50) for i in range(12)]
+
+        with caplog.at_level(logging.WARNING):
+            await mgr.identify_tracks(segments)
+
+        assert any(
+            "No segment out of 12 produced a match" in r.getMessage()
+            for r in caplog.records
+            if r.levelno >= logging.WARNING
+        ), "a total miss across a full mix must be flagged"
+
+    @pytest.mark.asyncio
+    async def test_short_clip_full_miss_stays_quiet(self, caplog):
+        """Below the threshold a zero-match run is unremarkable — warning
+        there would cry wolf on a short clip that genuinely has nothing."""
+        import logging
+        from types import SimpleNamespace
+
+        from tracklistify.config import get_config
+        from tracklistify.utils.identification import IdentificationManager
+
+        mgr = IdentificationManager(config=get_config(), provider_factory=object())
+        mgr._provider_chain = lambda: []
+        segments = [SimpleNamespace(start_time=i * 50) for i in range(3)]
+
+        with caplog.at_level(logging.WARNING):
+            await mgr.identify_tracks(segments)
+
+        assert not [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.WARNING and "produced a match" in r.getMessage()
+        ]
