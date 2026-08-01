@@ -265,8 +265,8 @@ class TestExtraMetadata:
                 "apple_music_id": "am-999",
                 "artwork_url": "https://img/hq.jpg",
                 "shazam_url": "https://shazam/1",
-                "spotify_search_uri": "spotify:search:Sara Landry Berghain",
-                "deezer_search_uri": "dzr://x",
+                "spotify_search_url": "https://open.spotify.com/search/Berghain",
+                "deezer_search_url": "https://www.deezer.com/search/Berghain",
             }
         )
         assert extras == {
@@ -279,8 +279,8 @@ class TestExtraMetadata:
             "apple_music_id": "am-999",
             "artwork_url": "https://img/hq.jpg",
             "shazam_url": "https://shazam/1",
-            "spotify_search_uri": "spotify:search:Sara Landry Berghain",
-            "deezer_search_uri": "dzr://x",
+            "spotify_search_url": "https://open.spotify.com/search/Berghain",
+            "deezer_search_url": "https://www.deezer.com/search/Berghain",
         }
 
     def test_empty_values_are_dropped_not_stored_as_none(self):

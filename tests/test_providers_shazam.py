@@ -104,14 +104,19 @@ def _shazam_payload(**track_overrides):
             "providers": [
                 {
                     "type": "DEEZER",
-                    "actions": [{"name": "hub:deezer:deeplink", "uri": "dzr://x"}],
+                    "actions": [
+                        {
+                            "name": "hub:deezer:deeplink",
+                            "uri": "deezer-query://www.deezer.com/play?query=%7Btrack%3A%27Berghain%27%20artist%3A%27Sara+Landry%27%7D",
+                        }
+                    ],
                 },
                 {
                     "type": "SPOTIFY",
                     "actions": [
                         {
                             "name": "hub:spotify:searchdeeplink",
-                            "uri": "spotify:search:Sara Landry Berghain",
+                            "uri": "spotify:search:Berghain%20Sara%20Landry",
                         }
                     ],
                 },
@@ -233,8 +238,14 @@ async def test_shazam_surfaces_platform_search_deeplinks(monkeypatch):
             )
         )["metadata"]["music"][0]
 
-        assert entry["spotify_search_uri"] == "spotify:search:Sara Landry Berghain"
-        assert entry["deezer_search_uri"] == "dzr://x"
+        assert (
+            entry["spotify_search_url"]
+            == "https://open.spotify.com/search/Berghain%20Sara%20Landry"
+        )
+        assert (
+            entry["deezer_search_url"]
+            == "https://www.deezer.com/search/Berghain%20Sara%20Landry"
+        )
     finally:
         clear_config()
 
@@ -261,7 +272,49 @@ async def test_shazam_missing_providers_yields_none_not_crash(monkeypatch):
             )
         )["metadata"]["music"][0]
 
-        assert entry["spotify_search_uri"] is None
-        assert entry["deezer_search_uri"] is None
+        assert entry["spotify_search_url"] is None
+        assert entry["deezer_search_url"] is None
     finally:
         clear_config()
+
+
+@pytest.mark.parametrize(
+    "platform,uri,expected",
+    [
+        # Real payloads observed on a Tomorrowland set, 2026-08-01.
+        (
+            "spotify",
+            "spotify:search:Kickdrum%20Junkie%20Revoxx",
+            "https://open.spotify.com/search/Kickdrum%20Junkie%20Revoxx",
+        ),
+        (
+            "deezer",
+            "deezer-query://www.deezer.com/play?query="
+            "%7Btrack%3A%27Kickdrum+Junkie%27%20artist%3A%27Revoxx%27%7D",
+            "https://www.deezer.com/search/Kickdrum%20Junkie%20Revoxx",
+        ),
+        # Malformed / missing input must yield None, never raise: a bad
+        # deeplink is not worth failing an identification over.
+        ("spotify", None, None),
+        ("spotify", "", None),
+        ("spotify", "spotify:search:", None),
+        ("spotify", "https://open.spotify.com/track/x", None),
+        ("deezer", "deezer-query://x/play?query=not-the-expected-shape", None),
+        ("tidal", "whatever", None),
+    ],
+)
+def test_web_search_url_conversion(platform, uri, expected):
+    """App-scheme deeplinks become clickable https universal links."""
+    from tracklistify.providers.shazam import _web_search_url
+
+    assert _web_search_url(platform, uri) == expected
+
+
+def test_web_search_url_does_not_double_encode():
+    """Shazam pre-encodes the terms; re-quoting without decoding first
+    would emit %2520 for a space and break the search."""
+    from tracklistify.providers.shazam import _web_search_url
+
+    url = _web_search_url("spotify", "spotify:search:A%20B%20%26%20C")
+    assert "%2520" not in url
+    assert url == "https://open.spotify.com/search/A%20B%20%26%20C"

@@ -109,11 +109,11 @@ def _extra_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         "apple_music_id": metadata.get("apple_music_id"),
         "artwork_url": metadata.get("artwork_url"),
         "shazam_url": metadata.get("shazam_url"),
-        # Platform search deeplinks Shazam ships with the match. Named
-        # ``*_search_uri`` because they are searches, not canonical track
-        # URLs — see the provider for why.
-        "spotify_search_uri": metadata.get("spotify_search_uri"),
-        "deezer_search_uri": metadata.get("deezer_search_uri"),
+        # Platform search links Shazam ships with the match, converted to
+        # clickable https by the provider. Named ``*_search_url`` because
+        # they are searches, not canonical track URLs — see the provider.
+        "spotify_search_url": metadata.get("spotify_search_url"),
+        "deezer_search_url": metadata.get("deezer_search_url"),
     }
     return {k: v for k, v in extras.items() if v}
 

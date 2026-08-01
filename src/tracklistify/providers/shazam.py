@@ -2,7 +2,9 @@
 
 # Standard library imports
 import asyncio
+import re
 from typing import Any, Dict, Optional
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 # Third-party imports
 from shazamio import Shazam
@@ -16,6 +18,51 @@ from tracklistify.utils.logger import get_logger
 from tracklistify.config.factory import get_config
 
 logger = get_logger(__name__)
+
+# Pulls the track/artist terms out of Deezer's structured deeplink query,
+# which decodes to: {track:'Some Title' artist:'A, B'}
+_DEEZER_TERM_RE = re.compile(r"(?:track|artist):'([^']*)'")
+
+
+def _web_search_url(platform: str, uri: str) -> Optional[str]:
+    """Convert a Shazam app-scheme deeplink into a clickable https URL.
+
+    Shazam ships platform links as proprietary schemes —
+    ``spotify:search:<url-encoded terms>`` and
+    ``deezer-query://www.deezer.com/play?query={track:'..' artist:'..'}``.
+    Both open the native app, but neither is clickable from a JSON file, a
+    terminal, or a browser, which is where a tracklist actually gets read.
+    The https forms below are universal links: the OS still hands them to
+    the installed app, and they degrade to the web player otherwise.
+
+    Returns None when the URI is missing or not in the expected shape —
+    a malformed deeplink is not worth failing an identification over.
+    """
+    if not uri:
+        return None
+    try:
+        if platform == "spotify":
+            prefix = "spotify:search:"
+            if not uri.startswith(prefix):
+                return None
+            # Shazam pre-encodes the terms; decode before re-quoting so we
+            # do not emit %2520 (double-encoded spaces).
+            terms = unquote(uri[len(prefix) :]).strip()
+            if not terms:
+                return None
+            return f"https://open.spotify.com/search/{quote(terms)}"
+
+        if platform == "deezer":
+            query = parse_qs(urlparse(uri).query).get("query", [""])[0]
+            terms = " ".join(
+                t.strip() for t in _DEEZER_TERM_RE.findall(unquote(query)) if t.strip()
+            ).strip()
+            if not terms:
+                return None
+            return f"https://www.deezer.com/search/{quote(terms)}"
+    except Exception as e:  # malformed deeplink: skip the field, keep the track
+        logger.debug(f"Could not build {platform} web URL from {uri!r}: {e}")
+    return None
 
 
 class ShazamProvider(TrackIdentificationProvider):
@@ -123,11 +170,12 @@ class ShazamProvider(TrackIdentificationProvider):
             # returns the wrong platform's link the moment Shazam reorders
             # the array.
             #
-            # These are SEARCH deeplinks (``spotify:search:<artist> <title>``),
-            # not canonical track URLs — Shazam does not resolve a Spotify
-            # track id. Exposed under ``*_search_uri`` so the name cannot be
-            # mistaken for a direct link; resolving to a real track id needs
-            # the Spotify API (see BACKLOG P2).
+            # These are SEARCH links, not canonical track URLs — Shazam does
+            # not resolve a Spotify/Deezer track id. Exposed under
+            # ``*_search_url`` so the name cannot be mistaken for a direct
+            # link; resolving to a real track id needs the Spotify API (see
+            # BACKLOG P2). Converted from Shazam's app-scheme deeplinks to
+            # https by _web_search_url so they are clickable from the JSON.
             provider_uris = {}
             for prov in hub.get("providers") or []:
                 prov_type = (prov.get("type") or "").strip().lower()
@@ -163,8 +211,12 @@ class ShazamProvider(TrackIdentificationProvider):
                             "artwork_url": images.get("coverarthq")
                             or images.get("coverart"),
                             "shazam_url": track_info.get("url"),
-                            "spotify_search_uri": provider_uris.get("spotify"),
-                            "deezer_search_uri": provider_uris.get("deezer"),
+                            "spotify_search_url": _web_search_url(
+                                "spotify", provider_uris.get("spotify")
+                            ),
+                            "deezer_search_url": _web_search_url(
+                                "deezer", provider_uris.get("deezer")
+                            ),
                         }
                     ]
                 }
