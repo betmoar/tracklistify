@@ -167,7 +167,16 @@ class TrackIdentificationConfig(BaseConfig):
 
     # Caching settings
     cache_enabled: bool = field(default=True)
-    cache_ttl: int = field(default=3600)
+    # 30 days. The identification cache is keyed on
+    # ``f"{provider}:{sha256(segment_bytes)}"`` — the segment hash IS the
+    # identity, so a stored Shazam/ACRCloud response for those exact bytes
+    # does not go stale the way a typical HTTP cache entry does. The old
+    # 1-hour default meant re-running yesterday's mix paid the full
+    # identification cost again (observed: 41 of 70 entries expired, ages
+    # 0.2-3.7h), which defeats the cache's whole purpose across sessions.
+    # A provider improving its catalog is the only real staleness, and
+    # weeks is the right granularity for that — not an hour.
+    cache_ttl: int = field(default=2_592_000)
     # Byte budget for the cache (matches SizeStrategy / BaseCache semantics).
     # Previously defaulted to 1000 — meant as "entries" but interpreted as
     # bytes, which was so small the cache rejected every Shazam response.
@@ -177,7 +186,11 @@ class TrackIdentificationConfig(BaseConfig):
     cache_compression_level: int = field(default=6)
     cache_cleanup_enabled: bool = field(default=True)
     cache_cleanup_interval: int = field(default=3600)
-    cache_max_age: int = field(default=86400)
+    # Must not be shorter than cache_ttl or the janitor deletes entries the
+    # TTL still considers valid — these are two independent expiry gates
+    # (StorageCleanup reads max_age, TTLStrategy reads ttl) and the shorter
+    # one silently wins. Kept in step with cache_ttl at 30 days.
+    cache_max_age: int = field(default=2_592_000)
     cache_min_free_space: int = field(default=104857600)
 
     # Rate limiting settings

@@ -64,14 +64,14 @@ def test_default_config(monkeypatch):
 
     # Cache settings - CODE DEFAULTS
     assert config.cache_enabled is True
-    assert config.cache_ttl == 3600
+    assert config.cache_ttl == 2_592_000  # 30d; segment hash is the identity
     assert config.cache_max_size == 1_000_000  # bytes (~1MB), matches SizeStrategy
     assert config.cache_storage_format == "json"
     assert config.cache_compression_enabled is True
     assert config.cache_compression_level == 6
     assert config.cache_cleanup_enabled is True
     assert config.cache_cleanup_interval == 3600
-    assert config.cache_max_age == 86400
+    assert config.cache_max_age == 2_592_000  # must not undercut cache_ttl
     assert config.cache_min_free_space == 104857600
 
     # Output settings - CODE DEFAULT
