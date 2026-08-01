@@ -152,6 +152,7 @@ class AsyncApp:
         provider: str = None,
         fallback_enabled: bool = None,
         stream_copy: bool = False,
+        cache_enabled: bool = None,
     ):
         """Process input URL or file path.
 
@@ -162,6 +163,8 @@ class AsyncApp:
             fallback_enabled: Enable/disable fallback - overrides config if provided
             stream_copy: If True, skip yt-dlp's MP3 transcode and segment with
                 ``-c:a copy`` end-to-end. Faster but keeps the source codec.
+            cache_enabled: Enable/disable BOTH caches - overrides config if
+                provided. False makes the run re-download and re-identify.
         """
         try:
             # Apply CLI argument overrides to config
@@ -176,6 +179,21 @@ class AsyncApp:
             if fallback_enabled is not None:
                 self.logger.info(f"Overriding fallback_enabled: {fallback_enabled}")
                 self.config.fallback_enabled = fallback_enabled
+
+            if cache_enabled is False:
+                # --no-cache means REFRESH, not disable. Both read paths
+                # are skipped and both writes still fire, so the stale
+                # entry is overwritten rather than merely stepped around.
+                # Turning the caches off entirely would leave the bad
+                # result on disk to be served again on the next normal
+                # run — the opposite of what someone chasing a wrong
+                # identification wants.
+                #
+                # Both layers, deliberately: a user has no way to know
+                # whether the stale answer lives in the identification
+                # cache or in the downloaded audio it was derived from.
+                self.logger.info("Cache refresh requested: ignoring stored results")
+                self.config.cache_refresh = True
 
             # Store formats for output. When formats is None, leave
             # _output_formats unset so the save block falls back to
@@ -220,9 +238,14 @@ class AsyncApp:
                 # sidecar; a miss downloads then populates the cache. Gated
                 # by config.download_cache_enabled. Failures degrade to a
                 # live download — never abort the run.
+                #
+                # ``cache_refresh`` (--no-cache) skips this read only; the
+                # write below still fires, so the stale blob is replaced.
                 local_path = None
                 metadata = None
-                if self.config.download_cache_enabled:
+                if self.config.download_cache_enabled and not getattr(
+                    self.config, "cache_refresh", False
+                ):
                     try:
                         cached = await self.download_cache.get(
                             validated_path, stream_copy

@@ -72,6 +72,8 @@ async def main(args: argparse.Namespace) -> int:
             # Only override config when --no-fallback is explicitly set.
             fallback_enabled=False if args.no_fallback else None,
             stream_copy=args.stream_copy,
+            # Same pattern: None leaves the configured value alone.
+            cache_enabled=False if args.no_cache else None,
         )
 
         return 0
@@ -106,7 +108,23 @@ def parse_args(argv=None) -> argparse.Namespace:
     Returns:
         Parsed arguments namespace
     """
-    parser = argparse.ArgumentParser(description="Identify tracks in a mix.")
+    parser = argparse.ArgumentParser(
+        prog="tracklistify",
+        description="Identify tracks in a DJ mix.",
+        # Typing the bare command is the most common way to ask "what does
+        # this do?", and argparse answers it with a usage block and
+        # "error: the following arguments are required: input" — technically
+        # correct, useless as a first impression. Show a worked example.
+        epilog=(
+            "examples:\n"
+            "  tracklistify https://soundcloud.com/artist/some-mix\n"
+            "  tracklistify https://www.youtube.com/watch?v=VIDEO_ID\n"
+            "  tracklistify ~/Music/recorded-set.mp3\n"
+            "  tracklistify --no-cache <url>   # re-identify, ignore stored results\n"
+            "  tracklistify -sc <url>          # skip the MP3 transcode (faster)\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     parser.add_argument(
         "input",
@@ -132,6 +150,19 @@ def parse_args(argv=None) -> argparse.Namespace:
         action="store_true",
         default=None,
         help="Disable fallback to secondary providers",
+    )
+
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        default=None,
+        help=(
+            "Bypass both caches for this run: re-download the audio and "
+            "re-identify every segment, ignoring and overwriting any stored "
+            "results. Use when a cached identification is wrong — entries "
+            "are keyed by content hash and live for 30 days, so a bad match "
+            "is otherwise reproduced on every re-run."
+        ),
     )
 
     parser.add_argument(
@@ -175,6 +206,14 @@ def parse_args(argv=None) -> argparse.Namespace:
         action="store_true",
         help="Enable debug logging",
     )
+
+    # A bare invocation is a question ("what is this?"), not a mistake.
+    # argparse would answer it with a usage line and exit 2; full help and
+    # exit 0 is the useful reading. An argv with actual content still gets
+    # normal argparse error handling, since that IS a mistake.
+    if not (sys.argv[1:] if argv is None else argv):
+        parser.print_help()
+        parser.exit(0)
 
     return parser.parse_args(argv)
 

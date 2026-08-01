@@ -252,6 +252,16 @@ class IdentificationManager:
         # ``config.cache_enabled`` is set (checked per-call in identify_tracks).
         self._cache = cache if cache is not None else get_cache()
 
+    @property
+    def _refresh_cache(self) -> bool:
+        """True when this run must ignore stored results and rewrite them.
+
+        Set by ``--no-cache`` (see ``AsyncApp.process_input``). Read as a
+        property rather than captured at construction because the CLI
+        override mutates the config after this manager already exists.
+        """
+        return bool(getattr(self.config, "cache_refresh", False))
+
     def _provider_chain(self) -> List[str]:
         """Resolve the ordered provider chain: primary, then fallbacks.
 
@@ -333,8 +343,15 @@ class IdentificationManager:
                     # Cache lookup (best-effort, content-addressed by segment
                     # bytes + provider — temp paths are per-run). A hit
                     # short-circuits both the rate limiter and the network.
+                    #
+                    # ``refresh_cache`` (--no-cache) skips the READ but
+                    # keeps the key so the write below still fires. Skipping
+                    # both would make the flag a one-run bypass: the stale
+                    # entry would survive on disk and be served again on the
+                    # next normal run, which is the opposite of what someone
+                    # chasing a wrong identification wants.
                     cache_key = self._cache_key(provider_name, segment)
-                    if cache_key is not None:
+                    if cache_key is not None and not self._refresh_cache:
                         try:
                             cached = await self._cache.get(cache_key)
                         except Exception as e:

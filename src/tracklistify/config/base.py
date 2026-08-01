@@ -199,6 +199,12 @@ class TrackIdentificationConfig(BaseConfig):
     # silently start deleting entries the TTL still considers valid.
     cache_max_age: int = field(default=2_592_000)
     cache_min_free_space: int = field(default=104857600)
+    # Per-run switch set by ``--no-cache``: skip cache READS while leaving
+    # writes live, so stored results are refreshed rather than bypassed.
+    # Not a persistent preference — there is no reason to want every run to
+    # ignore its own cache — so it is deliberately CLI-only and absent from
+    # .env.example (see FIELD_SECTIONS in scripts/generate_env_example.py).
+    cache_refresh: bool = field(default=False)
 
     # Rate limiting settings
     rate_limit_enabled: bool = field(default=True)

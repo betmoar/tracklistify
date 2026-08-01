@@ -384,3 +384,112 @@ class TestZeroMatchWarning:
             for r in caplog.records
             if r.levelno >= logging.WARNING and "produced a match" in r.getMessage()
         ]
+
+
+class TestCacheRefresh:
+    """``cache_refresh`` (--no-cache) skips reads but keeps writes.
+
+    If it skipped both, the flag would be a one-run bypass: the stale entry
+    survives on disk and is served again on the next normal run. The point
+    of the flag is to REPLACE a bad cached identification.
+    """
+
+    @pytest.mark.asyncio
+    async def test_refresh_ignores_the_stored_result_and_overwrites_it(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from tracklistify.config import get_config
+        from tracklistify.utils.identification import IdentificationManager
+
+        def _resp(title):
+            return {
+                "metadata": {
+                    "music": [
+                        {
+                            "title": title,
+                            "artists": [{"name": "Artist"}],
+                            "score": 90.0,
+                        }
+                    ]
+                }
+            }
+
+        cfg = get_config(force_refresh=True)
+        cfg.cache_enabled = True
+        cache = SimpleNamespace(
+            get=AsyncMock(return_value=_resp("STALE WRONG TRACK")),
+            set=AsyncMock(),
+        )
+
+        provider = AsyncMock()
+        provider.identify_track = AsyncMock(return_value=_resp("FRESH CORRECT TRACK"))
+        provider.__aenter__ = AsyncMock(return_value=provider)
+        provider.__aexit__ = AsyncMock(return_value=False)
+
+        mgr = IdentificationManager(config=cfg, provider_factory=object(), cache=cache)
+        mgr._provider_chain = lambda: ["shazam"]
+        mgr.provider_factory = SimpleNamespace(
+            get_identification_provider=lambda name: provider
+        )
+        mgr._cache_key = lambda p, s: "k"
+        cfg.cache_refresh = True
+
+        tracks = await mgr.identify_tracks(
+            [SimpleNamespace(start_time=0, file_path="seg.mp3")]
+        )
+
+        # The stale entry was never consulted...
+        cache.get.assert_not_awaited()
+        assert tracks and tracks[0].song_name == "FRESH CORRECT TRACK"
+        # ...and the fresh result was written over it.
+        cache.set.assert_awaited_once()
+        assert cache.set.await_args.args[0] == "k"
+
+    @pytest.mark.asyncio
+    async def test_without_refresh_the_cache_is_read(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from tracklistify.config import get_config
+        from tracklistify.utils.identification import IdentificationManager
+
+        cfg = get_config(force_refresh=True)
+        cfg.cache_enabled = True
+        cfg.cache_refresh = False
+        cache = SimpleNamespace(
+            get=AsyncMock(
+                return_value={
+                    "metadata": {
+                        "music": [
+                            {
+                                "title": "CACHED",
+                                "artists": [{"name": "Artist"}],
+                                "score": 90.0,
+                            }
+                        ]
+                    }
+                }
+            ),
+            set=AsyncMock(),
+        )
+
+        provider = AsyncMock()
+        provider.__aenter__ = AsyncMock(return_value=provider)
+        provider.__aexit__ = AsyncMock(return_value=False)
+
+        mgr = IdentificationManager(config=cfg, provider_factory=object(), cache=cache)
+        mgr._provider_chain = lambda: ["shazam"]
+        mgr.provider_factory = SimpleNamespace(
+            get_identification_provider=lambda name: provider
+        )
+        mgr._cache_key = lambda p, s: "k"
+
+        tracks = await mgr.identify_tracks(
+            [SimpleNamespace(start_time=0, file_path="seg.mp3")]
+        )
+
+        cache.get.assert_awaited_once()
+        assert tracks and tracks[0].song_name == "CACHED"
+        # A hit short-circuits the provider entirely.
+        provider.identify_track.assert_not_awaited()
