@@ -4,6 +4,45 @@ From the 2026-07 handoff audit. Ordered by priority. Each item has enough
 context to be picked up cold. "Fixed" items are listed at the bottom so
 nobody re-audits them from scratch.
 
+## P2 — parenthetical title variants survive dedup as separate rows
+
+Identity requires titles to be **exactly equal** after normalization
+(`_tracks_match`), so a track detected under two title spellings emits two
+rows. Confirmed on real output twice, not hypothetical:
+
+| Time | Title A | Title B |
+|---|---|---|
+| 08:20 / 09:10 | `Meet Her At The Love Parade (feat. Kiki Solvej)` | `Meet Her At The Love Parade (Mixed)` |
+| 57:30 / 58:20 | `Outside World (Club Mix)` | `Outside World` |
+
+Both pairs are ~50s apart (one segmentation step) with matching artists —
+the proximity and artist gates already agree they belong together; only
+the title check splits them. A reader sees one track played once and gets
+two lines.
+
+**Why this was left alone during the dedup rewrite:** the suffixes are not
+uniformly noise. `(Mixed)`, `(Club Mix)`, `(Radio Edit)`, `(Extended
+Mix)`, `(feat. X)` are usually the *same* recording under different
+Shazam spellings, but `(Remix)` and a named `(Someone Remix)` are a
+genuinely different track that must stay separate. No single similarity
+ratio separates `"Berghain"` vs `"Berghain (Remix)"` (must split) from
+`"Outside World"` vs `"Outside World (Club Mix)"` (should merge) — they
+are the same edit distance. This needs a **semantic** rule, not a fuzzier
+threshold.
+
+**Suggested approach:** strip a curated allowlist of non-distinguishing
+parentheticals before comparison (`mixed`, `club mix`, `extended mix`,
+`radio edit`, `original mix`, `feat.`/`ft.`/`featuring …`) and keep
+everything else — notably anything containing `remix`, `bootleg`,
+`edit by`, `vip` — as title-distinguishing. Strip for the *comparison
+only*; the representative must keep its original title, since the
+displayed name should be what Shazam actually returned.
+
+Guard both directions with tests, as with the chaining rule: a merge case
+and a must-not-merge case. Do **not** attack this by loosening the artist
+Jaccard threshold — that is a different axis and would reintroduce the
+collab-bridge data loss (see `docs/playbooks/changing-dedup.md` rule 1b).
+
 ## P2 — Spotify enrichment is built but unreachable
 
 `SpotifyProvider` (search/enrich, client-credentials auth) works but no
