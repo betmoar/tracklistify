@@ -32,7 +32,7 @@ def mock_config():
     """Create mock configuration for testing."""
     config = TrackIdentificationConfig()
     config.segment_length = 60
-    config.min_confidence = 0.8
+    config.min_confidence = 0.0
     return config
 
 

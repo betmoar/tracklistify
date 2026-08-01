@@ -187,6 +187,14 @@ class YtDlpDownloader(Downloader):
             "progress_hooks": [progress_hook],
             "postprocessor_hooks": [self._postprocessor_hook],
             "no_warnings": True,  # Suppress unnecessary warnings
+            # Bound the fetch to the first entry. A SoundCloud ``/sets/``
+            # URL is a playlist, and ``extract_info(download=True)`` would
+            # otherwise download EVERY track in it before returning —
+            # unwrapping the returned metadata afterwards is far too late.
+            # Observed against a real 15-track set: 606MB pulled across 6
+            # tracks before the run was killed. We only ever process one
+            # track, so fetch exactly one.
+            "playlist_items": "1",
         }
 
         # Only attach the MP3 transcode postprocessor when stream-copy is
@@ -211,24 +219,108 @@ class YtDlpDownloader(Downloader):
                     logger.error("Failed to extract video information")
                     raise ValueError("Failed to extract video information")
 
+                # Unwrap single-entry playlist containers (notably
+                # SoundCloud ``/sets/`` URLs). yt-dlp returns a playlist
+                # dict whose id/ext/duration describe the *set*, not the
+                # track; without unwrapping to ``entries[0]`` the wrong
+                # metadata propagates into last_metadata (→ cache sidecar +
+                # mix_info) and ``prepare_filename`` builds a path from the
+                # set id. ``outtmpl`` is ``%(id)s.%(ext)s``, so the
+                # container's id yields the wrong filename too. Unwrap
+                # before anything reads ``info`` downstream.
+                if info.get("_type") == "playlist":
+                    entries = info.get("entries") or []
+                    if entries:
+                        if len(entries) > 1:
+                            # Only the first entry is processed. Warn at
+                            # default verbosity — a silently truncated set
+                            # produces a tracklist for one track and caches
+                            # it under the set's URL with no TTL, which
+                            # looks like a correct result.
+                            logger.warning(
+                                f"URL resolved to a {len(entries)}-track set; "
+                                f"processing only the first "
+                                f"({entries[0].get('title', 'unknown')!r}). "
+                                f"Pass a direct track URL to select another."
+                            )
+                        else:
+                            logger.debug(
+                                "Unwrapping single-entry playlist container "
+                                "-> entries[0]"
+                            )
+                        info = entries[0]
+                    else:
+                        # Zero entries with the container still in hand.
+                        # Falling through would leave ``info`` as the *set*
+                        # — silently reinstating the exact wrong-metadata
+                        # bug the unwrap above exists to fix, and then
+                        # building an output path from the set id that no
+                        # file was ever written to. Reachable for a
+                        # private, deleted, or geo-blocked set, where
+                        # yt-dlp returns the container with an empty
+                        # ``tracks`` list. Fail loudly instead.
+                        logger.error(
+                            f"URL resolved to a playlist container with no "
+                            f"downloadable entries (id="
+                            f"{info.get('id', 'unknown')!r}); it may be "
+                            f"private, deleted, or region-locked."
+                        )
+                        raise ValueError(f"No downloadable entries found for {url}")
+
                 # Persist full metadata for later access
                 self.last_metadata = info
 
-                # Prepare output path. With stream_copy=True, yt-dlp keeps
-                # the source extension; otherwise the FFmpegExtractAudio
-                # postprocessor rewrites the file as ``.<self.format>``.
-                filename = ydl.prepare_filename(info)
-                if self.stream_copy:
-                    candidate = Path(filename)
-                    if not candidate.exists():
-                        # Fall back to globbing — yt-dlp may have renamed
-                        # the extension during muxing.
-                        matches = list(candidate.parent.glob(candidate.stem + ".*"))
-                        if matches:
-                            candidate = matches[0]
-                    output_path = str(candidate)
-                else:
-                    output_path = str(Path(filename).with_suffix(f".{self.format}"))
+                # Resolve the output path. Prefer the path yt-dlp actually
+                # wrote (``requested_downloads[0]["filepath"]``) — strictly
+                # more robust than reconstructing via ``prepare_filename``,
+                # which misses extension changes the muxing postprocessor
+                # makes (notably the MP3 transcode). Fall back to the
+                # reconstruct+glob path when ``requested_downloads`` is
+                # absent (older yt-dlp / stream-copy cases).
+                output_path: Optional[str] = None
+                requested = info.get("requested_downloads") or []
+                if requested and requested[0].get("filepath"):
+                    output_path = requested[0]["filepath"]
+                elif requested:
+                    # yt-dlp reported a download but gave no path. Distinct
+                    # from "no requested_downloads at all" (the documented
+                    # older-yt-dlp fallback), and worth saying so — this is
+                    # the branch that silently degrades to the weaker
+                    # reconstruct path in exactly the muxing cases the
+                    # filepath preference was added to handle.
+                    logger.debug(
+                        f"requested_downloads present but carries no "
+                        f"filepath ({requested[0]!r}); falling back to "
+                        f"prepare_filename reconstruction."
+                    )
+
+                if output_path is None:
+                    filename = ydl.prepare_filename(info)
+                    if self.stream_copy:
+                        candidate = Path(filename)
+                        if not candidate.exists():
+                            # Fall back to globbing — yt-dlp may have
+                            # renamed the extension during muxing.
+                            matches = list(candidate.parent.glob(candidate.stem + ".*"))
+                            if matches:
+                                candidate = matches[0]
+                            else:
+                                # Reconstruct missed and the glob found
+                                # nothing: returning this path would report
+                                # success for a file that does not exist,
+                                # and the failure would first surface in
+                                # split_audio as "Could not read audio
+                                # file" — several frames from the cause.
+                                logger.error(
+                                    f"Download reported success but no file "
+                                    f"was found at {candidate} or matching "
+                                    f"{candidate.stem}.* in "
+                                    f"{candidate.parent}"
+                                )
+                                raise ValueError(f"Downloaded file not found for {url}")
+                        output_path = str(candidate)
+                    else:
+                        output_path = str(Path(filename).with_suffix(f".{self.format}"))
 
                 # Set instance variables for external use
                 self.title = info.get("title", "Unknown title")

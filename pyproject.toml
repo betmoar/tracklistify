@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "tracklistify"
-version = "0.8.2"
+version = "0.9.0"
 description = "Automatic tracklist generator for DJ mixes and audio streams"
 readme = "README.md"
 authors = [
@@ -84,7 +84,11 @@ version_scheme = "pep440"
 version_provider = "pep621"
 update_changelog_on_bump = true
 major_version_zero = true
-changelog_start_rev = "v0.6.8"
+# Was "v0.6.8", a tag that does not exist in this repo — `cz bump` aborted
+# on `git log v0.6.8..` before it could write a changelog. The oldest tag
+# present is `0.8.0` (no `v` prefix, predating tag_format), so start from
+# the oldest tag that actually matches tag_format.
+changelog_start_rev = "v0.8.1"
 
 [tool.pytest.ini_options]
 minversion = "8.0"

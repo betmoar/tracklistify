@@ -149,9 +149,13 @@ class TrackIdentificationConfig(BaseConfig):
 
     # Track identification specific fields
     segment_length: int = field(default=60)
-    min_confidence: float = field(default=0.5)
-    time_threshold: float = field(default=30.0)
-    max_duplicates: int = field(default=2)
+    min_confidence: float = field(default=0.0)
+    # 0.0 = derive the dedup window from the segmentation step
+    # (2 * (segment_length - overlap_duration)); a positive value overrides
+    # it. The old 30.0 default predates the window being wired at all — it
+    # is narrower than one segmentation step (50s), so it would split
+    # adjacent-segment detections of the same track.
+    time_threshold: float = field(default=0.0)
     overlap_duration: int = field(default=10)
     overlap_strategy: str = field(default="weighted")
     min_segment_length: int = field(default=10)
@@ -163,7 +167,16 @@ class TrackIdentificationConfig(BaseConfig):
 
     # Caching settings
     cache_enabled: bool = field(default=True)
-    cache_ttl: int = field(default=3600)
+    # 30 days. The identification cache is keyed on
+    # ``f"{provider}:{sha256(segment_bytes)}"`` — the segment hash IS the
+    # identity, so a stored Shazam/ACRCloud response for those exact bytes
+    # does not go stale the way a typical HTTP cache entry does. The old
+    # 1-hour default meant re-running yesterday's mix re-paid the full
+    # identification cost, with most entries still well within their
+    # useful life when they expired. A provider improving its catalog is
+    # the only real staleness here, and weeks is the right granularity for
+    # that — not an hour.
+    cache_ttl: int = field(default=2_592_000)
     # Byte budget for the cache (matches SizeStrategy / BaseCache semantics).
     # Previously defaulted to 1000 — meant as "entries" but interpreted as
     # bytes, which was so small the cache rejected every Shazam response.
@@ -173,8 +186,25 @@ class TrackIdentificationConfig(BaseConfig):
     cache_compression_level: int = field(default=6)
     cache_cleanup_enabled: bool = field(default=True)
     cache_cleanup_interval: int = field(default=3600)
-    cache_max_age: int = field(default=86400)
+    # Must not be shorter than cache_ttl: these are two independent expiry
+    # gates reading different fields — ``JSONStorage.cleanup()``
+    # (cache/storage.py, via ``BaseCache.cleanup()``) reads max_age, while
+    # ``TTLStrategy`` reads ttl on lookup — and the shorter one wins.
+    #
+    # The hazard is currently LATENT, not live: nothing in production
+    # calls ``BaseCache.cleanup()``. It has no scheduler, and
+    # ``cache_cleanup_enabled``/``cache_cleanup_interval`` below are read
+    # by no code at all (``AsyncApp.cleanup()`` only clears temp dirs).
+    # Kept in step anyway, so that wiring the janitor up later cannot
+    # silently start deleting entries the TTL still considers valid.
+    cache_max_age: int = field(default=2_592_000)
     cache_min_free_space: int = field(default=104857600)
+    # Per-run switch set by ``--no-cache``: skip cache READS while leaving
+    # writes live, so stored results are refreshed rather than bypassed.
+    # Not a persistent preference — there is no reason to want every run to
+    # ignore its own cache — so it is deliberately CLI-only and absent from
+    # .env.example (see FIELD_SECTIONS in scripts/generate_env_example.py).
+    cache_refresh: bool = field(default=False)
 
     # Rate limiting settings
     rate_limit_enabled: bool = field(default=True)
@@ -229,14 +259,12 @@ class TrackIdentificationConfig(BaseConfig):
         self._validator.add_type_rule("overlap_duration", int)
         self._validator.add_type_rule("min_confidence", float)
         self._validator.add_type_rule("time_threshold", float)
-        self._validator.add_type_rule("max_duplicates", int)
 
         # Add range validation rules
         self._validator.add_range_rule("segment_length", 10, 300)
         self._validator.add_range_rule("overlap_duration", 0, 30)
         self._validator.add_range_rule("min_confidence", 0.0, 1.0)
         self._validator.add_range_rule("time_threshold", 0.0, 300.0)
-        self._validator.add_range_rule("max_duplicates", 0, 10)
 
         # Add path validation rules for directories
         path_requirements = {PathRequirement.IS_DIR, PathRequirement.WRITABLE}

@@ -48,9 +48,10 @@ def test_default_config(monkeypatch):
 
     # Track identification settings - CODE DEFAULTS
     assert config.segment_length == 60
-    assert config.min_confidence == 0.5  # Code default is 0.5
-    assert config.time_threshold == 30.0
-    assert config.max_duplicates == 2
+    assert config.min_confidence == 0.0  # Code default is 0.0 (keep all)
+    # 0.0 = derive the dedup window from the segmentation step (see
+    # TrackMatcher._dedup_window); a positive value overrides it.
+    assert config.time_threshold == 0.0
 
     # Provider settings - CODE DEFAULTS
     assert config.primary_provider == "shazam"
@@ -63,14 +64,14 @@ def test_default_config(monkeypatch):
 
     # Cache settings - CODE DEFAULTS
     assert config.cache_enabled is True
-    assert config.cache_ttl == 3600
+    assert config.cache_ttl == 2_592_000  # 30d; segment hash is the identity
     assert config.cache_max_size == 1_000_000  # bytes (~1MB), matches SizeStrategy
     assert config.cache_storage_format == "json"
     assert config.cache_compression_enabled is True
     assert config.cache_compression_level == 6
     assert config.cache_cleanup_enabled is True
     assert config.cache_cleanup_interval == 3600
-    assert config.cache_max_age == 86400
+    assert config.cache_max_age == 2_592_000  # must not undercut cache_ttl
     assert config.cache_min_free_space == 104857600
 
     # Output settings - CODE DEFAULT
@@ -101,7 +102,6 @@ def test_custom_config(temp_test_dir, monkeypatch):
     # Set specific environment variables that should override constructor values
     monkeypatch.setenv("TRACKLISTIFY_MIN_CONFIDENCE", "0.9")
     monkeypatch.setenv("TRACKLISTIFY_TIME_THRESHOLD", "45.0")
-    monkeypatch.setenv("TRACKLISTIFY_MAX_DUPLICATES", "3")
     monkeypatch.setenv("TRACKLISTIFY_CACHE_TTL", "7200")
     monkeypatch.setenv("TRACKLISTIFY_OUTPUT_FORMAT", "markdown")
     monkeypatch.setenv("TRACKLISTIFY_OUTPUT_DIR", str(temp_test_dir / "env_output"))
@@ -116,7 +116,6 @@ def test_custom_config(temp_test_dir, monkeypatch):
     config = TrackIdentificationConfig(
         min_confidence=0.5,  # Should be overridden to 0.9
         time_threshold=30.0,  # Should be overridden to 45.0
-        max_duplicates=2,  # Should be overridden to 3
         cache_ttl=3600,  # Should be overridden to 7200
         output_format="json",  # Should be overridden to markdown
         output_dir=temp_test_dir / "constructor_output",  # Overridden
@@ -128,7 +127,6 @@ def test_custom_config(temp_test_dir, monkeypatch):
     # Verify environment variables override constructor values
     assert config.min_confidence == 0.9
     assert config.time_threshold == 45.0
-    assert config.max_duplicates == 3
     assert config.cache_ttl == 7200
     assert config.output_format == "markdown"
 
@@ -280,7 +278,6 @@ def test_config_documentation_generation():
     # Test field documentation
     field_docs = generate_field_docs(config)
     assert "time_threshold" in field_docs
-    assert "max_duplicates" in field_docs
     assert "min_confidence" in field_docs
     assert "**Type:**" in field_docs
     assert "**Description:**" in field_docs
@@ -295,7 +292,6 @@ def test_config_documentation_generation():
     example_docs = generate_example_docs(TrackIdentificationConfig)
     assert "Configuration Example" in example_docs
     assert "time_threshold" in example_docs
-    assert "max_duplicates" in example_docs
 
     # Test full documentation
     full_docs = doc_gen.generate_markdown()
@@ -394,7 +390,6 @@ def test_env_config():
 
         # Verify other settings
         assert config.time_threshold == 45.0
-        assert config.max_duplicates == 4
         assert config.min_confidence == 0.95
 
         # Verify directories are created
@@ -464,8 +459,7 @@ def test_to_dict(monkeypatch):
 
     assert isinstance(config_dict, dict)
     # Value depends on test run order
-    assert config_dict["time_threshold"] in [30.0, 60.0]
-    assert config_dict["max_duplicates"] == 2
+    assert config_dict["time_threshold"] in [0.0, 30.0, 60.0]
     # Value depends on test run order
     assert config_dict["min_confidence"] in [0.0, 0.5, 0.8]
     assert isinstance(config_dict["output_dir"], Path)
@@ -497,7 +491,7 @@ def test_get_config():
     config1 = get_config()
     assert isinstance(config1, TrackIdentificationConfig)
     # Value depends on test run order
-    assert config1.time_threshold in [30.0, 60.0]
+    assert config1.time_threshold in [0.0, 30.0, 60.0]
 
     # Test singleton behavior
     config2 = get_config()

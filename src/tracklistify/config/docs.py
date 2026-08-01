@@ -160,8 +160,11 @@ class ConfigDocGenerator:
             "output_dir": "Directory for output files",
             "spotify_client_id": "Spotify API client ID",
             "spotify_client_secret": "Spotify API client secret (sensitive)",
-            "time_threshold": "Time threshold for merging similar tracks (in seconds)",
-            "max_duplicates": "Maximum number of duplicate tracks to keep",
+            "time_threshold": (
+                "Seconds within which two matching detections are treated as "
+                "the same play (dedup window). Unset/0 derives it from the "
+                "segmentation step: 2 * (segment_length - overlap_duration)"
+            ),
             "min_confidence": "Minimum confidence threshold for track detection",
         }
         return descriptions.get(field, f"Configuration value for {field}")

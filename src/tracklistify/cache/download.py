@@ -10,10 +10,13 @@ Storage layout (under ``cache_dir/downloads/``)::
     <sha256>            # the audio blob (no extension; sidecar records ext)
     <sha256>.meta.json  # title, uploader, duration, ext, source_url
 
-The key material is ``f"{canonicalize_url(url)}|stream_copy={stream_copy}"``
+The key material is
+``f"{canonicalize_url(url)}|stream_copy={stream_copy}|{KEY_VERSION}"``
 — ``stream_copy`` is included because it produces different bytes (MP3
-transcode vs source-container opus/webm/m4a). ``format``/``quality`` are
-not yet wired through the factory, so excluded (add when wired).
+transcode vs source-container opus/webm/m4a), and ``KEY_VERSION``
+invalidates stale entries when the metadata shape changes (e.g. the
+SoundCloud ``/sets/`` unwrap fix). ``format``/``quality`` are not yet
+wired through the factory, so excluded (add when wired).
 
 v1 has no TTL or eviction — audio is large and ``cache_max_size`` (1MB) is
 far too small to enforce against audio files. Cleanup is manual
@@ -33,6 +36,14 @@ from tracklistify.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _DOWNLOADS_SUBDIR = "downloads"
+
+# Bumped when the on-disk metadata shape or key derivation changes, to
+# invalidate stale entries from prior versions. v1 was introduced because
+# pre-fix runs of SoundCloud ``/sets/`` URLs persisted the wrong (playlist
+# container) metadata under this key with no TTL — a bump forces a clean
+# re-fetch. Future metadata-shape changes bump this rather than collapsing
+# the URL in canonicalize_url.
+KEY_VERSION = "v1"
 
 
 @dataclass
@@ -56,7 +67,9 @@ class DownloadCache:
         self._downloads_dir = Path(cache_dir) / _DOWNLOADS_SUBDIR
 
     def _key_hash(self, url: str, stream_copy: bool) -> str:
-        key_material = f"{canonicalize_url(url)}|stream_copy={stream_copy}"
+        key_material = (
+            f"{canonicalize_url(url)}|stream_copy={stream_copy}|{KEY_VERSION}"
+        )
         return hashlib.sha256(key_material.encode()).hexdigest()
 
     def _audio_path(self, h: str) -> Path:

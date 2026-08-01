@@ -8,7 +8,7 @@ import contextlib
 import hashlib
 import sys
 import time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from tracklistify.cache.factory import get_cache
 from tracklistify.config.factory import get_config
@@ -22,6 +22,11 @@ from .rate_limiter import get_global_rate_limiter
 from .time_formatter import format_seconds_to_hhmmss
 
 logger = get_logger(__name__)
+
+# Below this many segments a zero-match run is unremarkable — a short clip
+# genuinely may contain nothing identifiable, and warning there would cry
+# wolf. A full mix returning nothing at all is worth flagging.
+_MIN_SEGMENTS_FOR_MISS_RATE_WARNING = 10
 
 
 def format_duration(duration: float) -> str:
@@ -71,6 +76,51 @@ def create_progress_bar(progress: float, width: int = 30) -> str:
     # Build progress bar with filled (█) and empty (░) blocks
     bar = "[" + "█" * filled + "░" * empty + "]"
     return bar
+
+
+def _extra_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Pull provider-supplied extras out of a music entry.
+
+    ISRC, genre, album/label/release date, platform ids and artwork. No
+    provider fills every key — ACRCloud has no Shazam id, Shazam has no
+    ACRCloud fields — so empty values are dropped rather than stored as
+    ``None``. That keeps ``Track.metadata`` free of null noise and lets
+    ``_save_json`` emit ``null`` for a track with no extras at all.
+
+    Reads defensively: provider payloads are third-party JSON, and a
+    malformed shape here must not take down identification. Anything
+    unparseable yields ``{}`` and the Track is still built.
+    """
+    if not isinstance(metadata, dict):
+        return {}
+
+    external_ids = metadata.get("external_ids")
+    isrc = external_ids.get("isrc") if isinstance(external_ids, dict) else None
+
+    genres_raw = metadata.get("genres")
+    genres = (
+        [g.get("name") for g in genres_raw if isinstance(g, dict) and g.get("name")]
+        if isinstance(genres_raw, list)
+        else []
+    )
+
+    extras = {
+        "isrc": isrc,
+        "album": metadata.get("album"),
+        "label": metadata.get("label"),
+        "release_date": metadata.get("release_date"),
+        "genres": genres or None,
+        "shazam_id": metadata.get("shazam_id"),
+        "apple_music_id": metadata.get("apple_music_id"),
+        "artwork_url": metadata.get("artwork_url"),
+        "shazam_url": metadata.get("shazam_url"),
+        # Platform search links Shazam ships with the match, converted to
+        # clickable https by the provider. Named ``*_search_url`` because
+        # they are searches, not canonical track URLs — see the provider.
+        "spotify_search_url": metadata.get("spotify_search_url"),
+        "deezer_search_url": metadata.get("deezer_search_url"),
+    }
+    return {k: v for k, v in extras.items() if v}
 
 
 class ProgressDisplay:
@@ -196,11 +246,21 @@ class IdentificationManager:
         self._segment_digests: dict[str, str] = {}
         self.config = config or get_config()
         self.provider_factory = provider_factory or create_provider_factory()
-        self.track_matcher = TrackMatcher()
+        self.track_matcher = TrackMatcher(self.config)
         # Cache is optional: tests inject a double; production resolves the
         # global cache singleton. It's only consulted when
         # ``config.cache_enabled`` is set (checked per-call in identify_tracks).
         self._cache = cache if cache is not None else get_cache()
+
+    @property
+    def _refresh_cache(self) -> bool:
+        """True when this run must ignore stored results and rewrite them.
+
+        Set by ``--no-cache`` (see ``AsyncApp.process_input``). Read as a
+        property rather than captured at construction because the CLI
+        override mutates the config after this manager already exists.
+        """
+        return bool(getattr(self.config, "cache_refresh", False))
 
     def _provider_chain(self) -> List[str]:
         """Resolve the ordered provider chain: primary, then fallbacks.
@@ -246,6 +306,7 @@ class IdentificationManager:
                 artist=artist_name,
                 time_in_mix=time_in_mix,
                 confidence=float(metadata.get("score", 100.0)),
+                metadata=_extra_metadata(metadata),
             )
         except (ValueError, TypeError) as e:
             logger.error(f"Failed to create track from provider response: {e}")
@@ -282,8 +343,15 @@ class IdentificationManager:
                     # Cache lookup (best-effort, content-addressed by segment
                     # bytes + provider — temp paths are per-run). A hit
                     # short-circuits both the rate limiter and the network.
+                    #
+                    # ``refresh_cache`` (--no-cache) skips the READ but
+                    # keeps the key so the write below still fires. Skipping
+                    # both would make the flag a one-run bypass: the stale
+                    # entry would survive on disk and be served again on the
+                    # next normal run, which is the opposite of what someone
+                    # chasing a wrong identification wants.
                     cache_key = self._cache_key(provider_name, segment)
-                    if cache_key is not None:
+                    if cache_key is not None and not self._refresh_cache:
                         try:
                             cached = await self._cache.get(cache_key)
                         except Exception as e:
@@ -292,6 +360,16 @@ class IdentificationManager:
                         if cached is not None:
                             track = self._track_from_info(cached, segment)
                             if track is not None:
+                                # Mark the hit: this path never touches the
+                                # provider, so without a line here a cached
+                                # segment is indistinguishable from one that
+                                # was never processed. That reads as a gap
+                                # in the segment sequence (e.g. 200s jumping
+                                # to 350s) and looks like dropped work.
+                                logger.debug(
+                                    f"Cache hit for segment at "
+                                    f"{segment.start_time}s ({provider_name})"
+                                )
                                 break
 
                     acquired = False
@@ -340,6 +418,24 @@ class IdentificationManager:
                 f"{len(identified_tracks)} total matches"
             )
         )
+
+        # A broken pipeline and an unidentifiable set look identical from
+        # here: both end with zero matches. The per-segment no-match line
+        # is deliberately debug (it is the normal case in a DJ mix), and
+        # Shazam answers a degraded request with HTTP 200 and an empty
+        # ``matches`` list rather than an error — so a dead proxy, a
+        # geo-blocked endpoint or an expired signature scheme produces a
+        # clean "0 tracks" run with nothing above debug to explain it.
+        # Scattered misses are normal; a near-total miss rate is a signal.
+        total = len(audio_segments)
+        if total >= _MIN_SEGMENTS_FOR_MISS_RATE_WARNING and not identified_tracks:
+            logger.warning(
+                f"No segment out of {total} produced a match. That is "
+                f"expected for a set of unreleased IDs, but it is also what "
+                f"a broken request pipeline looks like — re-run with "
+                f"--debug to see the raw provider responses, and check "
+                f"TRACKLISTIFY_SHAZAM_PROXY if one is configured."
+            )
         return unique_tracks
 
     def _cache_key(self, provider_name: str, segment) -> Optional[str]:

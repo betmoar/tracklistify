@@ -40,6 +40,16 @@ HEADER = """\
 # Section ID -> (display title, ordered list of field names in that section)
 # Every dataclass field must appear in exactly one section. Fields not listed
 # here trigger an error so drift can't slip in silently.
+# Fields that are deliberately NOT env-configurable and so must not appear
+# in .env.example. Listing one here is a claim that it makes no sense as a
+# persistent preference — keep it short, and prefer a section entry unless
+# the field is genuinely per-run only.
+CLI_ONLY_FIELDS: set[str] = {
+    # Set by --no-cache. A standing "always ignore my cache" preference
+    # would just be `cache_enabled=false` with extra steps.
+    "cache_refresh",
+}
+
 FIELD_SECTIONS: list[tuple[str, list[str]]] = [
     ("Directories", ["output_dir", "cache_dir", "temp_dir", "log_dir"]),
     ("Logging", ["verbose", "debug"]),
@@ -49,7 +59,6 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
             "segment_length",
             "min_confidence",
             "time_threshold",
-            "max_duplicates",
             "overlap_duration",
             "overlap_strategy",
             "min_segment_length",
@@ -112,8 +121,7 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
 INLINE_COMMENTS: dict[str, str] = {
     "segment_length": "10..300 seconds",
     "min_confidence": "0.0..1.0",
-    "time_threshold": "0.0..300.0 seconds, dedup window",
-    "max_duplicates": "0..10",
+    "time_threshold": "dedup window, seconds. 0 = derive as 2*(segment-overlap)",
     "overlap_duration": "0..30 seconds",
     "overlap_strategy": "weighted | longest",
     "min_segment_length": "minimum segment duration in seconds",
@@ -183,7 +191,11 @@ def _render() -> str:
     fields_by_name = {f.name: f for f in dataclasses.fields(TrackIdentificationConfig)}
     # _validator and similar private fields are excluded from the dataclass via
     # ``field(init=False)`` typing, but be defensive anyway.
-    public = {n: f for n, f in fields_by_name.items() if not n.startswith("_")}
+    public = {
+        n: f
+        for n, f in fields_by_name.items()
+        if not n.startswith("_") and n not in CLI_ONLY_FIELDS
+    }
 
     listed: set[str] = set()
     for _, names in FIELD_SECTIONS:

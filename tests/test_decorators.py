@@ -12,9 +12,17 @@ def test_memoize_avg_dilutes_with_hits_interleaved_buggy_divisor():
     in the new sample. The correct misses-only divisor yields a clean
     mean of the actual miss compute times.
 
-    Sequence: slow miss (10ms) → 50 hits → fast miss (1ms).
-    - Buggy:   avg = (10 * 51 + 1) / 52 ≈ 9.83ms
-    - Correct: avg = (10 + 1) / 2 = 5.5ms
+    Sequence: slow miss (~10ms) → 50 hits → fast miss (~1ms).
+    - Buggy:   avg = (slow * 51 + fast) / 52 ≈ slow
+    - Correct: avg = (slow + fast) / 2 ≈ slow / 2
+
+    The assertion is expressed relative to the *measured* slow miss, not as
+    an absolute millisecond bound. ``time.sleep`` only guarantees a lower
+    bound, and on a loaded CI runner a 10ms sleep routinely lands at 15ms+
+    — which drifted the correct mean past a hardcoded 8.0ms ceiling and
+    made this test fail on roughly 60% of local runs. The ratio between the
+    two divisors is what the test is actually about, and it holds under any
+    scheduler slop.
     """
 
     @memoize()
@@ -23,7 +31,9 @@ def test_memoize_avg_dilutes_with_hits_interleaved_buggy_divisor():
         time.sleep(0.010 if n == 1 else 0.001)
         return n
 
+    t0 = time.perf_counter()
     f(1)  # miss, ~10ms
+    slow_ms = (time.perf_counter() - t0) * 1000
     for _ in range(50):
         f(1)  # hits
     f(2)  # miss, ~1ms
@@ -31,10 +41,11 @@ def test_memoize_avg_dilutes_with_hits_interleaved_buggy_divisor():
     stats = f.get_stats()
     assert stats["misses"] == 2
     assert stats["hits"] == 50
-    # The misses-only mean is ~5.5ms. The buggy total_calls mean is ~9.8ms.
-    # Assert avg is below 8ms, which the buggy formula cannot reach in
-    # this pattern.
-    assert stats["avg_computation_time_ms"] < 8.0, (
-        f"avg={stats['avg_computation_time_ms']}ms suggests total_calls "
-        f"divisor (expected misses-only mean ≈5.5ms)"
+    # Correct (misses-only) ≈ slow/2; buggy (total_calls) ≈ slow. Anything
+    # below 75% of the slow miss can only come from the misses-only
+    # divisor, however far the sleeps overshot.
+    assert stats["avg_computation_time_ms"] < slow_ms * 0.75, (
+        f"avg={stats['avg_computation_time_ms']}ms vs slow miss "
+        f"{slow_ms}ms suggests a total_calls divisor (expected the "
+        f"misses-only mean, ≈{slow_ms / 2:.1f}ms)"
     )

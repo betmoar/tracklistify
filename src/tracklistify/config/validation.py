@@ -425,18 +425,14 @@ class ConfigValidator:
 
     def validate_track_config(self, config: Dict[str, Any]) -> None:
         if "time_threshold" in config:
+            # 0 is valid and means "derive the dedup window from the
+            # segmentation step" (see TrackMatcher._dedup_window), so only
+            # negative values are rejected here.
             if (
                 not isinstance(config["time_threshold"], (int, float))
-                or config["time_threshold"] <= 0
+                or config["time_threshold"] < 0
             ):
-                raise ValueError("Time threshold must be a positive number")
-
-        if "max_duplicates" in config:
-            if (
-                not isinstance(config["max_duplicates"], int)
-                or config["max_duplicates"] < 0
-            ):
-                raise ValueError("Max duplicates must be a non-negative integer")
+                raise ValueError("Time threshold must be a non-negative number")
 
         if "min_confidence" in config:
             if (

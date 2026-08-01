@@ -239,3 +239,257 @@ class TestProgressDisplay:
         display.update(current=5)
 
         assert display.current_segment == 5
+
+
+class TestExtraMetadata:
+    """Provider extras -> Track.metadata (PR #57 enrichment).
+
+    Extraction lives in ``_extra_metadata`` and is called from
+    ``_track_from_info``, which is the single place a Track is built from a
+    provider response — both the live and cache-hit paths route through it,
+    so metadata lands on cached tracks too.
+    """
+
+    def test_full_metadata_is_extracted(self):
+        from tracklistify.utils.identification import _extra_metadata
+
+        extras = _extra_metadata(
+            {
+                "title": "Berghain",
+                "external_ids": {"isrc": "USABC1234567"},
+                "genres": [{"name": "Techno"}, {"name": "Hard Techno"}],
+                "album": "Hyperdrive",
+                "label": "HEKATE",
+                "release_date": "2024",
+                "shazam_id": "k1",
+                "apple_music_id": "am-999",
+                "artwork_url": "https://img/hq.jpg",
+                "shazam_url": "https://shazam/1",
+                "spotify_search_url": "https://open.spotify.com/search/Berghain",
+                "deezer_search_url": "https://www.deezer.com/search/Berghain",
+            }
+        )
+        assert extras == {
+            "isrc": "USABC1234567",
+            "genres": ["Techno", "Hard Techno"],
+            "album": "Hyperdrive",
+            "label": "HEKATE",
+            "release_date": "2024",
+            "shazam_id": "k1",
+            "apple_music_id": "am-999",
+            "artwork_url": "https://img/hq.jpg",
+            "shazam_url": "https://shazam/1",
+            "spotify_search_url": "https://open.spotify.com/search/Berghain",
+            "deezer_search_url": "https://www.deezer.com/search/Berghain",
+        }
+
+    def test_empty_values_are_dropped_not_stored_as_none(self):
+        """No provider fills every key — ACRCloud has no shazam_id, Shazam
+        has no ACRCloud fields. Storing None would fill Track.metadata with
+        null noise and defeat the `or None` in _save_json."""
+        from tracklistify.utils.identification import _extra_metadata
+
+        assert _extra_metadata({"title": "X", "album": None, "genres": []}) == {}
+
+    def test_malformed_shapes_do_not_raise(self):
+        """Provider payloads are third-party JSON. A wrong-typed field must
+        degrade to "no extras", never take down identification."""
+        from tracklistify.utils.identification import _extra_metadata
+
+        assert _extra_metadata({"external_ids": None}) == {}
+        assert _extra_metadata({"external_ids": "nope"}) == {}
+        assert _extra_metadata({"genres": "Techno"}) == {}
+        assert _extra_metadata({"genres": [None, {"no_name": 1}]}) == {}
+        assert _extra_metadata(None) == {}
+
+    def test_track_from_info_attaches_metadata(self):
+        """The extras reach Track.metadata through the real build path."""
+        from types import SimpleNamespace
+
+        from tracklistify.config import get_config
+        from tracklistify.utils.identification import IdentificationManager
+
+        mgr = IdentificationManager(config=get_config(), provider_factory=object())
+        track = mgr._track_from_info(
+            {
+                "metadata": {
+                    "music": [
+                        {
+                            "title": "Berghain",
+                            "artists": [{"name": "Sara Landry"}],
+                            "score": 90.0,
+                            "external_ids": {"isrc": "USABC1234567"},
+                            "album": "Hyperdrive",
+                        }
+                    ]
+                }
+            },
+            SimpleNamespace(start_time=0),
+        )
+        assert track is not None
+        assert track.metadata["isrc"] == "USABC1234567"
+        assert track.metadata["album"] == "Hyperdrive"
+
+
+class TestZeroMatchWarning:
+    """A broken pipeline and an unidentifiable set both end at zero matches.
+
+    The per-segment no-match line is deliberately debug (it is the normal
+    case in a DJ mix), and Shazam answers a degraded request with HTTP 200
+    and an empty ``matches`` list rather than an error — so a dead proxy or
+    geo-blocked endpoint produces a clean "0 tracks" run with nothing above
+    debug to explain it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_full_miss_on_a_long_run_warns(self, caplog):
+        import logging
+        from types import SimpleNamespace
+
+        from tracklistify.config import get_config
+        from tracklistify.utils.identification import IdentificationManager
+
+        mgr = IdentificationManager(config=get_config(), provider_factory=object())
+        mgr._provider_chain = lambda: []
+        segments = [SimpleNamespace(start_time=i * 50) for i in range(12)]
+
+        with caplog.at_level(logging.WARNING):
+            await mgr.identify_tracks(segments)
+
+        assert any(
+            "No segment out of 12 produced a match" in r.getMessage()
+            for r in caplog.records
+            if r.levelno >= logging.WARNING
+        ), "a total miss across a full mix must be flagged"
+
+    @pytest.mark.asyncio
+    async def test_short_clip_full_miss_stays_quiet(self, caplog):
+        """Below the threshold a zero-match run is unremarkable — warning
+        there would cry wolf on a short clip that genuinely has nothing."""
+        import logging
+        from types import SimpleNamespace
+
+        from tracklistify.config import get_config
+        from tracklistify.utils.identification import IdentificationManager
+
+        mgr = IdentificationManager(config=get_config(), provider_factory=object())
+        mgr._provider_chain = lambda: []
+        segments = [SimpleNamespace(start_time=i * 50) for i in range(3)]
+
+        with caplog.at_level(logging.WARNING):
+            await mgr.identify_tracks(segments)
+
+        assert not [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.WARNING and "produced a match" in r.getMessage()
+        ]
+
+
+class TestCacheRefresh:
+    """``cache_refresh`` (--no-cache) skips reads but keeps writes.
+
+    If it skipped both, the flag would be a one-run bypass: the stale entry
+    survives on disk and is served again on the next normal run. The point
+    of the flag is to REPLACE a bad cached identification.
+    """
+
+    @pytest.mark.asyncio
+    async def test_refresh_ignores_the_stored_result_and_overwrites_it(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from tracklistify.config import get_config
+        from tracklistify.utils.identification import IdentificationManager
+
+        def _resp(title):
+            return {
+                "metadata": {
+                    "music": [
+                        {
+                            "title": title,
+                            "artists": [{"name": "Artist"}],
+                            "score": 90.0,
+                        }
+                    ]
+                }
+            }
+
+        cfg = get_config(force_refresh=True)
+        cfg.cache_enabled = True
+        cache = SimpleNamespace(
+            get=AsyncMock(return_value=_resp("STALE WRONG TRACK")),
+            set=AsyncMock(),
+        )
+
+        provider = AsyncMock()
+        provider.identify_track = AsyncMock(return_value=_resp("FRESH CORRECT TRACK"))
+        provider.__aenter__ = AsyncMock(return_value=provider)
+        provider.__aexit__ = AsyncMock(return_value=False)
+
+        mgr = IdentificationManager(config=cfg, provider_factory=object(), cache=cache)
+        mgr._provider_chain = lambda: ["shazam"]
+        mgr.provider_factory = SimpleNamespace(
+            get_identification_provider=lambda name: provider
+        )
+        mgr._cache_key = lambda p, s: "k"
+        cfg.cache_refresh = True
+
+        tracks = await mgr.identify_tracks(
+            [SimpleNamespace(start_time=0, file_path="seg.mp3")]
+        )
+
+        # The stale entry was never consulted...
+        cache.get.assert_not_awaited()
+        assert tracks and tracks[0].song_name == "FRESH CORRECT TRACK"
+        # ...and the fresh result was written over it.
+        cache.set.assert_awaited_once()
+        assert cache.set.await_args.args[0] == "k"
+
+    @pytest.mark.asyncio
+    async def test_without_refresh_the_cache_is_read(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from tracklistify.config import get_config
+        from tracklistify.utils.identification import IdentificationManager
+
+        cfg = get_config(force_refresh=True)
+        cfg.cache_enabled = True
+        cfg.cache_refresh = False
+        cache = SimpleNamespace(
+            get=AsyncMock(
+                return_value={
+                    "metadata": {
+                        "music": [
+                            {
+                                "title": "CACHED",
+                                "artists": [{"name": "Artist"}],
+                                "score": 90.0,
+                            }
+                        ]
+                    }
+                }
+            ),
+            set=AsyncMock(),
+        )
+
+        provider = AsyncMock()
+        provider.__aenter__ = AsyncMock(return_value=provider)
+        provider.__aexit__ = AsyncMock(return_value=False)
+
+        mgr = IdentificationManager(config=cfg, provider_factory=object(), cache=cache)
+        mgr._provider_chain = lambda: ["shazam"]
+        mgr.provider_factory = SimpleNamespace(
+            get_identification_provider=lambda name: provider
+        )
+        mgr._cache_key = lambda p, s: "k"
+
+        tracks = await mgr.identify_tracks(
+            [SimpleNamespace(start_time=0, file_path="seg.mp3")]
+        )
+
+        cache.get.assert_awaited_once()
+        assert tracks and tracks[0].song_name == "CACHED"
+        # A hit short-circuits the provider entirely.
+        provider.identify_track.assert_not_awaited()

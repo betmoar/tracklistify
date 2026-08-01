@@ -429,3 +429,28 @@ class TestCliFfmpegCheck:
                 cli_mod.cli()
         assert fake_run.called
         assert exc_info.value.code == 0
+
+
+def test_cache_max_age_does_not_undercut_cache_ttl():
+    """Two independent expiry gates; the shorter one wins.
+
+    ``TTLStrategy`` reads ``cache_ttl`` on lookup, while
+    ``JSONStorage.cleanup()`` (via ``BaseCache.cleanup()``) reads
+    ``cache_max_age`` and deletes files outright. If max_age is the shorter
+    of the two, the janitor reaps entries the TTL still considers valid and
+    the longer TTL is a lie. Shipping 3600s TTL against an 86400s max_age
+    hid this — raising only the TTL would have capped effective cache life
+    at 24h with no visible symptom beyond a silent miss.
+
+    Currently latent: no production code calls ``BaseCache.cleanup()``. The
+    invariant is held anyway so that scheduling the janitor later is a safe
+    change rather than a silent data-loss one.
+    """
+    from tracklistify.config import get_config
+
+    cfg = get_config(force_refresh=True)
+    assert cfg.cache_max_age >= cfg.cache_ttl, (
+        f"cache_max_age ({cfg.cache_max_age}s) is shorter than cache_ttl "
+        f"({cfg.cache_ttl}s); cleanup would delete entries the TTL still "
+        f"treats as live"
+    )

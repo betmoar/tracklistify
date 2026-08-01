@@ -7,6 +7,151 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Release dates are in YYYY-MM-DD format.
 
+## [Unreleased]
+
+## [0.9.0] - 2026-08-01
+
+### Added
+
+- **Richer track metadata in JSON output.** `Track.metadata` existed as a
+  field with nothing writing to it and nothing reading it; both ends are now
+  wired. The Shazam provider surfaces ISRC, genre, album, label, release
+  date, Shazam/Apple Music ids and artwork from the raw payload, and
+  `_save_json` serializes them per track. Empty values are dropped rather
+  than stored as `null`, and a track with no extras serializes as `null`
+  rather than `{}`. Merges [#57](https://github.com/betmoar/tracklistify/pull/57)
+  by @fakhavan. Markdown and M3U output are unchanged.
+- **Platform search links.** Shazam ships per-platform deeplinks alongside
+  every match in `hub.providers` — free, no extra API call. Surfaced as
+  `spotify_search_url` / `deezer_search_url`, converted from Shazam's
+  app-scheme URIs (`spotify:search:`, `deezer-query://`) to https so they
+  are clickable from the JSON. Named `*_search_url` because they are
+  searches: Shazam does not resolve a canonical track id. Coverage is
+  partial — measured at 12/20 tracks on a real set, since `hub.providers`
+  is absent from roughly 40% of responses.
+- **`--no-cache`.** Re-downloads and re-identifies, ignoring stored results.
+  It is a *refresh*, not a disable: cache reads are skipped while writes
+  stay live, so a wrong stored identification is overwritten rather than
+  stepped around. Disabling the caches instead would gate the writes too and
+  leave the stale entry to be served again on the next run.
+
+### Changed
+
+- **`cache_ttl` 1 hour → 30 days**, with `cache_max_age` raised to match.
+  The identification cache is keyed on the segment's content hash, so a
+  stored response does not go stale the way a typical HTTP cache entry does
+  — a provider improving its catalog is the only real staleness, and weeks
+  is the right granularity. At one hour, re-running yesterday's mix re-paid
+  the full identification cost. Both values must move together: they are
+  independent expiry gates and the shorter one wins.
+- **Logging levels reflect outcomes again.** A healthy run printed a wall of
+  "No track information found in Shazam response." and nothing about the
+  tracks it identified. The per-track success line is back at INFO with its
+  timestamp and artist; unmatched segments — the normal case in a DJ mix —
+  are now debug. A run where *no* segment matches emits a single warning,
+  since a broken request pipeline is otherwise indistinguishable from a set
+  of unreleased IDs.
+- Running `tracklistify` with no arguments prints help and exits 0 instead
+  of an argparse usage error.
+- `TrackMatcher.__init__` accepts an optional config, and
+  `IdentificationManager` passes its own — previously the matcher always
+  re-resolved the global singleton, so an injected config never reached it.
+
+### Fixed
+
+- **Identity chaining could delete a whole play.** Artist Jaccard is not
+  transitive, so testing cluster membership against *any* member let a
+  collaboration credit bridge two distinct artists: `Artist A` and
+  `Artist B` share no tokens, but `Artist A, Artist B` matches both. Each
+  hop also refreshed the cluster's proximity anchor, so the chain ran
+  unbounded — six detections spanning two separate plays collapsed to one
+  row and the second play vanished. Identity is now anchored on `cluster[0]`
+  while proximity stays anchored on `cluster[-1]`.
+- **Search-URL encoding.** Deezer's deeplink embeds unescaped apostrophes,
+  so term extraction truncated at the first one in the text itself
+  (`Don't Stop` searched for `Don`). Separately, `quote()`'s default left
+  slashes intact, so `AC/DC` injected a path segment into the search URL.
+- **A malformed `hub.providers` entry no longer costs the identification.**
+  A non-string `type` raised from `.strip()` inside `identify_track`'s outer
+  try, escalating to `ShazamError` and discarding a match whose title,
+  artist and ISRC were all valid.
+- **SoundCloud `/sets/` with no downloadable entries fails loudly.** An
+  empty `entries` list fell through, leaving the *set's* metadata in place —
+  silently reinstating the bug the unwrap exists to fix — and built an
+  output path for a file that was never written.
+- **A missing downloaded file is no longer reported as success.** When the
+  glob fallback found nothing, the reconstructed path was returned anyway
+  and the failure first surfaced several frames later as "Could not read
+  audio file".
+- **JSON export cannot leave a truncated file.** `json.dump` streams, so a
+  serialization error partway through wrote a partial file that looked
+  complete — after the entire expensive identification pass. Serialization
+  now completes in memory first, with a `default=str` fallback.
+- `cz bump` aborted on a `changelog_start_rev` pointing at a tag that does
+  not exist in this repository.
+- **Dedup now merges artist-string variants.** The same track appeared twice
+  in output when Shazam returned different collaboration artist strings on
+  adjacent segments (`Berghain (Remix)` at 1900s as
+  `Conrad Taylor & ROSALÍA & Björk & Yves Tumor` and at 1950s as
+  `ROSALÍA, Björk & Yves Tumor`). `get_unique_tracks` — the shipping dedup
+  path — keyed on exact `artist|song` strings and ignored time entirely.
+  It now clusters by identity (normalized-title equality + artist token-set
+  Jaccard ≥ 0.34) within a proximity window derived from the segmentation
+  step (`2 * (segment_length - overlap_duration)`, 100s by default), so
+  adjacent-segment detections merge while a track genuinely played twice in
+  a set stays two entries. Proximity is measured as the gap to a cluster's
+  most recent detection: a long track keeps arriving one segmentation step
+  apart so the chain holds, while two distinct plays are separated by
+  minutes of other music so it breaks. (Bounding the total span instead
+  wrongly splits long tracks; testing against any member is transitively
+  unbounded and silently deletes distinct plays.)
+- **Stable representative selection.** Cluster representatives were chosen
+  by strict `>` on confidence, so Shazam's per-run jitter could change which
+  detection won — and therefore the reported `time_in_mix` — between runs of
+  identical audio. Selection is now purely `(time, name, artist)`: the
+  earliest detection represents the cluster and confidence is not an input,
+  because every member is the same track and any confidence-derived term
+  reintroduces the jitter.
+- **`time_threshold` works again.** It was assigned and never read, while
+  `.env.example` advertised it as controlling merge behavior. It is now the
+  dedup-window override; the default drops from `30.0` to `0.0`, meaning
+  "derive from the segmentation step" (the old 30s default was narrower
+  than one 50s step and would have split adjacent-segment detections). Any
+  override below the derived window is floored, with a warning, because a
+  narrower window cannot merge adjacent detections at all.
+- **Multi-track SoundCloud sets warn instead of silently truncating.** Only
+  `entries[0]` is processed; previously the discarded count appeared only at
+  debug level, so a set silently produced a one-track tracklist and cached
+  it under the set's URL.
+- **`config.min_confidence` is no longer a no-op.** `TrackMatcher` hardcoded
+  a 0 threshold, so the documented (and validated) knob did nothing. It is
+  now applied, scaled from the config's 0.0–1.0 range to `Track.confidence`'s
+  0–100. The default drops from `0.5` to `0.0` so existing output is
+  unchanged until a user raises it.
+- **SoundCloud `/sets/` URLs no longer propagate container metadata.** These
+  extract as a playlist whose id/ext/duration describe the *set*, not the
+  track; the downloader now unwraps to `entries[0]` before anything reads the
+  info dict. Previously the wrong title/duration reached the output folder
+  name, the M3U, and — via the sidecar — persisted in the download cache.
+- **Output path resolution prefers `requested_downloads[0]["filepath"]`**
+  (the path yt-dlp actually wrote) over reconstructing it with
+  `prepare_filename`, which missed extension changes made during muxing.
+- **Download cache entries are version-stamped** (`KEY_VERSION` in the key
+  material), invalidating stale pre-fix `/sets/` metadata that would
+  otherwise be served indefinitely — the cache has no TTL or eviction.
+
+### Removed
+
+- **`max_duplicates` config field.** It capped how many detections one dedup
+  cluster could absorb, but every value that fits a real mix is wrong: a
+  track spanning several segments legitimately yields 4+ detections, so any
+  low cap splits it back into duplicate rows. It had been dead (assigned,
+  never read) and wiring it up broke real output, so the field, its two
+  validators, its `TypedDict` mirror and its docs are gone.
+- Dead `TrackMatcher.merge_nearby_tracks` and its six private helpers. They
+  had no production callers; `get_unique_tracks` is now the sole dedup
+  authority and `add_track` only confidence-gates and appends.
+
 ## [0.8.2] - 2026-07-31
 
 End-to-end caching and self-contained output: wires the existing

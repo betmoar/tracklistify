@@ -75,19 +75,45 @@ json/markdown/m3u via `TracklistOutput`, clean up the temp dir.
   `get_config(force_refresh=True)` *and* clear `TRACKLISTIFY_*` env vars.
 - Confidence is 0–100 on `Track`, but `config.min_confidence` is 0.0–1.0.
   **These scales are different.** See landmine below.
+- **`get_unique_tracks` is the sole dedup authority.** `add_track` only
+  confidence-gates and appends; it does not dedup. Two tracks are "the
+  same" iff their normalized titles are equal AND their artist token sets
+  overlap with Jaccard ≥ `_ARTIST_THRESHOLD` (0.34) — this collapses
+  Shazam's collaboration-string noise (`"A & B & C"` vs `"B, C"`) without
+  merging genuinely different artists (Jaccard 0.0).
+- **Clusters chain on the gap to the last member.** A track joins a cluster
+  only if it is within `_dedup_window()` of that cluster's **most recent**
+  detection (`cluster[-1]`). Gap continuity — not total span — is what
+  separates the two real cases: a long track keeps producing detections one
+  segmentation step apart (observed: `Hands Up` at 18:20/19:10/20:00/20:50,
+  span 150s, one continuous play), while two distinct plays are separated by
+  minutes of other music. Testing against `cluster[0]` instead bounds the
+  span and wrongly splits long tracks; testing against *any* member is
+  transitively unbounded and silently deletes distinct plays. The window is
+  `2 * (segment_length - overlap_duration)` (100s default), or
+  `config.time_threshold` when set (floored at the derived value).
+- **`_rep_key` never reads confidence.** It is `(time, name, artist)` —
+  earliest detection wins. All cluster members are the same track, so
+  preferring a higher-confidence one buys nothing, while any
+  confidence-derived term reintroduces run-to-run instability (Shazam
+  scores identical audio differently per run). A 5-point quantization was
+  tried and still flipped on bucket-edge straddles (84.9 vs 85.0).
+  **Full procedure: `docs/playbooks/changing-dedup.md`.**
 - Segment filenames encode `start_time` and live in a per-run temp subdir
   named `<pid>-<hex8>`; the stale-dir sweeper (`_sweep_stale_run_dirs`)
   assumes that shape and kills only dirs whose PID is dead.
 
 ## Landmines (non-obvious, will bite)
 
-1. **`config.min_confidence` is currently NOT applied.**
-   `TrackMatcher.__init__` hardcodes `_min_confidence = 0` ("keep all
-   tracks"). This appears deliberate (commit 2a37054-era behavior), so the
-   audit did not change it, but it means the documented config knob is a
-   no-op AND its unit (0–1) differs from Track confidence (0–100). If you
-   wire it up: `self._min_confidence = config.min_confidence * 100`, and
-   expect output to shrink. Decide, don't drift — see BACKLOG P2.
+1. **`config.min_confidence` is wired, with a scale gotcha.**
+   `TrackMatcher.__init__` scales it `config.min_confidence * 100` (config
+   is 0–1, Track confidence is 0–100). Default `0.0` keeps all tracks; the
+   default was lowered from `0.5` to `0.0` so output is unchanged until a
+   user turns the knob. Dedup itself is **not** here — `get_unique_tracks`
+   is the sole dedup authority (token-set artist Jaccard + proximity), so
+   see the dedup section. Raising `min_confidence` filters at `add_track`
+   time. Note the `mock_config` fixture must stay `0.0` or it filters the
+   whole suite.
 2. **The cache is keyed by content, not path.** `identify_tracks` caches
    every successful provider response under
    `f"{provider_name}:{sha256(segment_bytes)}"`. Temp segment paths are
