@@ -17,16 +17,59 @@ pipeline stage calls `enrich_metadata`. The natural hook: after
 requires implementing the authorization-code flow (user consent, token
 refresh). Don't attempt as a drive-by; it's a feature project.
 
-**Scope note (from the 2026-07 exploration):** the hook alone is invisible.
-No exporter serializes `Track.metadata` — `_save_json` emits a fixed field
-list, markdown and M3U build their own strings. Wiring enrichment without
-also extending `_save_json` leaves the enriched data sitting unused. Also:
+**Scope note (from the 2026-07 exploration):** ~~the hook alone is invisible.
+No exporter serializes `Track.metadata`~~ — **resolved 2026-08-01** (PR #57,
+folded into `fix/p2-dedup-confidence-downloader`): `_save_json` now emits
+`metadata` per track and `_extra_metadata` threads provider extras into
+`Track.metadata`, so an enrichment hook is now visible without further
+exporter work. Markdown and M3U still build their own strings and ignore
+`metadata` — extend them only if a user asks. Also:
 `enrich_metadata` takes a plain dict keyed on `title`/`artist` (a `Track`
 uses `song_name`), mutates in place, and deliberately re-raises
 `RateLimitError`/`AuthenticationError` — the caller must catch those two.
 Keep Spotify **out** of `KNOWN_PROVIDERS` (it has no `identify_track`, so
 `-p spotify` would crash); use a separate `Optional[SpotifyProvider]`
 accessor that returns `None` when creds are absent.
+
+## P3 — evaluate RapidAPI Shazam as a `shazamio` alternative/fallback
+
+<https://rapidapi.com/apidojo/api/shazam> (apidojo). A hosted HTTP Shazam
+API, versus `shazamio` which reverse-engineers the mobile endpoints
+directly. Worth evaluating because shazamio's approach is the fragile part
+of the current stack: it carries a `shazam_cooldown_seconds` knob
+(default 2.25s) and a `shazam_proxy` escape hatch specifically because
+Shazam throttles and blocks, and an upstream protocol change breaks
+identification with no vendor recourse. A paid, documented API trades
+that fragility for cost and a rate cap.
+
+**Evaluate before committing to it:**
+
+- **Input format is the real cost.** `songs/detect` (and `songs/v2/detect`)
+  take base64-encoded **raw PCM: 44100Hz, mono, signed 16-bit
+  little-endian**, under 500KB (~3–5s is enough). Not mp3/wav. Our
+  segments come out of `split_audio` as `AudioSegment` and go to
+  providers as such, so this needs a pydub/ffmpeg conversion step in the
+  provider — not a drop-in swap. An empty result usually means wrong
+  input format, not "no match", so the provider must distinguish those or
+  it will silently report every segment as unidentified.
+- **Metadata parity.** The PR #57 extraction (`isrc`, `genres.primary`,
+  `sections[].metadata` for Album/Label/Released, `hub.actions` for the
+  Apple Music id, `images.coverarthq`) is shaped around shazamio's
+  payload. Confirm the RapidAPI response carries the same fields before
+  assuming `_extra_metadata` works unchanged.
+- **Cost model.** RapidAPI tiers are per-request. A 3h mix at a 50s step
+  is ~216 segments *per run*, times the fallback chain. Price a realistic
+  run before wiring it as primary; it may only make sense as a fallback
+  for when shazamio breaks.
+- Some apidojo endpoints carry a "bot-defender" warning in their own docs
+  — verify `songs/detect` specifically is reliable, not just listed.
+
+**If it proceeds:** it's a normal provider add — follow
+`docs/PLAYBOOKS.md`. `identify_track` takes an `AudioSegment`, returns a
+0–100 score, registers in `KNOWN_PROVIDERS`, and raises `ConfigError`
+naming the env var when the key is missing. Key is env-only
+(`TRACKLISTIFY_RAPIDAPI_KEY`), never a config-dataclass field — same rule
+as ACRCloud.
 
 ## P3 — delete or rescue `downloaders/spotify.py`
 
