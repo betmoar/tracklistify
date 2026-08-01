@@ -36,7 +36,6 @@ class TrackIdentificationConfigDict(TypedDict):
     segment_length: int
     min_confidence: float
     time_threshold: float
-    max_duplicates: int
 
     # Provider settings
     primary_provider: str

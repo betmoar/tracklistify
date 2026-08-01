@@ -16,13 +16,17 @@ def setup_teardown():
 @pytest.fixture
 def config() -> TrackIdentificationConfig:
     config = get_config()
+    # Pin EVERY field the dedup path reads. get_config() returns a
+    # process-wide singleton that other test modules mutate, so anything
+    # left unpinned leaks in and silently changes clustering.
+    #
     # time_threshold is a real dedup-window override (see
     # TrackMatcher._dedup_window). Leave it at 0 so these tests exercise the
     # derived default, 2 * (segment_length - overlap_duration) = 100s.
-    # Setting it here would silently narrow the window for every test.
     config.time_threshold = 0
     config.segment_length = 60
     config.overlap_duration = 10
+    config.min_confidence = 0.0
     return config
 
 
@@ -248,24 +252,49 @@ class TestDedupInvariants:
     violating the guarantees its own docstrings advertised.
     """
 
-    def test_c3_cluster_span_is_bounded_by_the_window(self, track_matcher):
-        """C3: a cluster's total temporal span never exceeds the window.
+    def test_c3_distinct_plays_separated_by_a_gap_stay_separate(self, track_matcher):
+        """C3: a break in detection cadence splits the cluster.
 
-        Regression for the chaining bug: proximity was tested against ANY
-        cluster member, so each join extended the cluster's reach and a
-        chain of near-neighbours could swallow an arbitrarily long stretch
-        of the set — silently deleting genuinely distinct plays.
+        This is the discriminator between the two real cases. A DJ playing
+        the same track twice leaves minutes of other tracks in between, so
+        the gap far exceeds the window and the chain breaks. Contrast
+        test_c3_long_track_chains_at_step_cadence: an unbroken one-step
+        cadence must NOT split, however long it runs.
+
+        Note the rule is gap-based, not span-based. Bounding the total span
+        instead would split a genuinely long track (observed on a real mix:
+        Hands Up ran 150s across four detections).
         """
-        # 41 detections, each 90s from the last (inside the 100s window),
-        # spanning 300s..3900s. Pairwise they chain; the span is 60 minutes.
+        # Two plays: a short chain at ~5min, another at ~65min.
+        first = [_t("Epic", "Faithless", s) for s in (300, 350, 400)]
+        second = [_t("Epic", "Faithless", s) for s in (3900, 3950)]
+        track_matcher.tracks = first + second
+
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 2, (
+            "two plays separated by an hour of other music must not merge"
+        )
+        assert [t.time_in_mix for t in unique] == ["0:05:00", "1:05:00"]
+
+    def test_c3_long_track_chains_at_step_cadence(self, track_matcher):
+        """C3 (other side): an unbroken one-step cadence is ONE play.
+
+        Real regression. ``Hands Up`` was detected at 18:20/19:10/20:00/
+        20:50 — four detections, gaps of exactly one 50s segmentation step,
+        total span 150s. An earlier span-bounded rule split it at the 100s
+        window and emitted the track twice, while the very next track
+        started at 21:40, proving it was one continuous ~3.3min play.
+        """
         track_matcher.tracks = [
-            _t("Epic", "Faithless", s) for s in range(300, 3901, 90)
+            _t("Hands Up", "Sara Landry & Alt8", s)
+            for s in (1100, 1150, 1200, 1250)  # 18:20 .. 20:50, step 50s
         ]
         unique = track_matcher.get_unique_tracks()
-        assert len(unique) > 1, (
-            "chained detections collapsed into one cluster spanning an hour; "
-            "cluster span must be bounded by the window, not chained"
+        assert len(unique) == 1, (
+            "a track spanning several segments at step cadence is one play, "
+            "even when its span exceeds the window"
         )
+        assert unique[0].time_in_mix == "0:18:20"
 
     def test_c3_adjacent_segment_detections_still_merge(self, track_matcher):
         """C3 (other side): bounding the span must NOT break the real fix.

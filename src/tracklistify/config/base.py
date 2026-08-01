@@ -156,7 +156,6 @@ class TrackIdentificationConfig(BaseConfig):
     # is narrower than one segmentation step (50s), so it would split
     # adjacent-segment detections of the same track.
     time_threshold: float = field(default=0.0)
-    max_duplicates: int = field(default=2)
     overlap_duration: int = field(default=10)
     overlap_strategy: str = field(default="weighted")
     min_segment_length: int = field(default=10)
@@ -234,14 +233,12 @@ class TrackIdentificationConfig(BaseConfig):
         self._validator.add_type_rule("overlap_duration", int)
         self._validator.add_type_rule("min_confidence", float)
         self._validator.add_type_rule("time_threshold", float)
-        self._validator.add_type_rule("max_duplicates", int)
 
         # Add range validation rules
         self._validator.add_range_rule("segment_length", 10, 300)
         self._validator.add_range_rule("overlap_duration", 0, 30)
         self._validator.add_range_rule("min_confidence", 0.0, 1.0)
         self._validator.add_range_rule("time_threshold", 0.0, 300.0)
-        self._validator.add_range_rule("max_duplicates", 0, 10)
 
         # Add path validation rules for directories
         path_requirements = {PathRequirement.IS_DIR, PathRequirement.WRITABLE}

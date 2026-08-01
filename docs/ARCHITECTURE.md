@@ -81,14 +81,17 @@ json/markdown/m3u via `TracklistOutput`, clean up the temp dir.
   overlap with Jaccard ≥ `_ARTIST_THRESHOLD` (0.34) — this collapses
   Shazam's collaboration-string noise (`"A & B & C"` vs `"B, C"`) without
   merging genuinely different artists (Jaccard 0.0).
-- **Cluster span is anchored, not chained.** A track joins a cluster only if
-  it is within `_dedup_window()` of that cluster's **anchor** (`cluster[0]`),
-  never of "any member". Testing against any member makes the relation
-  transitively chaining, and a run of near-neighbours then swallows an
-  arbitrarily long stretch — silently deleting genuinely distinct plays
-  (measured: 41 detections spanning an hour collapsed to 1 track). The
-  window is `2 * (segment_length - overlap_duration)` (100s default), or
-  `config.time_threshold` when set positive.
+- **Clusters chain on the gap to the last member.** A track joins a cluster
+  only if it is within `_dedup_window()` of that cluster's **most recent**
+  detection (`cluster[-1]`). Gap continuity — not total span — is what
+  separates the two real cases: a long track keeps producing detections one
+  segmentation step apart (observed: `Hands Up` at 18:20/19:10/20:00/20:50,
+  span 150s, one continuous play), while two distinct plays are separated by
+  minutes of other music. Testing against `cluster[0]` instead bounds the
+  span and wrongly splits long tracks; testing against *any* member is
+  transitively unbounded and silently deletes distinct plays. The window is
+  `2 * (segment_length - overlap_duration)` (100s default), or
+  `config.time_threshold` when set (floored at the derived value).
 - **`_rep_key` never reads confidence.** It is `(time, name, artist)` —
   earliest detection wins. All cluster members are the same track, so
   preferring a higher-confidence one buys nothing, while any

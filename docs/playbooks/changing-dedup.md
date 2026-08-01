@@ -30,23 +30,41 @@ get_unique_tracks()  -> THE dedup authority. Cluster, then pick one per cluster.
 
 ## The four rules that must not be broken
 
-### 1. A cluster's span is bounded by the window — anchor, never chain
+### 1. Chain on the gap to the LAST member — not the anchor, not any member
 
-Proximity is measured against `cluster[0]` (the anchor), **not** against any
-member.
+Proximity is measured against `cluster[-1]` (the most recent detection).
 
 ```python
-if t_secs - cluster[0].time_to_seconds() > window:   # correct
-if any(abs(t_secs - m.time_to_seconds()) <= window for m in cluster):  # WRONG
+if t_secs - cluster[-1].time_to_seconds() > window:   # correct: gap-based
+if t_secs - cluster[0].time_to_seconds()  > window:   # WRONG: splits long tracks
+if any(abs(t_secs - m.time_to_seconds()) <= window for m in cluster):  # WRONG: unbounded
 ```
 
-The `any`-member form makes the relation transitively chaining: each join
-extends the cluster's reach, so a run of near-neighbours swallows an
-arbitrarily long stretch. Measured: 41 detections 90s apart spanning an hour
-collapsed into **1 track**, silently deleting a distinct play. With the anchor
-form the same input yields 21.
+Three rules, two failure modes, and only one rule avoids both:
 
-**Guardrail:** `test_c3_cluster_span_is_bounded_by_the_window`.
+- **`any` member** is transitively unbounded — each join extends the cluster's
+  reach, so a run of near-neighbours swallows an arbitrary stretch and
+  silently deletes a distinct play.
+- **Anchor (`cluster[0]`)** bounds the span to the window, which *splits a
+  genuinely long track*. Observed on a real mix: `Hands Up` detected at
+  18:20/19:10/20:00/20:50 (gaps of exactly one 50s step, span 150s) was
+  emitted twice — while the next track started at 21:40, proving it was one
+  continuous ~3.3min play.
+- **Last member** distinguishes them by cadence: a long track keeps arriving
+  at ~one step, so the chain holds; two distinct plays are separated by
+  minutes of other music, so the chain breaks there.
+
+Every repeated title in the reference mix has uniform 50s gaps and spans of
+50–150s. **Gap continuity is the signal; total span is not.**
+
+Because clusters are created in anchor order but joined in last-member order,
+the two interleave — so you cannot `break` out of a simple scan. The loop
+retires out-of-reach clusters into `finished` and scans only `active`, which
+is both correct and amortized linear.
+
+**Guardrails:** `test_c3_distinct_plays_separated_by_a_gap_stay_separate`
+(the chain must break) and `test_c3_long_track_chains_at_step_cadence` (it
+must not). Both sides are required — a change satisfying only one is wrong.
 
 ### 2. Representative selection never reads confidence
 

@@ -21,10 +21,12 @@ Release dates are in YYYY-MM-DD format.
   Jaccard ≥ 0.34) within a proximity window derived from the segmentation
   step (`2 * (segment_length - overlap_duration)`, 100s by default), so
   adjacent-segment detections merge while a track genuinely played twice in
-  a set stays two entries. Proximity is measured against each cluster's
-  **anchor**, which bounds a cluster's total span to the window; measuring
-  against any member instead makes the relation chain transitively and can
-  silently swallow an arbitrarily long stretch of the set.
+  a set stays two entries. Proximity is measured as the gap to a cluster's
+  most recent detection: a long track keeps arriving one segmentation step
+  apart so the chain holds, while two distinct plays are separated by
+  minutes of other music so it breaks. (Bounding the total span instead
+  wrongly splits long tracks; testing against any member is transitively
+  unbounded and silently deletes distinct plays.)
 - **Stable representative selection.** Cluster representatives were chosen
   by strict `>` on confidence, so Shazam's per-run jitter could change which
   detection won — and therefore the reported `time_in_mix` — between runs of
@@ -36,8 +38,9 @@ Release dates are in YYYY-MM-DD format.
   `.env.example` advertised it as controlling merge behavior. It is now the
   dedup-window override; the default drops from `30.0` to `0.0`, meaning
   "derive from the segmentation step" (the old 30s default was narrower
-  than one 50s step and would have split adjacent-segment detections).
-  `max_duplicates` is now documented as unused.
+  than one 50s step and would have split adjacent-segment detections). Any
+  override below the derived window is floored, with a warning, because a
+  narrower window cannot merge adjacent detections at all.
 - **Multi-track SoundCloud sets warn instead of silently truncating.** Only
   `entries[0]` is processed; previously the discarded count appeared only at
   debug level, so a set silently produced a one-track tracklist and cached
@@ -61,6 +64,12 @@ Release dates are in YYYY-MM-DD format.
 
 ### Removed
 
+- **`max_duplicates` config field.** It capped how many detections one dedup
+  cluster could absorb, but every value that fits a real mix is wrong: a
+  track spanning several segments legitimately yields 4+ detections, so any
+  low cap splits it back into duplicate rows. It had been dead (assigned,
+  never read) and wiring it up broke real output, so the field, its two
+  validators, its `TypedDict` mirror and its docs are gone.
 - Dead `TrackMatcher.merge_nearby_tracks` and its six private helpers. They
   had no production callers; `get_unique_tracks` is now the sole dedup
   authority and `add_track` only confidence-gates and appends.

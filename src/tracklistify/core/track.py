@@ -341,21 +341,31 @@ class TrackMatcher:
     def get_unique_tracks(self) -> List[Track]:
         """Get list of unique tracks, sorted by time in mix.
 
-        Greedy clustering: a track joins the first cluster whose **anchor**
-        (its earliest member) it is within the proximity window of, and whose
-        members it matches by identity. The window comes from
-        ``_dedup_window()`` — twice the segmentation step by default (so
-        adjacent-segment detections of the same audio merge), or
-        ``config.time_threshold`` when the user sets it.
+        Greedy clustering: a track joins the first cluster that it matches by
+        identity AND whose **most recent** member it is within the proximity
+        window of. The window comes from ``_dedup_window()`` — twice the
+        segmentation step by default, or ``config.time_threshold`` when set.
 
-        Anchoring on ``cluster[0]`` rather than *any* member is what bounds a
-        cluster's total span to ``window`` seconds. Testing proximity against
-        any member makes the relation transitively chaining: each join extends
-        the cluster's reach, so a run of near-neighbours can swallow an
-        arbitrarily long stretch of the set and silently collapse genuinely
-        distinct plays of the same track into one row. That is a worse failure
-        than the duplicate it would have removed — a duplicate is visible in
-        the output, a deleted track is not.
+        The join tests the *gap to the last member*, not the span from the
+        first, because gap continuity is what actually distinguishes the two
+        cases:
+
+        - One long track spans several segments, so its detections arrive at
+          a steady one-step cadence (observed on a real mix: ``Hands Up`` at
+          18:20/19:10/20:00/20:50, gaps of exactly 50s, total span 150s).
+          Bounding the *span* to the window would split that at 100s and
+          emit the same track twice.
+        - Two genuinely distinct plays are separated by minutes of other
+          tracks — a gap far larger than the window — so the chain breaks
+          there and they stay separate.
+
+        A pure any-member test would be transitively unbounded (a run of
+        near-neighbours swallowing an arbitrary stretch and silently
+        collapsing distinct plays into one row, which is worse than the
+        duplicate it removes: a duplicate is visible, a deleted track is
+        not). Testing the last member keeps the chain anchored to an
+        unbroken cadence — it can only extend while detections keep
+        arriving within one window of each other.
 
         One deterministic representative is picked per cluster via
         ``_rep_key`` (earliest time), so the reported ``time_in_mix`` is
@@ -367,24 +377,41 @@ class TrackMatcher:
         window = self._dedup_window()
 
         sorted_tracks = sorted(self.tracks, key=lambda t: t.time_to_seconds())
-        clusters: List[List[Track]] = []
+        # ``active`` holds clusters that a future track could still join;
+        # ``finished`` holds those already out of reach. Because the input is
+        # time-sorted, once a cluster's last member is more than one window
+        # behind the current track it can never be joined again (every later
+        # track is further still), so retiring it is safe and keeps the scan
+        # amortized linear. A simple `break` over all clusters would be
+        # WRONG here: clusters are created in anchor order but joined in
+        # last-member order, so the two interleave and an out-of-reach
+        # cluster can sit in front of a reachable one.
+        active: List[List[Track]] = []
+        finished: List[List[Track]] = []
 
         for track in sorted_tracks:
-            placed = False
             t_secs = track.time_to_seconds()
-            # Both `sorted_tracks` and `clusters` are in ascending time order
-            # (clusters are appended as their anchors arrive), so scanning
-            # newest-first lets us stop as soon as an anchor falls out of the
-            # window — every earlier cluster is further away still.
-            for cluster in reversed(clusters):
-                if t_secs - cluster[0].time_to_seconds() > window:
-                    break
+
+            still_active = []
+            for cluster in active:
+                if t_secs - cluster[-1].time_to_seconds() > window:
+                    finished.append(cluster)
+                else:
+                    still_active.append(cluster)
+            active = still_active
+
+            placed = False
+            # Prefer the most recently extended cluster, so an unbroken
+            # cadence keeps chaining rather than splitting.
+            for cluster in reversed(active):
                 if any(_tracks_match(track, m) for m in cluster):
                     cluster.append(track)
                     placed = True
                     break
             if not placed:
-                clusters.append([track])
+                active.append([track])
+
+        clusters = finished + active
 
         reps = [min(cluster, key=_rep_key) for cluster in clusters]
         return sorted(reps, key=lambda t: t.time_to_seconds())

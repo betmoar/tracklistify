@@ -165,7 +165,6 @@ class ConfigDocGenerator:
                 "the same play (dedup window). Unset/0 derives it from the "
                 "segmentation step: 2 * (segment_length - overlap_duration)"
             ),
-            "max_duplicates": "UNUSED - no effect on dedup (see docs/BACKLOG.md)",
             "min_confidence": "Minimum confidence threshold for track detection",
         }
         return descriptions.get(field, f"Configuration value for {field}")
