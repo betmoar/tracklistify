@@ -31,6 +31,51 @@ Keep Spotify **out** of `KNOWN_PROVIDERS` (it has no `identify_track`, so
 `-p spotify` would crash); use a separate `Optional[SpotifyProvider]`
 accessor that returns `None` when creds are absent.
 
+**Concrete goal, now that links are the driver:** a canonical Spotify
+track URL per track. Shazam already gives us a *search* deeplink for free
+(`spotify_search_uri`, shipped 2026-08-01) — this item is what upgrades it
+to a real `https://open.spotify.com/track/<id>`. `search_track` already
+returns `spotify_id`, so the URL is string construction, not another API
+call. Note `search_track` does **not** return `external_urls` even though
+`get_track_details` does (`spotify.py:227`) — add the field there rather
+than making a second request per track.
+
+**Hook after `get_unique_tracks()`, not per segment.** Dedup runs first,
+so a 3h mix enriches ~22 unique tracks instead of ~216 raw detections —
+a 10x cut in API calls, and it keeps the rate limiter out of the
+identification hot path. Also decide match confidence: Spotify's search
+returns a best-effort top hit, and for underground techno it will
+sometimes confidently return the wrong track. Prefer ISRC lookup
+(`search?q=isrc:<isrc>`) when Shazam gave us one — exact, not fuzzy —
+and fall back to title/artist search only when it didn't.
+
+No wiring path exists yet: `KNOWN_PROVIDERS` is `("shazam", "acrcloud")`
+and the factory has no Spotify branch. Rate-limiter fields *are* already
+present (`spotify_max_rpm`, `spotify_max_concurrent` in `config/base.py`),
+but credentials are not — add them env-only
+(`TRACKLISTIFY_SPOTIFY_CLIENT_ID`/`_SECRET`, read in
+`providers/factory.py`), never as config-dataclass fields, following the
+ACRCloud pattern.
+
+## P3 — MusicBrainz link enrichment via ISRC (no auth, no key)
+
+The cheapest breadth we can get, and the only option needing no
+commercial relationship. We already extract `isrc` from Shazam; the
+MusicBrainz `isrc/<isrc>?inc=url-rels` lookup is free, keyless, and
+returns cross-platform URL relations — frequently including purchase and
+streaming links across services we will never integrate directly.
+
+Fits the same post-dedup hook as the Spotify item above, so build them
+together if both are wanted. Rate limit is ~1 req/s with a required
+descriptive `User-Agent` (they block generic agents), which is fine
+against ~22 unique tracks but would not be against ~216 raw detections.
+
+Coverage caveat worth measuring before committing: ISRC presence in
+Shazam responses is good for label releases and patchy for the
+white-label/promo end of a techno set, and MusicBrainz's own coverage of
+underground electronic is thinner than its rock/pop catalog. Sample a
+real tracklist's ISRC hit rate first — if it is low, this buys little.
+
 ## P3 — evaluate RapidAPI Shazam as a `shazamio` alternative/fallback
 
 <https://rapidapi.com/apidojo/api/shazam> (apidojo). A hosted HTTP Shazam
@@ -70,6 +115,50 @@ that fragility for cost and a rate cap.
 naming the env var when the key is missing. Key is env-only
 (`TRACKLISTIFY_RAPIDAPI_KEY`), never a config-dataclass field — same rule
 as ACRCloud.
+
+## P3 — Beatport links: blocked on partner approval, not on code
+
+<https://api.beatport.com/v4/docs/>. The best metadata source for this
+project's actual genre — Beatport's label, remixer, BPM and musical-key
+data for techno/hard techno is materially better than Spotify's, and a
+Beatport link is what a DJ reading a tracklist actually wants.
+
+**It is an application, not a coding task.** v4 is OAuth 2.0
+authorization-code with PKCE, gated to approved partners through the
+Beatport Partner Portal, with no client-credentials or self-serve public
+tier (verified 2026-08-01; v3 is dead). Approval involves a commercial-use
+review. Apply with the same account used to buy music on Beatport —
+developers report the portal returning "No Access" otherwise.
+
+**Do not ship the known workaround.** Several open-source projects
+(`beets-beatport4` among them) reuse the public client ID from Beatport's
+own docs frontend. It is fragile and near-certainly outside Beatport's
+terms; not something to build a user-facing feature on.
+
+Revisit only if partner access is granted. If it is, the token refresh
+and PKCE flow make it closer in shape to the Spotify *playlist export*
+problem than to the simple client-credentials enrichment above.
+
+## P3 — decide the `metadata` link schema before more platforms land
+
+`Track.metadata` currently carries flat, per-platform keys: `shazam_url`,
+`apple_music_id`, `spotify_search_uri`, `deezer_search_uri`. That is fine
+at four and gets ugly at eight, and every consumer of the JSON has to
+know each key by name.
+
+Proposed, if a third link source is ever added:
+
+```json
+"metadata": {
+  "isrc": "USABC1234567",
+  "links": {"shazam": "...", "spotify": "...", "apple": "..."}
+}
+```
+
+Cheap now, a consumer-visible migration later — `_save_json`'s output is
+the public surface. Decide when the Spotify enrichment item lands, since
+that is the change that would make it worth doing. Not worth churning the
+schema for its own sake.
 
 ## P3 — delete or rescue `downloaders/spotify.py`
 
