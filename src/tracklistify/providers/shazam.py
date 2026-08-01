@@ -97,11 +97,36 @@ class ShazamProvider(TrackIdentificationProvider):
                     if label:
                         section_metadata[label] = item.get("text")
 
+            hub = track_info.get("hub") or {}
+
             apple_music_id = None
-            for action in (track_info.get("hub") or {}).get("actions") or []:
+            for action in hub.get("actions") or []:
                 if action.get("type") == "applemusicplay":
                     apple_music_id = action.get("id")
                     break
+
+            # ``hub.providers`` carries per-platform deeplinks Shazam ships
+            # with the match — free, no extra API call. Keyed off each
+            # provider's ``type`` rather than a positional index: shazamio's
+            # own factory hardcodes providers[0].actions[0], which silently
+            # returns the wrong platform's link the moment Shazam reorders
+            # the array.
+            #
+            # These are SEARCH deeplinks (``spotify:search:<artist> <title>``),
+            # not canonical track URLs — Shazam does not resolve a Spotify
+            # track id. Exposed under ``*_search_uri`` so the name cannot be
+            # mistaken for a direct link; resolving to a real track id needs
+            # the Spotify API (see BACKLOG P2).
+            provider_uris = {}
+            for prov in hub.get("providers") or []:
+                prov_type = (prov.get("type") or "").strip().lower()
+                if not prov_type:
+                    continue
+                for action in prov.get("actions") or []:
+                    uri = action.get("uri")
+                    if uri:
+                        provider_uris.setdefault(prov_type, uri)
+                        break
 
             images = track_info.get("images") or {}
             primary_genre = (track_info.get("genres") or {}).get("primary")
@@ -127,6 +152,8 @@ class ShazamProvider(TrackIdentificationProvider):
                             "artwork_url": images.get("coverarthq")
                             or images.get("coverart"),
                             "shazam_url": track_info.get("url"),
+                            "spotify_search_uri": provider_uris.get("spotify"),
+                            "deezer_search_uri": provider_uris.get("deezer"),
                         }
                     ]
                 }

@@ -100,7 +100,22 @@ def _shazam_payload(**track_overrides):
             "actions": [
                 {"type": "uri", "id": "ignored"},
                 {"type": "applemusicplay", "id": "am-999"},
-            ]
+            ],
+            "providers": [
+                {
+                    "type": "DEEZER",
+                    "actions": [{"name": "hub:deezer:deeplink", "uri": "dzr://x"}],
+                },
+                {
+                    "type": "SPOTIFY",
+                    "actions": [
+                        {
+                            "name": "hub:spotify:searchdeeplink",
+                            "uri": "spotify:search:Sara Landry Berghain",
+                        }
+                    ],
+                },
+            ],
         },
         "sections": [
             {
@@ -187,5 +202,66 @@ async def test_shazam_metadata_survives_explicit_nulls(monkeypatch):
         assert entry["album"] is None
         assert entry["apple_music_id"] is None
         assert entry["artwork_url"] is None
+    finally:
+        clear_config()
+
+
+@pytest.mark.asyncio
+async def test_shazam_surfaces_platform_search_deeplinks(monkeypatch):
+    """hub.providers carries per-platform deeplinks Shazam ships with the
+    match — free, no extra API call.
+
+    Matched on each provider's ``type``, NOT a positional index. shazamio's
+    own factory hardcodes providers[0].actions[0], which returns the wrong
+    platform's link the moment Shazam reorders the array — the fixture puts
+    DEEZER first precisely to catch that.
+    """
+    monkeypatch.setenv("TRACKLISTIFY_SHAZAM_COOLDOWN_SECONDS", "0")
+    clear_config()
+    try:
+        get_config(force_refresh=True)
+        provider = ShazamProvider()
+        monkeypatch.setattr(
+            provider.shazam,
+            "recognize",
+            AsyncMock(return_value=_shazam_payload()),
+        )
+
+        entry = (
+            await provider.identify_track(
+                SimpleNamespace(file_path="segment.mp3", start_time=0)
+            )
+        )["metadata"]["music"][0]
+
+        assert entry["spotify_search_uri"] == "spotify:search:Sara Landry Berghain"
+        assert entry["deezer_search_uri"] == "dzr://x"
+    finally:
+        clear_config()
+
+
+@pytest.mark.asyncio
+async def test_shazam_missing_providers_yields_none_not_crash(monkeypatch):
+    """No hub.providers at all — the common case for obscure tracks."""
+    monkeypatch.setenv("TRACKLISTIFY_SHAZAM_COOLDOWN_SECONDS", "0")
+    clear_config()
+    try:
+        get_config(force_refresh=True)
+        provider = ShazamProvider()
+        monkeypatch.setattr(
+            provider.shazam,
+            "recognize",
+            AsyncMock(
+                return_value=_shazam_payload(hub={"actions": [], "providers": None})
+            ),
+        )
+
+        entry = (
+            await provider.identify_track(
+                SimpleNamespace(file_path="segment.mp3", start_time=0)
+            )
+        )["metadata"]["music"][0]
+
+        assert entry["spotify_search_uri"] is None
+        assert entry["deezer_search_uri"] is None
     finally:
         clear_config()
