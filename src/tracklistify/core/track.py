@@ -333,9 +333,13 @@ class TrackMatcher:
             return
 
         self.tracks.append(track)
-        logger.debug(
-            f"Added track to matcher: {track.song_name} "
-            f"(Confidence: {track.confidence:.1f}%)"
+        # INFO, not debug: this is the only per-track success signal the
+        # operator sees during a run. Demoting it (as the dedup rewrite
+        # briefly did) leaves the default log showing provider *failures*
+        # only, so a healthy run reads as if nothing matched.
+        logger.info(
+            f"Identified: {track.song_name} — {track.artist} "
+            f"at {track.time_in_mix} ({track.confidence:.1f}%)"
         )
 
     def get_unique_tracks(self) -> List[Track]:

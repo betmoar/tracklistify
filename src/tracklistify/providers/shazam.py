@@ -36,7 +36,11 @@ class ShazamProvider(TrackIdentificationProvider):
                 cooldown = 2.25
             if cooldown and cooldown > 0:
                 await asyncio.sleep(cooldown)
-            logger.info(f"Identifying segment at {audio_segment.start_time}s")
+            # Debug: one line per segment with no outcome attached is pure
+            # noise at default verbosity (74 segments -> 74 lines saying
+            # nothing). Progress is reported by ProgressDisplay; outcomes by
+            # add_track.
+            logger.debug(f"Identifying segment at {audio_segment.start_time}s")
 
             # Ensure the audio file path is valid
             if not hasattr(audio_segment, "file_path") or not audio_segment.file_path:
@@ -48,13 +52,20 @@ class ShazamProvider(TrackIdentificationProvider):
             result = await self.shazam.recognize(audio_segment.file_path, proxy=proxy)
             logger.debug(f"Shazam response: {result}")
 
+            # An unmatched segment is the NORMAL case, not a fault: a DJ mix
+            # is full of unreleased IDs, mashups and long transitions that
+            # Shazam legitimately cannot place. Logging it above debug
+            # drowns the run in noise and inverts the signal — the operator
+            # sees a wall of failures while the successes (logged at INFO by
+            # TrackMatcher.add_track) scroll past unnoticed. Genuine faults
+            # here raise ShazamError; these two are just "no match".
             if not result or "matches" not in result:
-                logger.warning("No matches found in Shazam response.")
+                logger.debug("No matches found in Shazam response.")
                 return None
 
             # The track information is directly in the response
             if "track" not in result:
-                logger.info("No track information found in Shazam response.")
+                logger.debug("No track information found in Shazam response.")
                 return None
 
             track_info = result["track"]

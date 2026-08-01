@@ -338,6 +338,16 @@ class IdentificationManager:
                         if cached is not None:
                             track = self._track_from_info(cached, segment)
                             if track is not None:
+                                # Mark the hit: this path never touches the
+                                # provider, so without a line here a cached
+                                # segment is indistinguishable from one that
+                                # was never processed. That reads as a gap
+                                # in the segment sequence (e.g. 200s jumping
+                                # to 350s) and looks like dropped work.
+                                logger.debug(
+                                    f"Cache hit for segment at "
+                                    f"{segment.start_time}s ({provider_name})"
+                                )
                                 break
 
                     acquired = False

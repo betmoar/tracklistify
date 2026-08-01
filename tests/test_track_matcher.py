@@ -531,3 +531,38 @@ class TestDedupInvariants:
             _t("Song", "Artist", 50),
         ]
         assert len(track_matcher.get_unique_tracks()) == 1
+
+
+def test_identified_track_is_logged_at_info(track_matcher, caplog):
+    """The per-track success line must stay at INFO.
+
+    This is the only per-track success signal an operator sees during a
+    run. It regressed to debug once (the dedup rewrite), which left the
+    default log showing provider *failures* only — a healthy run scrolled
+    past 45 "No track information found" lines with nothing to balance
+    them, reading as if nothing had matched at all.
+    """
+    import logging
+
+    track = create_track("Bassline Kick", "Revoxx", "00:04:10", confidence=99.9)
+    with caplog.at_level(logging.INFO, logger="tracklistify.core.track"):
+        track_matcher.add_track(track)
+
+    info = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert info, "an identified track must be visible at INFO"
+    msg = info[0].getMessage()
+    assert "Bassline Kick" in msg and "Revoxx" in msg
+    assert "00:04:10" in msg, "the timestamp is what makes the line actionable"
+
+
+def test_low_confidence_skip_stays_below_info(track_matcher, caplog):
+    """Gated tracks are not events the operator needs at default verbosity."""
+    import logging
+
+    track_matcher.min_confidence = 75.0
+    low = create_track("Noise", "Nobody", "00:00:10", confidence=10.0)
+    with caplog.at_level(logging.DEBUG, logger="tracklistify.core.track"):
+        track_matcher.add_track(low)
+
+    assert not [r for r in caplog.records if r.levelno >= logging.INFO]
+    assert any(r.levelno == logging.DEBUG for r in caplog.records)
