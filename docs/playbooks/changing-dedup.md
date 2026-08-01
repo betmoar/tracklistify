@@ -30,9 +30,11 @@ get_unique_tracks()  -> THE dedup authority. Cluster, then pick one per cluster.
 
 ## The four rules that must not be broken
 
-### 1. Chain on the gap to the LAST member — not the anchor, not any member
+### 1. Chain PROXIMITY on the gap to the LAST member — not the anchor, not any member
 
 Proximity is measured against `cluster[-1]` (the most recent detection).
+Identity is a separate axis with the opposite anchor — see rule 1b; do not
+conflate them.
 
 ```python
 if t_secs - cluster[-1].time_to_seconds() > window:   # correct: gap-based
@@ -57,12 +59,56 @@ Three rules, two failure modes, and only one rule avoids both:
 Every repeated title in the reference mix has uniform 50s gaps and spans of
 50–150s. **Gap continuity is the signal; total span is not.**
 
-Because clusters are created in anchor order but joined in last-member order,
-the two interleave — so you cannot `break` out of a simple scan. The loop
-retires out-of-reach clusters into `finished` and scans only `active`, which
-is both correct and amortized linear.
+### 1b. Chain IDENTITY on the anchor — `cluster[0]`, never any member
 
-**Guardrails:** `test_c3_distinct_plays_separated_by_a_gap_stay_separate`
+```python
+if _tracks_match(track, cluster[0]):                        # correct: anchored
+if any(_tracks_match(track, m) for m in cluster):           # WRONG: unbounded
+```
+
+The any-member trap has a second form, and the first version of this
+rewrite shipped it: rule 1 fixed the *time* axis and left *identity*
+chaining transitively. Artist Jaccard is not a transitive relation.
+`"Artist A"` and `"Artist B"` share no tokens (0.0, correctly distinct), but
+a collaboration credit `"Artist A, Artist B"` matches both at 0.5 and
+bridges them into one cluster. Because each hop also refreshes
+`cluster[-1]`, the proximity guard never retires the cluster and the chain
+runs unbounded.
+
+Observed before the fix — six detections spanning two separate plays
+collapsed into a single row, and the entire second play was deleted:
+
+```
+IN : A@0:00, A@0:50, A+B@1:40, B@2:30, B@3:20, B@4:10
+OUT: A@0:00                                  <- "Artist B" gone, silently
+```
+
+Note the two axes anchor on opposite ends, each for its own reason:
+proximity on `cluster[-1]` so an unbroken cadence can extend past the
+window, identity on `cluster[0]` so membership cannot drift away from what
+the cluster *is*. Anchoring identity also makes placement O(1) per cluster
+instead of O(len(cluster)) — see the scale probe below.
+
+The tradeoff is deliberate: a variant that matches only a middle member now
+starts its own cluster, i.e. a *visible duplicate* rather than a silently
+deleted track. That is the direction this playbook always chooses.
+
+**Guardrails:** `test_c3_collab_credit_does_not_bridge_distinct_artists` and
+`test_c3_collab_bridge_does_not_delete_a_later_play`.
+
+### 1c. Why the loop has no early `break` over clusters
+
+Because clusters are created in anchor order but joined in last-member
+order, the two interleave — so you cannot `break` out of a simple scan; an
+out-of-reach cluster can sit in front of a reachable one. The loop instead
+retires out-of-reach clusters into `finished` and scans only `active`.
+
+That keeps the *cluster-size* dimension flat (rule 1b anchors identity, so
+each cluster costs one comparison). It does not bound the *number* of
+simultaneously-active clusters: N distinct tracks packed inside one window
+is still quadratic. Real inputs don't reach it — see the scale probe note.
+
+**Guardrails for rule 1:** `test_c3_distinct_plays_separated_by_a_gap_stay_separate`
 (the chain must break) and `test_c3_long_track_chains_at_step_cadence` (it
 must not). Both sides are required — a change satisfying only one is wrong.
 
@@ -144,8 +190,14 @@ uv run python scripts/generate_env_example.py --check
 # Just the dedup surface
 uv run python -m pytest tests/test_track_matcher.py -v
 
-# Scale probe — clustering must stay ~linear. Regression here means the
-# early-exit `break` in get_unique_tracks was lost.
+# Scale probe — clustering must stay ~linear.
+#
+# MUST use repeated detections (few identities, big clusters). An earlier
+# version of this probe generated all-DISTINCT titles, so every cluster
+# stayed size 1 and the per-member scan it was meant to catch was never
+# executed — it reported a clean linear 1.4/7/14ms while the shipped code
+# was quadratic (704ms at n=2000). A guardrail that cannot fail is worse
+# than none: it certifies the bug.
 uv run python -c "
 import os, time
 os.environ['TRACKLISTIFY_SEGMENT_LENGTH']='60'; os.environ['TRACKLISTIFY_OVERLAP_DURATION']='10'
@@ -156,12 +208,20 @@ def T(n,a,s):
     h,r=divmod(s,3600); m,sec=divmod(r,60)
     return Track(song_name=n,artist=a,time_in_mix=f'{h}:{m:02d}:{sec:02d}',confidence=80.0)
 for n in [216, 1000, 2000]:
-    m=TrackMatcher(cfg); m.tracks=[T(f'S{i}',f'A{i}',i*50) for i in range(n)]
+    # Two identities, so clusters actually grow to ~n/2 members.
+    m=TrackMatcher(cfg); m.tracks=[T(f'S{i%2}',f'A{i%2}',i*50) for i in range(n)]
     t0=time.perf_counter(); u=m.get_unique_tracks(); dt=time.perf_counter()-t0
     print(f'n={n:5} -> {len(u)} unique in {dt*1000:7.1f}ms')
 "
-# Expected: ~1.4ms / ~7ms / ~14ms (linear). If n=1000 is >100ms, you have
-# reintroduced the quadratic scan.
+# Expected: ~1.5ms / ~7ms / ~13ms (linear). If n=2000 is >100ms, identity
+# matching is scanning cluster members again instead of anchoring on
+# cluster[0] (rule 1b).
+#
+# Known residual bound, not a regression: N *distinct* tracks packed inside
+# one window is still quadratic in the `active` list (262/1031/4358ms at
+# n=500/1000/2000). Unreachable at real mix sizes — a 3h set yields ~200
+# detections spread over hours, so `active` stays tiny. Fix it only if a
+# real input ever lands there.
 ```
 
 ## The trap that is not in the code

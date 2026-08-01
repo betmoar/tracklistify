@@ -403,8 +403,27 @@ class TrackMatcher:
             placed = False
             # Prefer the most recently extended cluster, so an unbroken
             # cadence keeps chaining rather than splitting.
+            #
+            # Identity is tested against ``cluster[0]`` — the anchor — not
+            # against every member. Artist Jaccard is NOT transitive, so an
+            # any-member test chains identity the same way an any-member
+            # *time* test chains proximity: "Artist A" and "Artist B" share
+            # no tokens (0.0, correctly distinct), but a collaboration
+            # credit "Artist A, Artist B" matches both at 0.5 and bridges
+            # them. Each hop also refreshes ``cluster[-1]``, so the time
+            # guard above never retires the cluster and the chain runs
+            # unbounded — observed deleting an entire second play (six
+            # detections across two plays collapsed to one row). A visible
+            # duplicate is recoverable; a silently deleted track is not.
+            #
+            # Note the two axes anchor on opposite ends, each for its own
+            # reason: proximity on ``cluster[-1]`` so an unbroken cadence
+            # can extend past the window, identity on ``cluster[0]`` so
+            # membership cannot drift away from what the cluster *is*.
+            # Anchoring also makes placement O(1) per cluster instead of
+            # O(len(cluster)).
             for cluster in reversed(active):
-                if any(_tracks_match(track, m) for m in cluster):
+                if _tracks_match(track, cluster[0]):
                     cluster.append(track)
                     placed = True
                     break

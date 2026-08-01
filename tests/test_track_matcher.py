@@ -214,21 +214,55 @@ class TestTrackMatcher:
         unique = track_matcher.get_unique_tracks()
         assert len(unique) == 1, "Accent-folded artist variants should merge"
 
+    def test_artist_jaccard_threshold_lower_bound(self, track_matcher):
+        """Just BELOW 0.34 must not merge: 2 shared of 6 union = 0.333.
+
+        Pins the threshold from underneath. Without this the constant can be
+        loosened a long way (0.10 merges almost anything with one shared
+        token) and every other test still passes — verified by mutation.
+        """
+        track_matcher.tracks = [
+            create_track("Song", "Ann & Bob & Cid & Dee", "00:00:00"),
+            create_track("Song", "Cid & Dee & Eve & Fay", "00:00:50"),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 2, (
+            "Jaccard 0.333 is below the 0.34 threshold and must not merge"
+        )
+
+    def test_artist_jaccard_threshold_upper_bound(self, track_matcher):
+        """Just ABOVE 0.34 must merge: 2 shared of 5 union = 0.40.
+
+        Pins the threshold from above, so it cannot be tightened without a
+        failing test. Together with the lower bound these bracket 0.34 to
+        within 0.067.
+        """
+        track_matcher.tracks = [
+            create_track("Song", "Ann & Bob & Cid", "00:00:00"),
+            create_track("Song", "Ann & Bob & Dee & Eve", "00:00:50"),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 1, (
+            "Jaccard 0.40 is above the 0.34 threshold and must merge"
+        )
+
     def test_representative_is_deterministic_under_confidence_noise(
         self, track_matcher
     ):
-        """The 5-point confidence deadband keeps the representative stable
-        when Shazam's per-run confidence jitters by a few points: near-equal
-        confidence falls in one bucket and earliest-time wins deterministically."""
+        """Confidence never influences the representative — earliest wins.
+
+        Shazam scores the same audio differently per run, so any
+        confidence-derived term would flip the reported time_in_mix between
+        runs. `_rep_key` excludes confidence outright; an earlier design
+        quantized it into 5-point buckets to absorb the jitter, but two
+        detections straddling a bucket edge still flipped. See `_rep_key`.
+        """
         base = create_track("Song", "Artist", "00:00:00", confidence=85.0)
-        # Jittered neighbor: within the deadband of 85, slightly higher.
+        # Jittered neighbour, scored higher — must still lose on time.
         jittered_high = create_track("Song", "Artist", "00:00:50", confidence=87.0)
         track_matcher.tracks = [base, jittered_high]
 
         unique = track_matcher.get_unique_tracks()
         assert len(unique) == 1
-        # 85 and 87 fall in the same 5-pt bucket (int(85/5)=17, int(87/5)=17);
-        # earliest time wins the tiebreak -> the 00:00:00 track represents.
+        # Earliest detection represents the cluster; 87 > 85 is irrelevant.
         assert unique[0] == base
 
 
@@ -248,8 +282,9 @@ class TestDedupInvariants:
     """Guardrails for the implicit contracts the dedup rewrite depends on.
 
     Each test names the contract it locks (see docs/ARCHITECTURE.md and
-    AUDIT_STATE.md). These exist because the audit found the code silently
-    violating the guarantees its own docstrings advertised.
+    docs/playbooks/changing-dedup.md). These exist because the audit found
+    the code silently violating the guarantees its own docstrings
+    advertised.
     """
 
     def test_c3_distinct_plays_separated_by_a_gap_stay_separate(self, track_matcher):
@@ -308,6 +343,56 @@ class TestDedupInvariants:
         ]
         assert len(track_matcher.get_unique_tracks()) == 1
 
+    def test_c3_collab_credit_does_not_bridge_distinct_artists(self, track_matcher):
+        """C3 (identity axis): identity must not chain transitively.
+
+        Artist Jaccard is not transitive: "Artist A" and "Artist B" share no
+        tokens (0.0, correctly distinct), but a collaboration credit
+        "Artist A, Artist B" matches BOTH at 0.5. If cluster membership is
+        tested against *any* member, that credit bridges the two and the
+        second play is deleted outright — the silent data loss the playbook
+        rates as worse than the duplicate it removes. Identity is therefore
+        anchored on cluster[0], exactly as proximity is anchored on
+        cluster[-1].
+
+        The credit itself is genuinely ambiguous — "Artist A" vs
+        "Artist A, Artist B" is the same shape as the Berghain variant this
+        dedup exists to merge, so absorbing it into the anchor's cluster is
+        correct. What must never happen is the *third* row disappearing:
+        "Artist B" shares no tokens with the anchor and is a distinct play.
+        """
+        track_matcher.tracks = [
+            _t("Same Title", "Artist A", 0),
+            _t("Same Title", "Artist A, Artist B", 30),
+            _t("Same Title", "Artist B", 60),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert [t.artist for t in unique] == ["Artist A", "Artist B"], (
+            "a collaboration credit must not bridge two distinct solo "
+            "artists into one row"
+        )
+
+    def test_c3_collab_bridge_does_not_delete_a_later_play(self, track_matcher):
+        """C3 (identity axis): the bridge must not swallow a whole play.
+
+        Each transitive hop also refreshes cluster[-1], so the time guard
+        never retires the cluster and the chain runs unbounded. Observed
+        before the fix: six detections spanning two plays collapsed to a
+        single row and the entire "Artist B" play vanished.
+        """
+        track_matcher.tracks = [
+            _t("Same Title", "Artist A", 0),
+            _t("Same Title", "Artist A", 50),
+            _t("Same Title", "Artist A, Artist B", 100),
+            _t("Same Title", "Artist B", 150),
+            _t("Same Title", "Artist B", 200),
+            _t("Same Title", "Artist B", 250),
+        ]
+        artists = [t.artist for t in track_matcher.get_unique_tracks()]
+        assert "Artist B" in artists, (
+            "the later solo play was deleted by transitive identity chaining"
+        )
+
     def test_c4_constructor_scales_config_min_confidence(self):
         """C4: config is 0.0-1.0, TrackMatcher is 0-100. The ctor scales."""
         cfg = get_config()
@@ -318,14 +403,19 @@ class TestDedupInvariants:
             "Track.confidence scale"
         )
 
-    def test_c5_representative_stable_across_deadband_boundary(self, track_matcher):
+    def test_c5_representative_stable_regardless_of_confidence_order(
+        self, track_matcher
+    ):
         """C5: representative selection is order- and jitter-independent.
 
-        Two detections of the same track straddling a confidence bucket
-        boundary (84.9 / 85.0) must yield the same representative no matter
-        which order they were added — otherwise Shazam's per-run jitter
-        changes the reported time_in_mix, the exact bug _rep_key exists to
-        prevent.
+        Two detections of the same track with near-identical confidence
+        (84.9 / 85.0) must yield the same representative no matter which
+        order they were added — otherwise Shazam's per-run jitter changes
+        the reported time_in_mix, the exact bug _rep_key exists to prevent.
+        These two values are the pair that defeated an earlier bucketing
+        design: they straddle a 5-point bucket edge, so bucketing sorted
+        them into different buckets and the winner flipped. Selection is now
+        purely time-based, which no confidence pair can perturb.
         """
         a = _t("Song", "Artist", 0, 84.9)
         b = _t("Song", "Artist", 50, 85.0)
@@ -339,8 +429,7 @@ class TestDedupInvariants:
 
         assert len(first) == 1 and len(second) == 1
         assert first[0].time_in_mix == second[0].time_in_mix, (
-            "representative flipped when input order changed across a "
-            "confidence-bucket boundary"
+            "representative flipped when input order changed"
         )
 
     def test_f07_is_similar_to_agrees_with_dedup_predicate(self):
