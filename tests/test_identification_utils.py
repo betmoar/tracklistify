@@ -239,3 +239,89 @@ class TestProgressDisplay:
         display.update(current=5)
 
         assert display.current_segment == 5
+
+
+class TestExtraMetadata:
+    """Provider extras -> Track.metadata (PR #57 enrichment).
+
+    Extraction lives in ``_extra_metadata`` and is called from
+    ``_track_from_info``, which is the single place a Track is built from a
+    provider response — both the live and cache-hit paths route through it,
+    so metadata lands on cached tracks too.
+    """
+
+    def test_full_metadata_is_extracted(self):
+        from tracklistify.utils.identification import _extra_metadata
+
+        extras = _extra_metadata(
+            {
+                "title": "Berghain",
+                "external_ids": {"isrc": "USABC1234567"},
+                "genres": [{"name": "Techno"}, {"name": "Hard Techno"}],
+                "album": "Hyperdrive",
+                "label": "HEKATE",
+                "release_date": "2024",
+                "shazam_id": "k1",
+                "apple_music_id": "am-999",
+                "artwork_url": "https://img/hq.jpg",
+                "shazam_url": "https://shazam/1",
+            }
+        )
+        assert extras == {
+            "isrc": "USABC1234567",
+            "genres": ["Techno", "Hard Techno"],
+            "album": "Hyperdrive",
+            "label": "HEKATE",
+            "release_date": "2024",
+            "shazam_id": "k1",
+            "apple_music_id": "am-999",
+            "artwork_url": "https://img/hq.jpg",
+            "shazam_url": "https://shazam/1",
+        }
+
+    def test_empty_values_are_dropped_not_stored_as_none(self):
+        """No provider fills every key — ACRCloud has no shazam_id, Shazam
+        has no ACRCloud fields. Storing None would fill Track.metadata with
+        null noise and defeat the `or None` in _save_json."""
+        from tracklistify.utils.identification import _extra_metadata
+
+        assert _extra_metadata({"title": "X", "album": None, "genres": []}) == {}
+
+    def test_malformed_shapes_do_not_raise(self):
+        """Provider payloads are third-party JSON. A wrong-typed field must
+        degrade to "no extras", never take down identification."""
+        from tracklistify.utils.identification import _extra_metadata
+
+        assert _extra_metadata({"external_ids": None}) == {}
+        assert _extra_metadata({"external_ids": "nope"}) == {}
+        assert _extra_metadata({"genres": "Techno"}) == {}
+        assert _extra_metadata({"genres": [None, {"no_name": 1}]}) == {}
+        assert _extra_metadata(None) == {}
+
+    def test_track_from_info_attaches_metadata(self):
+        """The extras reach Track.metadata through the real build path."""
+        from types import SimpleNamespace
+
+        from tracklistify.config import get_config
+        from tracklistify.utils.identification import IdentificationManager
+
+        mgr = IdentificationManager(config=get_config(), provider_factory=object())
+        track = mgr._track_from_info(
+            {
+                "metadata": {
+                    "music": [
+                        {
+                            "title": "Berghain",
+                            "artists": [{"name": "Sara Landry"}],
+                            "score": 90.0,
+                            "external_ids": {"isrc": "USABC1234567"},
+                            "album": "Hyperdrive",
+                        }
+                    ]
+                }
+            },
+            SimpleNamespace(start_time=0),
+        )
+        assert track is not None
+        assert track.metadata["isrc"] == "USABC1234567"
+        assert track.metadata["album"] == "Hyperdrive"

@@ -162,6 +162,7 @@ class TracklistOutput:
                     "time_in_mix": track.time_in_mix,
                     "confidence": track.confidence,
                     "duration": getattr(track, "duration", None),
+                    "metadata": getattr(track, "metadata", None) or None,
                 }
                 for track in self.tracks
             ],

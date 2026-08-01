@@ -79,6 +79,33 @@ class ShazamProvider(TrackIdentificationProvider):
                 )  # Weight frequency more
                 best_score = max(best_score, match_score)
 
+            # shazamio's raw track payload carries far more than title/subtitle
+            # (isrc, genre, album/label/year, Apple Music id, artwork) -- surface
+            # it here in the same shape the ACRCloud provider already uses, so
+            # utils.identification can thread it into Track.metadata generically.
+            #
+            # Every lookup below is `or {}` / `or []` rather than a .get()
+            # default: these keys are frequently present with an explicit
+            # JSON null, and `.get("k", {})` returns the default only when
+            # the key is ABSENT — a null yields None and the next .get()
+            # raises AttributeError. That would turn a cosmetic metadata
+            # gap into a failed identification for the whole segment.
+            section_metadata = {}
+            for section in track_info.get("sections") or []:
+                for item in section.get("metadata") or []:
+                    label = item.get("title")
+                    if label:
+                        section_metadata[label] = item.get("text")
+
+            apple_music_id = None
+            for action in (track_info.get("hub") or {}).get("actions") or []:
+                if action.get("type") == "applemusicplay":
+                    apple_music_id = action.get("id")
+                    break
+
+            images = track_info.get("images") or {}
+            primary_genre = (track_info.get("genres") or {}).get("primary")
+
             return {
                 "metadata": {
                     "music": [
@@ -88,6 +115,18 @@ class ShazamProvider(TrackIdentificationProvider):
                                 {"name": track_info.get("subtitle", "Unknown Artist")}
                             ],
                             "score": best_score,
+                            "external_ids": {"isrc": track_info.get("isrc")},
+                            "genres": [{"name": primary_genre}]
+                            if primary_genre
+                            else [],
+                            "album": section_metadata.get("Album"),
+                            "label": section_metadata.get("Label"),
+                            "release_date": section_metadata.get("Released"),
+                            "shazam_id": track_info.get("key"),
+                            "apple_music_id": apple_music_id,
+                            "artwork_url": images.get("coverarthq")
+                            or images.get("coverart"),
+                            "shazam_url": track_info.get("url"),
                         }
                     ]
                 }

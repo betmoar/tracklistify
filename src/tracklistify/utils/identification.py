@@ -8,7 +8,7 @@ import contextlib
 import hashlib
 import sys
 import time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from tracklistify.cache.factory import get_cache
 from tracklistify.config.factory import get_config
@@ -71,6 +71,46 @@ def create_progress_bar(progress: float, width: int = 30) -> str:
     # Build progress bar with filled (█) and empty (░) blocks
     bar = "[" + "█" * filled + "░" * empty + "]"
     return bar
+
+
+def _extra_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Pull provider-supplied extras out of a music entry.
+
+    ISRC, genre, album/label/release date, platform ids and artwork. No
+    provider fills every key — ACRCloud has no Shazam id, Shazam has no
+    ACRCloud fields — so empty values are dropped rather than stored as
+    ``None``. That keeps ``Track.metadata`` free of null noise and lets
+    ``_save_json`` emit ``null`` for a track with no extras at all.
+
+    Reads defensively: provider payloads are third-party JSON, and a
+    malformed shape here must not take down identification. Anything
+    unparseable yields ``{}`` and the Track is still built.
+    """
+    if not isinstance(metadata, dict):
+        return {}
+
+    external_ids = metadata.get("external_ids")
+    isrc = external_ids.get("isrc") if isinstance(external_ids, dict) else None
+
+    genres_raw = metadata.get("genres")
+    genres = (
+        [g.get("name") for g in genres_raw if isinstance(g, dict) and g.get("name")]
+        if isinstance(genres_raw, list)
+        else []
+    )
+
+    extras = {
+        "isrc": isrc,
+        "album": metadata.get("album"),
+        "label": metadata.get("label"),
+        "release_date": metadata.get("release_date"),
+        "genres": genres or None,
+        "shazam_id": metadata.get("shazam_id"),
+        "apple_music_id": metadata.get("apple_music_id"),
+        "artwork_url": metadata.get("artwork_url"),
+        "shazam_url": metadata.get("shazam_url"),
+    }
+    return {k: v for k, v in extras.items() if v}
 
 
 class ProgressDisplay:
@@ -246,6 +286,7 @@ class IdentificationManager:
                 artist=artist_name,
                 time_in_mix=time_in_mix,
                 confidence=float(metadata.get("score", 100.0)),
+                metadata=_extra_metadata(metadata),
             )
         except (ValueError, TypeError) as e:
             logger.error(f"Failed to create track from provider response: {e}")

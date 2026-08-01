@@ -81,3 +81,111 @@ async def test_shazam_raises_on_recognize_error(monkeypatch):
             )
     finally:
         clear_config()
+
+
+def _shazam_payload(**track_overrides):
+    """A shazamio-shaped response with the metadata fields we surface."""
+    track = {
+        "title": "Berghain",
+        "subtitle": "Sara Landry",
+        "key": "shazam-key-1",
+        "isrc": "USABC1234567",
+        "url": "https://www.shazam.com/track/1",
+        "genres": {"primary": "Techno"},
+        "images": {
+            "coverart": "https://img/low.jpg",
+            "coverarthq": "https://img/hq.jpg",
+        },
+        "hub": {
+            "actions": [
+                {"type": "uri", "id": "ignored"},
+                {"type": "applemusicplay", "id": "am-999"},
+            ]
+        },
+        "sections": [
+            {
+                "metadata": [
+                    {"title": "Album", "text": "Hyperdrive"},
+                    {"title": "Label", "text": "HEKATE"},
+                    {"title": "Released", "text": "2024"},
+                ]
+            }
+        ],
+    }
+    track.update(track_overrides)
+    return {"matches": [{"frequencyskew": 0.0, "timeskew": 0.0}], "track": track}
+
+
+@pytest.mark.asyncio
+async def test_shazam_surfaces_rich_metadata(monkeypatch):
+    """ISRC, genre, album/label/release, platform ids and artwork are
+    pulled out of the raw shazamio payload into the shared music-entry
+    shape that utils.identification threads into Track.metadata."""
+    monkeypatch.setenv("TRACKLISTIFY_SHAZAM_COOLDOWN_SECONDS", "0")
+    clear_config()
+    try:
+        get_config(force_refresh=True)
+        provider = ShazamProvider()
+        monkeypatch.setattr(
+            provider.shazam,
+            "recognize",
+            AsyncMock(return_value=_shazam_payload()),
+        )
+
+        result = await provider.identify_track(
+            SimpleNamespace(file_path="segment.mp3", start_time=0)
+        )
+
+        entry = result["metadata"]["music"][0]
+        assert entry["external_ids"]["isrc"] == "USABC1234567"
+        assert entry["genres"] == [{"name": "Techno"}]
+        assert entry["album"] == "Hyperdrive"
+        assert entry["label"] == "HEKATE"
+        assert entry["release_date"] == "2024"
+        assert entry["shazam_id"] == "shazam-key-1"
+        assert entry["apple_music_id"] == "am-999"
+        # High-quality artwork wins over the low-res variant.
+        assert entry["artwork_url"] == "https://img/hq.jpg"
+        assert entry["shazam_url"] == "https://www.shazam.com/track/1"
+    finally:
+        clear_config()
+
+
+@pytest.mark.asyncio
+async def test_shazam_metadata_survives_explicit_nulls(monkeypatch):
+    """Explicit JSON nulls must not break identification.
+
+    ``.get("genres", {})`` returns the default only when the key is
+    ABSENT — a present-but-null value yields None and the chained
+    ``.get("primary")`` raises AttributeError, turning a cosmetic
+    metadata gap into a failed identification for the whole segment.
+    shazamio payloads carry these nulls in practice.
+    """
+    monkeypatch.setenv("TRACKLISTIFY_SHAZAM_COOLDOWN_SECONDS", "0")
+    clear_config()
+    try:
+        get_config(force_refresh=True)
+        provider = ShazamProvider()
+        monkeypatch.setattr(
+            provider.shazam,
+            "recognize",
+            AsyncMock(
+                return_value=_shazam_payload(
+                    genres=None, hub=None, sections=None, images=None, isrc=None
+                )
+            ),
+        )
+
+        result = await provider.identify_track(
+            SimpleNamespace(file_path="segment.mp3", start_time=0)
+        )
+
+        # Identification still succeeds; the extras are simply absent.
+        entry = result["metadata"]["music"][0]
+        assert entry["title"] == "Berghain"
+        assert entry["genres"] == []
+        assert entry["album"] is None
+        assert entry["apple_music_id"] is None
+        assert entry["artwork_url"] is None
+    finally:
+        clear_config()
