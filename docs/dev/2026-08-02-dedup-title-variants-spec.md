@@ -13,20 +13,29 @@ variants survive dedup as separate rows"
 Two detections of the same recording, one segmentation step apart with matching
 artists, must emit **one** row when the only difference between their titles is
 a non-distinguishing bracketed suffix — and must still emit **two** rows when
-the suffix names a different recording.
+the suffix names a different recording. A `feat.`/`ft.`/`featuring` credit is
+**distinguishing** (the featured artist identifies a specific recording), so
+it is canonicalized — not dropped — and distinct credits stay separate.
 
 Confirmed on real output (backlog table):
 
 | Time | Title A | Title B | Wanted |
 |---|---|---|---|
-| 08:20 / 09:10 | `Meet Her At The Love Parade (feat. Kiki Solvej)` | `Meet Her At The Love Parade (Mixed)` | 1 row |
+| 08:20 / 09:10 | `Meet Her At The Love Parade (feat. Kiki Solvej)` | `Meet Her At The Love Parade (Mixed)` | **2 rows** *(revised — see below)* |
 | 57:30 / 58:20 | `Outside World (Club Mix)` | `Outside World` | 1 row |
 | — | `Stereo Murder [Live At Tomorrowland]` | `Stereo Murder` | 1 row |
 | — | `Berghain` | `Berghain (Remix)` | 2 rows |
+| — | `Track (ft. Carl Cox)` | `Track (feat. Carl Cox)` | 1 row (canonicalized) |
+| — | `Hit (ft. Snoop Dogg)` | `Hit (feat. Pharrell)` | 2 rows (distinct credit) |
 
-Both merge pairs are ~50 s apart with matching artists, so the proximity and
-artist gates already agree they belong together. Only the title check splits
-them.
+The first row was the original motivating case ("wanted 1 row"). It is
+**revised to 2 rows**: `feat.` is a credit marker, and the credited artist is
+distinguishing information per the streaming-metadata standard. Treating it
+as droppable merged different featured artists and collided with `Ft. <Place>`
+abbreviations; the canonicalize-don't-drop rule fixes both at the cost of this
+pair separating (a visible duplicate — the recoverable direction). The other
+merge pairs (~50 s apart, matching artists) still merge; only the title check
+split them.
 
 ## Non-goals
 
@@ -91,29 +100,70 @@ always chooses.
 `_rep_key` is not modified.
 
 **D4 — Empty-result fallback.**
-If stripping leaves nothing but whitespace, return the original title. Without
+If rewriting leaves nothing but whitespace, return the original title. Without
 this, a track titled `(Mixed)` and one titled `(Club Mix)` both reduce to the
 empty string and merge.
+
+**D5 — Credits are distinguishing; canonicalize, don't drop.**
+A `feat.`/`ft.`/`featuring` credit names a specific collaborator, which
+identifies a specific recording (`Song Title (feat. Artist Name)` is the
+streaming-metadata standard). Dropping the whole group merges different
+featured artists and, because casing is normalized away, also swallows `Ft.
+<Place>` US abbreviations. The marker is therefore rewritten to a single
+canonical `feat ` form (so spelling variants collapse) while the credited
+name is retained (so distinct credits separate). This overrides the earlier
+"strip the feat prefix" draft in every section below.
 
 ### Exact rule set
 
 Each bracketed group's inner text is normalized with `_normalize_token`, then
-tested in this order. **The keep-list is checked first**, so widening the
-drop-lists later cannot quietly swallow a remix.
+the group is transformed by **exactly one** of these rules, tested in order.
 
-1. **Never strip** — inner text contains any of:
+1. **Never touch** — inner text contains any of:
    `remix`, `bootleg`, `edit by`, `vip`
-2. **Strip** — inner text is exactly one of:
+   (these are title-distinguishing; the group is kept verbatim)
+2. **Drop** — inner text is exactly one of:
    `mixed`, `club mix`, `extended mix`, `original mix`, `radio edit`,
    `radio mix`, `extended`, `original`
-3. **Strip** — inner text starts with any of:
-   `live at `, `feat `, `ft `, `featuring `
-4. **Otherwise keep.**
+   (non-distinguishing version tags; the group is removed)
+3. **Canonicalize the feat-marker** — inner text starts with any of:
+   `feat `, `ft `, `featuring `
+   The marker is rewritten to `feat ` and the **credited name is kept**: the
+   group becomes `(feat <credited name>)`. So `(ft. Carl Cox)`,
+   `(Ft. Carl Cox)`, and `(Featuring Carl Cox)` all reduce to the same key.
+   **The credit is NOT dropped** — it is distinguishing information per the
+   streaming-metadata standard (`Song Title (feat. Artist Name)`; the
+   featured artist identifies a specific recording). Dropping it would merge
+   `(feat. Snoop Dogg)` with `(feat. Pharrell)`. Canonicalizing lets
+   spelling-variant duplicates collapse while keeping distinct credits apart.
+4. **Drop** — inner text starts with `live at `
+   (a live-recording tag; non-distinguishing for dedup)
+5. **Otherwise keep** the group verbatim.
 
 (Prefixes are written post-normalization: `"feat. Kiki Solvej"` normalizes to
-`"feat kiki solvej"`, so the prefix to match is `"feat "`, not `"feat. "`.)
+`"feat kiki solvej"`, so the prefix to match is `"feat "`, not `"feat. "`.
+Case does not matter — `_normalize_token` lowercases first, so `Ft.`,
+`FEAT`, `Featuring` all match.)
 
 An empty group (`"Foo ()"`) is dropped — it is noise under either reading.
+
+**Why canonicalize feat instead of dropping it.** `feat.`, `ft.`, and
+`featuring` are all standard spellings of the same credit marker, and Shazam
+returns them inconsistently for the same recording. But the *credited name*
+after the marker is onderscheidend — `(feat. Snoop Dogg)` and
+`(feat. Pharrell)` are different tracks. Canonicalizing the marker (so
+spelling variants of the same credit merge) while keeping the name (so
+different credits separate) is correct on both. Dropping the whole group, as
+an earlier draft did, merged different featured artists and also collided
+with `Ft. <Place>` US place abbreviations (`Ft. Lauderdale`) — canonicalizing
+fixes both: `Sunrise (Ft. Lauderdale Session)` keeps `feat lauderdale
+session` and correctly does not merge with a bare `Sunrise`.
+
+**Trade-off accepted.** A detection tagged `(feat. X)` and one tagged
+`(Mixed)` of the *same* audio now separate (the feat-credit is retained, the
+`(Mixed)` tag drops, so the keys differ). This is the cost of treating the
+featured artist as distinguishing — a visible duplicate on that real pair,
+which is the recoverable direction this feature always chooses.
 
 ### Reference implementation shape
 
@@ -129,7 +179,12 @@ _SUFFIX_DROP_EXACT = frozenset({
     "radio edit", "radio mix", "extended", "original",
 })
 
-_SUFFIX_DROP_PREFIXES = ("live at ", "feat ", "ft ", "featuring ")
+_SUFFIX_DROP_PREFIXES = ("live at ",)
+
+# A feat-credit marker at the start of a bracketed group. Matched on the
+# NORMALIZED inner text (already lowercased), so it covers feat/ft/featuring
+# and every casing variant. The credited name that follows is KEPT.
+_FEAT_MARKER_RE = re.compile(r"^(feat|ft|featuring)\b\s*")
 
 
 def _strip_title_variant(title: str) -> str:
@@ -137,15 +192,19 @@ def _strip_title_variant(title: str) -> str:
         raw = m.group(1) if m.group(1) is not None else m.group(2)
         inner = _normalize_token(raw)
         if not inner:
-            return ""
+            return ""  # empty group is noise
         if any(marker in inner for marker in _SUFFIX_KEEP_MARKERS):
-            return m.group(0)
+            return m.group(0)  # title-distinguishing: keep verbatim
+        # Canonicalize the feat-marker, KEEP the credited name.
+        if _FEAT_MARKER_RE.match(inner):
+            credit = _FEAT_MARKER_RE.sub("", inner)
+            return f"({credit})" if credit else m.group(0)
         if inner in _SUFFIX_DROP_EXACT or inner.startswith(_SUFFIX_DROP_PREFIXES):
-            return ""
-        return m.group(0)
+            return ""  # non-distinguishing version/live tag: drop
+        return m.group(0)  # unrecognized: keep verbatim (default is keep)
 
-    stripped = _TITLE_GROUP_RE.sub(_decide, title)
-    return stripped if stripped.strip() else title
+    rewritten = _TITLE_GROUP_RE.sub(_decide, title)
+    return rewritten if rewritten.strip() else title
 ```
 
 `_tracks_match`'s title clause becomes
@@ -154,19 +213,25 @@ The artist clause is untouched.
 
 ### Worked cases
 
-| Input | After strip + normalize |
+| Input | After rewrite + normalize |
 |---|---|
-| `Meet Her At The Love Parade (feat. Kiki Solvej)` | `meet her at the love parade` |
-| `Meet Her At The Love Parade (Mixed)` | `meet her at the love parade` |
+| `Track (ft. Carl Cox)` | `track carl cox` |
+| `Track (feat. Carl Cox)` | `track carl cox` |
+| `Track (Featuring Carl Cox)` | `track carl cox` |
+| `Hit (ft. Snoop Dogg)` | `hit snoop dogg` |
+| `Hit (feat. Pharrell)` | `hit pharrell` (distinct credit → distinct key) |
+| `Sunrise (Ft. Lauderdale Session)` | `sunrise lauderdale session` (no longer drops → no place collision) |
 | `Outside World (Club Mix)` | `outside world` |
 | `Outside World` | `outside world` |
 | `Stereo Murder [Live At Tomorrowland]` | `stereo murder` |
 | `Berghain (Remix)` | `berghain remix` |
 | `Berghain` | `berghain` |
 | `Outside World (Adam Beyer Remix)` | `outside world adam beyer remix` |
-| `Foo (Kiki's Extended Remix)` | `foo kiki s extended remix` (keep-list beats `extended`) |
+| `Foo (Kiki's Extended Remix)` | `foo kiki s extended remix` (keep-list beats everything) |
 | `Club Mix` (real title, no brackets) | `club mix` (no group to match) |
 | `(Mixed)` | `mixed` (D4 fallback) |
+| `Meet Her At The Love Parade (feat. Kiki Solvej)` | `meet her at the love parade kiki solvej` |
+| `Meet Her At The Love Parade (Mixed)` | `meet her at the love parade` (**now separates** — trade-off) |
 
 Nested parentheses are not handled by `[^()]*`; a non-match falls through to
 "keep", which is the safe default.
@@ -220,8 +285,10 @@ rule change", step 2.
 
 ### Must merge (1 row)
 
-1. `Meet Her At The Love Parade (feat. Kiki Solvej)` @ 08:20 vs
-   `Meet Her At The Love Parade (Mixed)` @ 09:10, same artist.
+1. **Feat-marker spelling variants, same credit.** `(ft. Carl Cox)` vs
+   `(feat. Carl Cox)` vs `(Featuring Carl Cox)`, same artist, 50 s apart —
+   canonicalization collapses them to one key. (Was the feat-drop in an
+   earlier draft; now the credit is kept and the marker canonicalized.)
 2. `Outside World (Club Mix)` @ 57:30 vs `Outside World` @ 58:20, same artist.
 3. `Stereo Murder [Live At Tomorrowland]` vs `Stereo Murder`, 50 s apart —
    square brackets, so a paren-only stripper fails this one.
@@ -230,26 +297,38 @@ rule change", step 2.
 
 4. `Berghain` vs `Berghain (Remix)`, same artist, 50 s apart.
    **This pole does not exist in the suite today.** All six
-   `"Berghain (Remix)"` literals currently in the file (`:190`, `:196`, `:341`,
-   `:342`, `:437`, `:438`) carry the suffix on *both* sides of the comparison,
-   so they merge with or without stripping — the existing suite cannot catch an
-   over-aggressive stripper.
+   `"Berghain (Remix)"` literals currently in the file carry the suffix on
+   *both* sides of the comparison, so they merge with or without rewriting —
+   the existing suite cannot catch an over-aggressive stripper.
 5. `Outside World (Club Mix)` vs `Outside World (Adam Beyer Remix)` — a named
    remix, the keep-list's main job.
 6. A track titled `Club Mix` vs one titled `Mixed` (no brackets on either) —
    proves the stripper anchors on delimiters and does not substring-match.
 7. A track titled `(Mixed)` vs one titled `(Club Mix)` — the D4 fallback.
+8. **Different featured artists.** `(ft. Snoop Dogg)` vs `(feat. Pharrell)`,
+   same artist, 50 s apart — the credit is kept, so the keys differ. This is
+   the canonicalize-don't-drop rule's main job.
+9. **Place-name (no longer collides).** `Sunrise (Ft. Lauderdale Session)` vs
+   `Sunrise`, same artist, 50 s apart — `Ft.` no longer drops, so the place
+   qualifier is retained and they separate. (Was a silent over-merge when feat
+   was dropped; canonicalizing fixes it.)
+10. **feat-credit vs Mixed tag of the same audio (accepted trade-off).**
+    `Meet Her At The Love Parade (feat. Kiki Solvej)` vs
+    `Meet Her At The Love Parade (Mixed)`, same artist, 50 s apart — now
+    SEPARATE. The feat-credit is distinguishing, so it is kept even though
+    this is the same recording Shazam tagged two ways. A visible duplicate is
+    the recoverable direction.
 
 ### Non-regression
 
-8. The representative keeps its raw title: for case 1 the 08:20 detection wins
-   by `_rep_key`, so the emitted `song_name` is
-   `Meet Her At The Love Parade (feat. Kiki Solvej)`, not a stripped form.
-9. These must still pass unchanged: `test_artist_variant_merge_berghain`
-   (`:185`), `test_similar_song_different_artist`, the two Jaccard-bound tests
-   (`:217`, `:232`), and `test_f07_is_similar_to_agrees_with_dedup_predicate`
-   (`:435`) — `Track.is_similar_to` delegates to `_tracks_match`
-   (`track.py:156-163`) and must keep agreeing with it.
+11. The representative keeps its raw title: for case 1 the earlier detection
+    wins by `_rep_key`, so the emitted `song_name` is the raw provider spelling
+    `(ft. Carl Cox)` / `(feat. Carl Cox)` — never a canonicalized form.
+12. These must still pass unchanged: `test_artist_variant_merge_berghain`,
+    `test_similar_song_different_artist`, the two Jaccard-bound tests, and
+    `test_f07_is_similar_to_agrees_with_dedup_predicate` —
+    `Track.is_similar_to` delegates to `_tracks_match` and must keep agreeing
+    with it.
 
 ---
 
@@ -270,21 +349,22 @@ the number of unique tracks, which only reduces the number of enrichment calls.
 Update at implementation time:
 
 - `docs/playbooks/changing-dedup.md:149-156` — "Titles are exact-after-normalize,
-  deliberately" becomes exact-after-strip-then-normalize; keep the
+  deliberately" becomes canonicalize-then-normalize; keep the
   no-fuzzy-ratio rationale, it is still correct.
 - `docs/ARCHITECTURE.md` — implicit contract "same track iff normalized titles
   equal AND artist Jaccard ≥ 0.34".
 - `CLAUDE.md:50` — the dedup landmine bullet.
-- `docs/BACKLOG.md` — move the P2 entry to the Fixed table; the "Known
-  limitation (accepted, not fixed)" note under the 2026-07 batch is superseded
-  for the allowlisted suffixes and must say so.
+- `docs/BACKLOG.md` — mark the P2 entry Fixed; the "Known limitation (accepted,
+  not fixed)" note under the 2026-07 batch is superseded for the allowlisted
+  suffixes. Note the accepted trade-off: a `feat. X` credit vs a `(Mixed)` tag
+  of the same audio now separate.
 - `docs/CHANGELOG.md` — `[Unreleased]`, user-visible output change.
 
 ---
 
 ## Success criteria
 
-1. All eight new tests (cases 1–8) pass; the full suite shows no new failures
+1. All twelve new tests (cases 1–12) pass; the full suite shows no new failures
    against the recorded baseline.
 2. The scale probe is within budget, with the delta recorded in the PR.
 3. `uv run ruff check src/ tests/ scripts/`,

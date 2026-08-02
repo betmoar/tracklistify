@@ -532,6 +532,205 @@ class TestDedupInvariants:
         ]
         assert len(track_matcher.get_unique_tracks()) == 1
 
+    # --- Title-variant stripping (spec 2026-08-02-dedup-title-variants) ---
+    #
+    # Pairs are exactly 50s apart so they fall inside the 100s derived window
+    # — the title gate is the only thing under test. Both poles (merge and
+    # separate) are mandatory for every case.
+
+    def test_d1_feat_marker_spelling_variants_merge(self, track_matcher):
+        """D5: `feat.`/`ft.`/`featuring` are spelling variants of the same
+        credit marker. Canonicalizing the marker (keeping the credited name)
+        collapses them. Two detections of `Track (ft. Carl Cox)` and
+        `Track (feat. Carl Cox)` — same credit, same artist, 50 s apart —
+        are one play.
+        """
+        track_matcher.tracks = [
+            _t("Track (ft. Carl Cox)", "DJ Example", 500),
+            _t("Track (feat. Carl Cox)", "DJ Example", 550),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1, (
+            "feat./ft. spelling variants of the same credit must merge"
+        )
+
+    def test_d2_club_mix_merges_with_bare_title(self, track_matcher):
+        """`(Club Mix)` is on the drop-list, so it merges with the bare title.
+        Real backlog case at 57:30 / 58:20."""
+        track_matcher.tracks = [
+            _t("Outside World (Club Mix)", "DJ Example", 3450),
+            _t("Outside World", "DJ Example", 3500),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1, (
+            "a `(Club Mix)` variant and the bare title are the same recording"
+        )
+
+    def test_d3_square_brackets_live_at_drops(self, track_matcher):
+        """The regex anchors on delimiters, not parens only.
+
+        `[Live At ...]` is square-bracketed. A paren-only rewriter would leave
+        it intact and the pair would stay separate. The delimiter-anchored
+        regex catches both shapes; `live at ` is on the drop-prefix list.
+        """
+        track_matcher.tracks = [
+            _t("Stereo Murder [Live At Tomorrowland]", "DJ Example", 1000),
+            _t("Stereo Murder", "DJ Example", 1050),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1, (
+            "square-bracketed `[Live At ...]` variants must also drop"
+        )
+
+    def test_d4_remix_suffix_kept_against_bare_title(self, track_matcher):
+        """Must-separate pole for the keep-list.
+
+        `(Remix)` names a different recording than the bare title, so it must
+        NOT be touched. This pole does not exist elsewhere in the suite —
+        every other `"Berghain (Remix)"` literal carries the suffix on both
+        sides of the comparison and would merge with or without rewriting.
+        """
+        track_matcher.tracks = [
+            _t("Berghain", "DJ Example", 2000),
+            _t("Berghain (Remix)", "DJ Example", 2050),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 2, (
+            "a bare title and a `(Remix)` variant are different recordings"
+        )
+
+    def test_d5_named_remix_kept_against_club_mix(self, track_matcher):
+        """Must-separate pole: the keep-list's main job.
+
+        `(Adam Beyer Remix)` is a named remix (kept), `(Club Mix)` is on the
+        drop-list (dropped). They must stay two rows — the named remix is a
+        genuinely different recording from the original mix.
+        """
+        track_matcher.tracks = [
+            _t("Outside World (Club Mix)", "DJ Example", 3000),
+            _t("Outside World (Adam Beyer Remix)", "DJ Example", 3050),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 2, "a named remix and a club mix are different recordings"
+
+    def test_d6_rewriter_anchors_on_delimiters(self, track_matcher):
+        """The drop-list is matched only inside brackets, never as a
+        substring of the raw title.
+
+        A track genuinely titled `Club Mix` (no brackets) must NOT be dropped
+        to empty and merged with `Mixed` — that would require substring-
+        matching the drop-list against the raw string. The regex anchors on
+        delimiters, so there is no group to match and the title passes through
+        unchanged.
+        """
+        track_matcher.tracks = [
+            _t("Club Mix", "DJ Example", 4000),
+            _t("Mixed", "DJ Example", 4050),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 2, (
+            "the drop-list must not substring-match raw titles with no brackets"
+        )
+
+    def test_d7_empty_rewrite_falls_back_to_original(self, track_matcher):
+        """D4: if rewriting leaves only whitespace, return the original.
+
+        Both `(Mixed)` and `(Club Mix)` would reduce to the empty string
+        without this fallback, silently merging two distinct recordings
+        (every detection of either would be `""`). The fallback keeps the raw
+        title so the normal title comparison separates them.
+        """
+        track_matcher.tracks = [
+            _t("(Mixed)", "DJ Example", 5000),
+            _t("(Club Mix)", "DJ Example", 5050),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 2, (
+            "D4 fallback must keep distinct all-bracket titles separate"
+        )
+
+    def test_d8_different_featured_artists_separate(self, track_matcher):
+        """D5 must-separate pole: the credit is kept, so distinct featured
+        artists stay apart. `(ft. Snoop Dogg)` and `(feat. Pharrell)` are
+        different recordings — the canonicalize-don't-drop rule's main job.
+        """
+        track_matcher.tracks = [
+            _t("Hit (ft. Snoop Dogg)", "DJ Example", 5500),
+            _t("Hit (feat. Pharrell)", "DJ Example", 5550),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 2, (
+            "different featured artists are different recordings — the credit "
+            "is kept, not dropped"
+        )
+
+    def test_d9_ft_place_name_separates_from_bare_title(self, track_matcher):
+        """D5: `Ft.` as a US place abbreviation (`Ft. Lauderdale`) must NOT
+        collapse with a bare title. Canonicalizing (not dropping) fixes the
+        over-merge that the earlier feat-drop draft shipped — the place
+        qualifier is retained, so the keys differ.
+        """
+        track_matcher.tracks = [
+            _t("Sunrise (Ft. Lauderdale Session)", "DJ Example", 6000),
+            _t("Sunrise", "DJ Example", 6050),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 2, (
+            "Ft. <Place> must not over-merge with the bare title — the place "
+            "qualifier is kept"
+        )
+
+    def test_d10_feat_credit_separates_from_mixed_tag(self, track_matcher):
+        """Accepted trade-off (D5): a `feat. X` credit and a `(Mixed)` tag of
+        the SAME audio now separate, because the credited artist is
+        distinguishing. This was the original spec's must-merge case 1; it is
+        revised to separate. A visible duplicate is the recoverable direction.
+        """
+        track_matcher.tracks = [
+            _t(
+                "Meet Her At The Love Parade (feat. Kiki Solvej)",
+                "DJ Example",
+                6500,
+            ),
+            _t("Meet Her At The Love Parade (Mixed)", "DJ Example", 6550),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 2, (
+            "a feat credit and a Mixed tag of the same audio now separate — "
+            "the credit is distinguishing (accepted trade-off)"
+        )
+
+    def test_d11_representative_keeps_raw_song_name(self, track_matcher):
+        """D3: rewriting is comparison-only. The emitted `song_name` is the
+        raw provider spelling, never a canonicalized form.
+
+        For the d1 pair the earlier detection wins by `_rep_key` (earliest
+        time), and its raw `song_name` is the `(ft. ...)` form — exactly what
+        Shazam returned. The displayed/output name never reflects the rewrite.
+        """
+        track_matcher.tracks = [
+            _t("Track (ft. Carl Cox)", "DJ Example", 500),
+            _t("Track (feat. Carl Cox)", "DJ Example", 550),
+        ]
+        unique = track_matcher.get_unique_tracks()
+        assert len(unique) == 1
+        assert unique[0].song_name == "Track (ft. Carl Cox)", (
+            "the representative keeps its raw title (comparison-only rewrite)"
+        )
+
+    def test_d12_is_similar_to_agrees_with_tracks_match(self):
+        """F07 (carried): the public predicate must not drift from the
+        shipping rule. `(ft. X)` vs `(feat. X)` agree; same title + distinct
+        artists disagree.
+        """
+        merge_a = _t("Track (ft. Carl Cox)", "DJ Example", 0)
+        merge_b = _t("Track (feat. Carl Cox)", "DJ Example", 50)
+        sep_a = _t("Same Song", "Artist 1", 0)
+        sep_b = _t("Same Song", "Artist 2", 50)
+
+        assert merge_a.is_similar_to(merge_b) is True
+        assert sep_a.is_similar_to(sep_b) is False
+
 
 def test_identified_track_is_logged_at_info(track_matcher, caplog):
     """The per-track success line must stay at INFO.

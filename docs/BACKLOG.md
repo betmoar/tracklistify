@@ -38,6 +38,16 @@ produce, or on someone outside the project.
 
 ## P2 — bracketed/parenthetical title variants survive dedup as separate rows
 
+**Status: Fixed.** `_strip_title_variant` rewrites bracketed suffixes before
+normalization, comparison-only (representative keeps its raw title): it drops
+non-distinguishing version/live tags (`(Mixed)`, `(Club Mix)`, `[Live At …]`,
+…) and **canonicalizes** `feat.`/`ft.`/`featuring` markers to `feat` while
+**keeping the credited artist** (a credit identifies a specific recording, so
+it is not dropped — that would merge different featured artists and swallow
+`Ft. <Place>` abbreviations). The analysis below is retained as historical
+record; note the `feat.` handling diverged from its "Suggested approach"
+(canonicalize, not strip) for the reasons above.
+
 **Spec:** `docs/dev/2026-08-02-dedup-title-variants-spec.md`
 
 Identity requires titles to be **exactly equal** after normalization
@@ -361,11 +371,41 @@ proposed levers (fuzzy `is_similar_to`, raise `time_threshold`) would not
 have fixed anything. `add_track` no longer dedups; it confidence-gates and
 appends.
 
-**Known limitation (accepted, not fixed):** `"Berghain"` vs
-`"Berghain (Remix)"` will not merge — titles must match exactly after
-normalization. No fuzzy ratio separates that case from the
-correctly-separate `"(Remix)"` vs `"(Radio Edit)"` pair (both score 0.727),
-so exact-after-normalize is the only rule correct on both.
+**Known limitation (narrowed, not fully fixed):** the matching rule is now
+canonicalize-then-normalize (not exact-after-normalize): `_strip_title_variant`
+drops non-distinguishing version/live tags (`(Mixed)`, `(Club Mix)`,
+`(Extended Mix)`, `(Original Mix)`, `(Radio Edit)`, `(Radio Mix)`,
+`(Extended)`, `(Original)`, `Live At …`, in both `(...)` and `[...]`) and
+canonicalizes `feat.`/`ft.`/`featuring` markers to `feat` while keeping the
+credited artist. The **specific** `"Berghain"` vs `"Berghain (Remix)"` case
+this note cites **still will not merge**: `remix` is on the keep-list, and
+the default is keep (anything unrecognized stays too). What *did* open up is
+the allowlisted set — e.g. `Outside World` vs `Outside World (Club Mix)` now
+merges. No fuzzy ratio is used; the keep-list beats a drop-list because
+`(Someone Remix)` and a bare `(Remix)` must stay separate rows.
+
+**Known over-merge (accepted, awaits more data):** two *named-different* live
+recordings collapse because `Live At …` is a drop-prefix.
+`Song (Live At Wembley 95)` and `Song (Live At Madison Square Garden 98)` by
+the same artist both drop to `Song` and merge into one row (verified
+end-to-end). The spec's `Live At …` case was bare-title-vs-live
+(`Stereo Murder [Live At Tomorrowland]` vs `Stereo Murder`); it did not
+consider live-vs-live with different venues. In a DJ-mix context two live
+recordings 50s apart by the same artist are usually the same track Shazam
+spelled differently, not two genuinely different plays — but two *named*
+venues/years is a real over-merge class that can only be sized against real
+output over time.
+
+**By design (not a limitation):** the drop-exact version tags
+(`(Original Mix)`, `(Radio Edit)`, `(Extended)`, `(Extended Mix)`, etc.) are
+*deliberately* treated as non-distinguishing — the spec's premise is that
+these are "usually the same recording under different Shazam spellings." So
+`(Original Mix)` vs `(Radio Edit)`, or a bare title vs `(Original Mix)`,
+merge by design. They are *sometimes* different masters; that is the accepted
+cost of the allowlist, not an undocumented over-merge. Likewise the accepted
+trade-off of treating `feat.` credits as distinguishing: a `feat. X` credit
+and a `(Mixed)` tag of the *same* audio now separate (a visible duplicate —
+the recoverable direction).
 
 ### 2026-07 cache + output work (`feat/wire-cache-identification`, PR #65)
 

@@ -65,6 +65,96 @@ def _normalize_token(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+# --- Title-variant canonicalization (spec 2026-08-02-dedup-title-variants) --
+#
+# Two detections of the same recording often arrive with bracketed suffixes
+# that carry no identifying information — `(Mixed)`, `(Club Mix)`,
+# `[Live At ...]` — so the normalized titles differ and dedup emits two rows
+# for one play. This helper rewrites those groups BEFORE normalization, for the
+# title comparison only.
+#
+# D1: rewrite on the RAW title before normalizing. `_normalize_token` maps
+# punctuation to spaces, so after it runs there are no delimiters left to
+# anchor on — a post-normalize rewriter would have to substring-match, which
+# eats a track genuinely titled `Club Mix`. The regex anchors on `(...)`
+# and `[...]` on the raw string.
+#
+# D2: default is KEEP. Only allowlisted suffixes are dropped; anything
+# unrecognized is retained verbatim. An incomplete allowlist yields a *visible
+# duplicate*, never a silent deletion.
+#
+# D3: comparison only. The displayed `song_name` stays raw — `_rep_key`
+# and every output path read `track.song_name` directly, untouched.
+#
+# D4: if rewriting leaves only whitespace, return the ORIGINAL title so two
+# distinct all-bracket titles (`(Mixed)` vs `(Club Mix)`) don't both collapse
+# to empty and merge.
+#
+# D5: feat/ft/featuring credits are CANONICALIZED, not dropped. The credited
+# artist identifies a specific recording, so the name is kept; only the marker
+# spelling is normalized to `feat` so `(ft. X)`, `(feat. X)` and
+# `(Featuring X)` collapse together. Dropping the group would merge different
+# featured artists AND swallow `Ft. <Place>` US abbreviations.
+#
+# The keep-list is checked FIRST, so widening the drop-lists later can never
+# quietly swallow a named remix.
+
+_TITLE_GROUP_RE = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
+
+_SUFFIX_KEEP_MARKERS = ("remix", "bootleg", "edit by", "vip")
+
+_SUFFIX_DROP_EXACT = frozenset(
+    {
+        "mixed",
+        "club mix",
+        "extended mix",
+        "original mix",
+        "radio edit",
+        "radio mix",
+        "extended",
+        "original",
+    }
+)
+
+_SUFFIX_DROP_PREFIXES = ("live at ",)
+
+# A feat-credit marker at the start of a (normalized, lowercased) bracket
+# group. Covers feat/ft/featuring and every casing variant. The credited name
+# that follows is KEPT (it is distinguishing); only the marker is canonicalized.
+_FEAT_MARKER_RE = re.compile(r"^(feat|ft|featuring)\b\s*")
+
+
+def _strip_title_variant(title: str) -> str:
+    """Rewrite bracketed title suffixes into a canonical comparison form.
+
+    For each `(...)` / `[...]` group the inner text is normalized, then the
+    rule set is applied in order (see the spec): keep verbatim if it contains a
+    keep marker (`remix`, `bootleg`, `edit by`, `vip`); canonicalize a
+    `feat`/`ft`/`featuring` marker to `feat` while keeping the credited name;
+    drop if it is exactly a version suffix (`mixed`, `club mix`, ...) or a
+    `live at ` prefix; otherwise keep verbatim. D4: a result that is only
+    whitespace falls back to the original title.
+    """
+
+    def _decide(m: "re.Match[str]") -> str:
+        raw = m.group(1) if m.group(1) is not None else m.group(2)
+        inner = _normalize_token(raw)
+        if not inner:
+            return ""  # empty group is noise
+        if any(marker in inner for marker in _SUFFIX_KEEP_MARKERS):
+            return m.group(0)  # title-distinguishing: keep verbatim
+        # Canonicalize the feat-marker, KEEP the credited name (D5).
+        if _FEAT_MARKER_RE.match(inner):
+            credit = _FEAT_MARKER_RE.sub("", inner)
+            return f"({credit})" if credit else m.group(0)
+        if inner in _SUFFIX_DROP_EXACT or inner.startswith(_SUFFIX_DROP_PREFIXES):
+            return ""  # non-distinguishing version/live tag: drop
+        return m.group(0)  # unrecognized: keep verbatim (default is keep)
+
+    rewritten = _TITLE_GROUP_RE.sub(_decide, title)
+    return rewritten if rewritten.strip() else title
+
+
 def _artist_tokens(artist: str) -> Set[str]:
     """Tokenize an artist string into a normalized token set."""
     return {
@@ -86,12 +176,19 @@ def _artists_match(a: str, b: str) -> bool:
 def _tracks_match(t1: "Track", t2: "Track") -> bool:
     """Identity match: same normalized title AND overlapping artists.
 
+    Titles are compared after stripping non-distinguishing bracketed suffixes
+    (`(feat. X)`, `(Mixed)`, `(Club Mix)`, `[Live At ...]`) via
+    ``_strip_title_variant`` — see the spec — so two detections of the same
+    recording under different Shazam spellings collapse. ``_rep_key`` and the
+    output paths still read the raw ``song_name``; the strip is comparison-
+    only (D3).
+
     Title-match + artist-mismatch = different tracks (a DJ playing the same
     song by different artists is two tracks). Time-blind; ``get_unique_tracks``
     layers proximity on top.
     """
-    return _normalize_token(t1.song_name) == _normalize_token(
-        t2.song_name
+    return _normalize_token(_strip_title_variant(t1.song_name)) == _normalize_token(
+        _strip_title_variant(t2.song_name)
     ) and _artists_match(t1.artist, t2.artist)
 
 
