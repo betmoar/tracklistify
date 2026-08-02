@@ -118,6 +118,10 @@ name is retained (so distinct credits separate). This overrides the earlier
 
 Each bracketed group's inner text is normalized with `_normalize_token`, then
 the group is transformed by **exactly one** of these rules, tested in order.
+(The keep-list in rule 1 is checked first, so widening the drop-lists later
+cannot quietly swallow a named remix. Rules 2–4 act on disjoint inputs — a
+feat-marker is never a version tag — so their relative order is not
+load-bearing; the reference implementation checks canonicalize before drop.)
 
 1. **Never touch** — inner text contains any of:
    `remix`, `bootleg`, `edit by`, `vip`
@@ -128,14 +132,17 @@ the group is transformed by **exactly one** of these rules, tested in order.
    (non-distinguishing version tags; the group is removed)
 3. **Canonicalize the feat-marker** — inner text starts with any of:
    `feat `, `ft `, `featuring `
-   The marker is rewritten to `feat ` and the **credited name is kept**: the
-   group becomes `(feat <credited name>)`. So `(ft. Carl Cox)`,
-   `(Ft. Carl Cox)`, and `(Featuring Carl Cox)` all reduce to the same key.
-   **The credit is NOT dropped** — it is distinguishing information per the
-   streaming-metadata standard (`Song Title (feat. Artist Name)`; the
-   featured artist identifies a specific recording). Dropping it would merge
+   The marker is stripped and the **credited name is kept**: the group
+   becomes `(<credited name>)`. So `(ft. Carl Cox)`, `(Ft. Carl Cox)`, and
+   `(Featuring Carl Cox)` all reduce to the same key. **The credit is NOT
+   dropped** — it is distinguishing information per the streaming-metadata
+   standard (`Song Title (feat. Artist Name)`; the featured artist
+   identifies a specific recording). Dropping it would merge
    `(feat. Snoop Dogg)` with `(feat. Pharrell)`. Canonicalizing lets
    spelling-variant duplicates collapse while keeping distinct credits apart.
+   A marker with **no** credited name (e.g. `(feat.)`, `(ft)`) falls through
+   to rule 5 (keep verbatim) — the safe direction, and it cannot be stripped
+   to empty because there is no credit to keep.
 4. **Drop** — inner text starts with `live at `
    (a live-recording tag; non-distinguishing for dedup)
 5. **Otherwise keep** the group verbatim.

@@ -1,5 +1,11 @@
 # Plan — dedup: merge non-distinguishing title variants (SDD execution)
 
+> **Superseded by the spec.** This plan documents an *earlier* design that
+> DROPPED `feat`/`ft`/`featuring` groups. The shipped design canonicalizes
+> them (keeps the credited artist) — see the spec, not the reference impl or
+> rule set below. Retained as the execution record of how the work was done;
+> the spec is the binding source of truth.
+
 **Derived from spec:** `docs/dev/2026-08-02-dedup-title-variants-spec.md`
 (read it — it is the binding source of truth; this plan only sequences the
 work into SDD tasks).
