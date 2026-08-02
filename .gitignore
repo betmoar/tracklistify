@@ -172,5 +172,8 @@ poetry.lock
 .tracklistify/
 examples/
 dev/
+# ...but not the committed spec/plan docs. The bare `dev/` above matches at any
+# depth, so without this negation `docs/dev/*-spec.md` is silently untracked.
+!docs/dev/
 docs/temp/
 coverage.json
