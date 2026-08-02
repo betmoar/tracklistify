@@ -4,7 +4,41 @@ From the 2026-07 handoff audit. Ordered by priority. Each item has enough
 context to be picked up cold. "Fixed" items are listed at the bottom so
 nobody re-audits them from scratch.
 
+---
+
+## Open unknowns
+
+The items below are blocked on something other than effort. Without this
+register the distinction is invisible — it is buried in prose inside the P2/P3
+entries, so "MusicBrainz enrichment" and "Spotify enrichment" look like the
+same size of job when only one of them is actually unblocked.
+
+Three kinds of blocker: **measurement** (nobody has the number yet),
+**decision** (nobody has chosen yet), **external** (someone outside the project
+has to say yes).
+
+| ID | Question | Kind | Blocks | How it gets resolved |
+|---|---|---|---|---|
+| U1 | What is the overall ISRC presence rate in Shazam responses? | measurement | Sizes both enrichment items | The per-run isrc/search/none counter shipped by the Spotify spec. Current evidence is n=1 set: 7 of the 8 link-less tracks in a 20-track run carried an ISRC — that is a rate among *link-less* tracks, not the overall rate |
+| U2 | What fraction of ISRCs resolve to a Spotify track? | measurement | P2 Spotify payoff estimate (the 12/20 → ~19/20 claim) | Same counter |
+| U3 | How often does title/artist search return the *wrong* track for underground techno? | measurement | Trusting the P2 Spotify fallback path | Not resolvable up front. The Spotify spec records `spotify_match: "isrc"\|"search"` per track, so fuzzy hits are auditable in real output instead of silently presented as fact |
+| U4 | Flat per-platform keys or a nested `links` object in `Track.metadata`? | decision | P3 schema item | **Decided 2026-08-02 — nested `metadata.links`.** See `docs/dev/2026-08-02-spotify-link-enrichment-spec.md` unit E |
+| U5 | How well does MusicBrainz cover underground-electronic ISRCs? | measurement | P3 MusicBrainz — if coverage is low this buys little | Offline probe over a real `tracklist.json` once U1/U2 have produced ISRCs to probe with. Cheap, keyless, and worth doing before writing any MusicBrainz code |
+| U6 | Is the non-distinguishing title-suffix allowlist complete? | measurement | P2 dedup | Not resolvable up front, and deliberately so: the dedup spec defaults to *keep*, so an incomplete allowlist costs a visible duplicate row, never a silent deletion. Widen it from observed output over time |
+| U7 | RapidAPI Shazam: PCM conversion cost, metadata parity with shazamio, per-request price at ~216 segments/run, bot-defender reliability | external | P3 RapidAPI | Needs a paid key to answer any of it |
+| U8 | Will Beatport grant partner access? | external | P3 Beatport | Commercial-use review through the Partner Portal. No code path exists without it, and the known public-client-ID workaround is not shippable |
+| U9 | What is the real scope of the Spotify authorization-code + PKCE flow? | decision | Playlist export (`exporters/spotify.py`) | Unscoped. Client-credentials tokens can never reach `/me/playlists`, so this is a feature project, not a wiring task |
+| U10 | Should a `download_quality` / `download_format` change invalidate the download cache? | decision | P4 cache debt | Unowned behavior decision. Today those fields are not wired through the factory and are absent from the cache key, so a re-run at a different quality serves the old file |
+
+**Unblocked right now:** the two P2 items. Both have specs in `docs/dev/`.
+Everything else in this table is waiting on a measurement that those specs
+produce, or on someone outside the project.
+
+---
+
 ## P2 — bracketed/parenthetical title variants survive dedup as separate rows
+
+**Spec:** `docs/dev/2026-08-02-dedup-title-variants-spec.md`
 
 Identity requires titles to be **exactly equal** after normalization
 (`_tracks_match`), so a track detected under two title spellings emits two
@@ -62,6 +96,9 @@ Jaccard threshold — that is a different axis and would reintroduce the
 collab-bridge data loss (see `docs/playbooks/changing-dedup.md` rule 1b).
 
 ## P2 — Spotify enrichment is built but unreachable
+
+**Spec:** `docs/dev/2026-08-02-spotify-link-enrichment-spec.md` (also decides
+the P3 link-schema item below — unknown U4)
 
 `SpotifyProvider` (search/enrich, client-credentials auth) works but no
 pipeline stage calls `enrich_metadata`. The natural hook: after
@@ -205,6 +242,14 @@ and PKCE flow make it closer in shape to the Spotify *playlist export*
 problem than to the simple client-credentials enrichment above.
 
 ## P3 — decide the `metadata` link schema before more platforms land
+
+**Decided 2026-08-02 (unknown U4): nested `metadata.links`.** Specified in
+`docs/dev/2026-08-02-spotify-link-enrichment-spec.md` unit E, which lands it
+alongside the Spotify enrichment as this entry recommends. The flat keys are
+removed rather than aliased, and `links.spotify` is canonical-only — the
+Shazam-supplied search URLs keep distinct `spotify_search` / `deezer_search`
+keys so a consumer can tell a resolved track link from a search. The rest of
+this entry is retained as the rationale.
 
 `Track.metadata` currently carries flat, per-platform keys: `shazam_url`,
 `apple_music_id`, `spotify_search_url`, `deezer_search_url`. That is fine
