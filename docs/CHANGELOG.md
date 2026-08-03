@@ -19,6 +19,13 @@ Release dates are in YYYY-MM-DD format.
   succeeds on a manual second run ~seconds later) is retried with backoff and
   format/client rotation instead of aborting the whole run. Genuine 403s
   (private/region-locked video) still raise `DownloadError`.
+- **Download failures no longer dump a yt-dlp traceback into the log.**
+  `ydl_opts['verbose']` was `True` with an inline comment saying "Always set
+  to False" — the value contradicted the comment. yt-dlp routes real errors
+  through our logger hook regardless of `verbose`; `verbose=True` only added
+  a duplicate full traceback to stderr on top of our own logged error. Now
+  `False`; a non-recoverable download error produces one clean message plus
+  the CLI's single (outermost) traceback.
 - **Title-variant duplicates collapse in dedup.** Two detections of the same
   recording under different bracketed spellings — `(Club Mix)` vs bare title,
   `[Live At …]`, `feat.`/`ft.`/`featuring` spelling variants of the same

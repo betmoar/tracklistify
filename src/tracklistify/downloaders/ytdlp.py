@@ -181,7 +181,10 @@ class YtDlpDownloader(Downloader):
             "format": "bestaudio/best",
             "ffmpeg_location": self.ffmpeg_path,
             "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
-            "verbose": True,  # Always set to False to control output
+            # False: yt-dlp routes real errors through our YTDLPLogger hook
+            # regardless; verbose=True only dumps debug-level frames (the
+            # traceback flood) to stderr on top of our own logged error.
+            "verbose": False,
             "quiet": True,
             "logger": self._logger,
             "progress_hooks": [progress_hook],

@@ -365,3 +365,38 @@ async def test_download_max_retries_is_wired_into_ydl_opts(monkeypatch, tmp_path
         "or a transient 403 aborts the run instead of being retried"
     )
     ConfigFactory.clear_cache()
+
+
+@pytest.mark.asyncio
+async def test_ydl_opts_verbose_is_false(monkeypatch, tmp_path):
+    """``ydl_opts['verbose']`` must be False. yt-dlp routes real errors through
+    our ``YTDLPLogger.error`` hook regardless of ``verbose``; ``verbose=True``
+    only dumps debug-level frames (the traceback flood) to stderr. The inline
+    comment said "Always set to False" while the value was True — a one-line
+    contradiction that flooded the log on every download failure.
+    """
+    captured = {}
+
+    def _factory(opts):
+        captured.update(opts)
+        return _FakeYdl(
+            {
+                "id": "x",
+                "title": "T",
+                "uploader": "U",
+                "duration": 1,
+                "ext": "mp3",
+                "requested_downloads": [{"filepath": str(tmp_path / "x.mp3")}],
+            },
+            tmp_path,
+        )
+
+    monkeypatch.setattr(ytdlp, "yt_dlp", MagicMock(YoutubeDL=_factory))
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    await dl.download("https://www.youtube.com/watch?v=x")
+
+    assert captured.get("verbose") is False, (
+        "ydl_opts['verbose'] must be False or yt-dlp dumps its traceback to "
+        "stderr on every failure, on top of our own logged error"
+    )
