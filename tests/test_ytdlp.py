@@ -445,3 +445,60 @@ async def test_youtube_playlist_params_stripped_before_download(monkeypatch, tmp
         f"URL (it triggers a non-retryable 403 on RD auto-mixes); got {passed!r}"
     )
     assert "v=JH0tXHFmkS8" in passed, "the video id must be preserved"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        # v= first (the common case the original test covered).
+        "https://www.youtube.com/watch?v=JH0tXHFmkS8&list=RDJH0tXHFmkS8",
+        # list= first — YouTube emits playlist URLs with the list param in
+        # either order; the video id must still be extracted and the list
+        # stripped, or the non-retryable 403 survives.
+        "https://www.youtube.com/watch?list=RDJH0tXHFmkS8&v=JH0tXHFmkS8",
+        # v= in the middle (feature/shared params before it).
+        "https://www.youtube.com/watch?feature=shared&v=JH0tXHFmkS8&list=RDx",
+        # music.youtube.com with list first.
+        "https://music.youtube.com/watch?list=RDx&v=JH0tXHFmkS8",
+    ],
+)
+async def test_youtube_playlist_params_stripped_v_in_any_position(
+    monkeypatch, tmp_path, url
+):
+    """The video id must be extracted regardless of where ``v=`` sits in the
+    query string. YouTube emits playlist URLs with params in either order; a
+    regex that only matches ``watch?v=`` (v first) misses ``watch?list=...&v=``
+    and leaves the playlist param — so the non-retryable 403 survives. The
+    extractor needs a ``[?&]v=<id>`` fallback (mirroring
+    ``downloaders/cache_key._YT_PATTERNS``)."""
+    captured_url = {}
+
+    class _UrlCapturingYdl(_FakeYdl):
+        def extract_info(self, url, download=True):
+            captured_url["url"] = url
+            return self._info
+
+    info = {
+        "id": "JH0tXHFmkS8",
+        "title": "T",
+        "uploader": "U",
+        "duration": 1,
+        "ext": "mp3",
+        "requested_downloads": [{"filepath": str(tmp_path / "JH0tXHFmkS8.mp3")}],
+    }
+
+    monkeypatch.setattr(
+        ytdlp,
+        "yt_dlp",
+        MagicMock(YoutubeDL=lambda opts: _UrlCapturingYdl(info, tmp_path)),
+    )
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    await dl.download(url)
+
+    passed = captured_url.get("url", "")
+    assert "list=" not in passed, (
+        f"playlist param not stripped for {url!r} -> {passed!r}"
+    )
+    assert "v=JH0tXHFmkS8" in passed, f"video id lost for {url!r} -> {passed!r}"

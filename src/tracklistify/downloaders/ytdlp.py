@@ -99,12 +99,18 @@ def progress_hook(d):
     _progress_handler.update(d)
 
 
-# Match a YouTube video id in any of the standard URL shapes. Same pattern
-# family as ``downloaders/cache_key._YT_PATTERNS`` — kept local so the
-# downloader does not depend on the cache module.
+# Match a YouTube video id in any of the standard URL shapes, agnostic to
+# where the ``v=`` query param sits. Order matters: the path-style forms
+# (``youtu.be/<id>``, ``/shorts/<id>``, …) carry the id in the path, not a
+# query param, so they are matched first; the ``[?&]v=<id>`` alternative is a
+# position-agnostic fallback that catches ``watch?v=…``, ``watch?list=…&v=…``,
+# ``?feature=shared&v=…``, and any other param order. Mirrors
+# ``downloaders/cache_key._YT_PATTERNS`` — kept local so the downloader does
+# not depend on the cache module.
+_YT_ID = r"([A-Za-z0-9_-]{11})"
 _YT_VIDEO_ID = re.compile(
-    r"(?:youtube\.com/(?:watch\?v=|shorts/|embed/|live/)|youtu\.be/|music\.youtube\.com/watch\?v=)"
-    r"([A-Za-z0-9_-]{11})"
+    rf"(?:youtu\.be/|youtube\.com/(?:shorts/|embed/|live/)){_YT_ID}"
+    rf"|[?&]v={_YT_ID}"
 )
 
 
@@ -113,9 +119,17 @@ def _strip_youtube_playlist_params(url: str) -> str:
 
     Drops ``&list=``, ``&index=``, ``&t=``, ``&feature=``, etc. — playlist
     context that we never act on and that triggers a non-retryable 403 on
-    ``RD`` (auto-mix) lists. Falls back to the original URL if no video id
-    can be extracted (let yt-dlp handle it / fail with its own message).
+    ``RD`` (auto-mix) lists. Extracts the id regardless of param order
+    (``watch?v=…&list=…`` or ``watch?list=…&v=…`` alike). Falls back to the
+    original URL if no video id can be extracted (let yt-dlp handle it / fail
+    with its own message).
     """
+    match = _YT_VIDEO_ID.search(url)
+    if match:
+        # group(1) is the path-style id, group(2) the [?&]v= id; one is set.
+        video_id = match.group(1) or match.group(2)
+        return f"https://www.youtube.com/watch?v={video_id}"
+    return url
     match = _YT_VIDEO_ID.search(url)
     if match:
         return f"https://www.youtube.com/watch?v={match.group(1)}"
