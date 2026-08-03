@@ -6,7 +6,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from tracklistify.config import TrackIdentificationConfig
 from tracklistify.utils.logger import get_logger
@@ -108,8 +108,8 @@ def _normalize_token(s: str) -> str:
 # drop/canonicalize rules are built for, and rewriting them silently merges
 # `(Original) Sin` with `Sin`.
 #
-# The keep-list is checked with WORD BOUNDARIES and FIRST, so a credited name
-# containing a marker substring (`Vipul`, `Vipingo`) is not shadowed, and
+# D7: the keep-list is checked with WORD BOUNDARIES and FIRST, so a credited
+# name containing a marker substring (`Vipul`, `Vipingo`) is not shadowed, and
 # widening the drop-lists later can never quietly swallow a named remix.
 
 # A trailing-suffix group: a `(...)` or `[...]` that ends the title (optional
@@ -120,7 +120,7 @@ def _normalize_token(s: str) -> str:
 # match the outer span and `_normalize_token` would collapse the inner
 # brackets to spaces, dropping a `([Club Mix])` to `club mix` and silently
 # merging distinct tags (defeating the D4 empty-collapse guard).
-_TRAILING_GROUP_RE = re.compile(r"(\(([^()\[\]]*)\)|\[([^()\[\]]*)\])\s*$")
+_TRAILING_GROUP_RE = re.compile(r"(\([^()\[\]]*\)|\[[^()\[\]]*\])\s*$")
 
 # Keep-markers as whole words only (so "Vipul" does not match "vip").
 _SUFFIX_KEEP_RE = re.compile(r"\b(?:remix|bootleg|edit by|vip)\b")
@@ -142,35 +142,40 @@ _SUFFIX_DROP_PREFIXES = ("live at ",)
 
 # A feat-credit marker at the start of a (normalized, lowercased) bracket
 # group. Covers feat/ft/featuring and every casing variant.
-_FEAT_MARKER_RE = re.compile(r"^(feat|ft|featuring)\b\s*")
+_FEAT_MARKER_RE = re.compile(r"^(?:feat|ft|featuring)\b\s*")
 
-# Cap on trailing-group peels per title. `drop` loops (there may be another
-# suffix to peel); `keep` and `rewrite` break (a kept/rewritten group is
-# retained in place, so nothing before it is a trailing suffix). Real titles
+# Cap on trailing-group peels per title. Only `drop` loops, so real titles
 # peel <=2-3 groups; the cap is a backstop against pathological input.
 _MAX_GROUP_PEELS = 8
 
+# One decision from ``_decide_title_group``: a bare tag, or ``("rewrite", s)``
+# carrying the group's replacement inner text.
+_GroupAction = Union[Tuple[str], Tuple[str, str]]
 
-def _decide_title_group(inner_raw: str) -> object:
+
+def _decide_title_group(inner_raw: str) -> _GroupAction:
     """Decide one trailing group's fate from its RAW inner text.
 
     Returns one of:
-      ``("keep",)``       — keep the group verbatim (distinguishing / empty / nested)
+      ``("keep",)``       — keep the group verbatim (distinguishing, or empty)
       ``("drop",)``       — remove the group entirely (non-distinguishing)
       ``("rewrite", s)``  — replace the group's inner with ``s`` (canonicalized feat)
+
+    Nested groups never reach here — ``_TRAILING_GROUP_RE`` does not match
+    them, so they are left verbatim by ``_strip_title_variant``.
     """
     inner = _normalize_token(inner_raw)
     if not inner:
         return ("keep",)  # empty group is harmless noise; keep verbatim
     if _SUFFIX_KEEP_RE.search(inner):
-        return ("keep",)  # title-distinguishing marker present
+        return ("keep",)  # title-distinguishing marker present (checked first, D7)
     # Canonicalize the feat-marker to `feat`, KEEPING marker word + credit (D5).
     if _FEAT_MARKER_RE.match(inner):
         credit = _FEAT_MARKER_RE.sub("", inner).strip()
-        return ("rewrite", f"feat {credit}".strip() if credit else "feat")
+        return ("rewrite", f"feat {credit}" if credit else "feat")
     if inner in _SUFFIX_DROP_EXACT or inner.startswith(_SUFFIX_DROP_PREFIXES):
         return ("drop",)  # non-distinguishing version/live tag
-    return ("keep",)  # unrecognized: keep verbatim (default is keep)
+    return ("keep",)  # unrecognized: keep verbatim (D2, default is keep)
 
 
 def _strip_title_variant(title: str) -> str:
@@ -180,32 +185,29 @@ def _strip_title_variant(title: str) -> str:
     leading/middle brackets are left untouched) and applies the rule set to
     each: keep verbatim if it carries a keep-marker; canonicalize a
     `feat`/`ft`/`featuring` marker to `feat` while keeping the credit (D5);
-    drop non-distinguishing version/live tags; otherwise keep. Stops at the
-    first group that is kept. D4: a result that is only whitespace falls back
-    to the original title.
+    drop non-distinguishing version/live tags; otherwise keep. Only a drop
+    continues the peel — a kept or rewritten group stays in place, so nothing
+    before it is a trailing suffix. D4: a result that is only whitespace falls
+    back to the original title.
     """
     result = title
     for _ in range(_MAX_GROUP_PEELS):
         match = _TRAILING_GROUP_RE.search(result)
         if not match:
             break
-        group, g1, g2 = match.group(1), match.group(2), match.group(3)
-        inner_raw = g1 if g1 is not None else g2
-        action = _decide_title_group(inner_raw)
+        group = match.group(1)  # the whole `(...)` / `[...]`, delimiters included
+        action = _decide_title_group(group[1:-1])
+        before, after = result[: match.start()], result[match.end() :]
         if action[0] == "keep":
             break  # this trailing group stays; nothing before it is a suffix
         if action[0] == "drop":
-            result = (result[: match.start()] + " " + result[match.end() :]).strip()
-        else:  # rewrite — preserve the group's delimiter type
-            new_inner = action[1]
-            open_d, close_d = group[0], group[-1]
-            result = (
-                result[: match.start()].rstrip()
-                + f" {open_d}{new_inner}{close_d}"
-                + result[match.end() :]
-            ).strip()
-            break  # rewritten group is retained in place (like keep); nothing
-            # before it is a trailing suffix, so peeling stops here
+            result = f"{before} {after}".strip()
+            continue  # the next group along may now be trailing — keep peeling
+        # Rewrite: put the canonicalized group back in place, preserving its
+        # delimiter type. Like keep, the group is retained, so nothing before
+        # it is a trailing suffix and peeling stops here.
+        result = f"{before.rstrip()} {group[0]}{action[1]}{group[-1]}{after}".strip()
+        break
     return result if result.strip() else title
 
 

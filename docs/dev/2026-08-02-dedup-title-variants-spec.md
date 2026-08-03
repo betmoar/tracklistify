@@ -205,9 +205,10 @@ Not binding on style, but the semantics below are binding.
 
 ```python
 # A trailing-suffix group: a (...) or [...] ending the title (optional
-# trailing whitespace). Inner [^()]* cannot cross a nested same-type paren,
-# so ((Club Mix)) does NOT match here — it falls through to keep.
-_TRAILING_GROUP_RE = re.compile(r"(\(([^()]*)\)|\[([^\[\]]*)\])\s*$")
+# trailing whitespace). Each inner class excludes BOTH bracket types
+# ([^()\[\]]*), so a nested group of ANY kind — ((Club Mix)) or ([Club Mix]) —
+# does NOT match here and falls through to keep.
+_TRAILING_GROUP_RE = re.compile(r"(\(([^()\[\]]*)\)|\[([^()\[\]]*)\])\s*$")
 
 # Keep-markers as whole words (D7): "Vipul" does not match "vip".
 _SUFFIX_KEEP_RE = re.compile(r"\b(?:remix|bootleg|edit by|vip)\b")
