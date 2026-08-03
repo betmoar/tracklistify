@@ -11,6 +11,14 @@ Release dates are in YYYY-MM-DD format.
 
 ### Fixed
 
+- **Transient download 403s are now retried.** `config.download_max_retries`
+  (env `TRACKLISTIFY_DOWNLOAD_MAX_RETRIES`, default `3`) was declared but
+  never read — dead config, the same class of bug the dedup work fixed for
+  `time_threshold`. It is now wired into yt-dlp's native `retries` option, so
+  a transient YouTube HTTP 403 (bot-detection throttling — the case that
+  succeeds on a manual second run ~seconds later) is retried with backoff and
+  format/client rotation instead of aborting the whole run. Genuine 403s
+  (private/region-locked video) still raise `DownloadError`.
 - **Title-variant duplicates collapse in dedup.** Two detections of the same
   recording under different bracketed spellings — `(Club Mix)` vs bare title,
   `[Live At …]`, `feat.`/`ft.`/`featuring` spelling variants of the same

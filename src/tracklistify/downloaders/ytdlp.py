@@ -195,6 +195,13 @@ class YtDlpDownloader(Downloader):
             # tracks before the run was killed. We only ever process one
             # track, so fetch exactly one.
             "playlist_items": "1",
+            # Retry transient download errors (notably YouTube 403
+            # bot-detection throttling, which succeeds on a second attempt
+            # ~seconds later). yt-dlp's own layer handles backoff and
+            # format/client rotation — more effective than a Python-level
+            # loop re-running extract_info. Wired from config so the
+            # ``TRACKLISTIFY_DOWNLOAD_MAX_RETRIES`` env var is live.
+            "retries": self.config.download_max_retries,
         }
 
         # Only attach the MP3 transcode postprocessor when stream-copy is

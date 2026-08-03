@@ -320,3 +320,48 @@ async def test_requested_downloads_without_filepath_falls_back(
     assert any("carries no filepath" in r.message for r in caplog.records), (
         "the degraded-path fallback must be logged, not silent"
     )
+
+
+@pytest.mark.asyncio
+async def test_download_max_retries_is_wired_into_ydl_opts(monkeypatch, tmp_path):
+    """``config.download_max_retries`` must reach yt-dlp's native ``retries``
+    option. yt-dlp's own retry layer handles transient HTTP 403s (YouTube
+    bot-detection throttling — the case that succeeds on a manual second
+    run ~3s later) with backoff and format/client rotation, which a
+    Python-level loop re-running ``extract_info`` can't match.
+
+    Without this wiring the knob is dead config (advertised in
+    ``.env.example``, never read), so a transient 403 aborts the whole run.
+    """
+    from tracklistify.config.factory import ConfigFactory, get_config
+
+    ConfigFactory.clear_cache()
+    monkeypatch.setenv("TRACKLISTIFY_DOWNLOAD_MAX_RETRIES", "5")
+    get_config(force_refresh=True)
+
+    captured = {}
+
+    def _factory(opts):
+        captured.update(opts)
+        return _FakeYdl(
+            {
+                "id": "x",
+                "title": "T",
+                "uploader": "U",
+                "duration": 1,
+                "ext": "mp3",
+                "requested_downloads": [{"filepath": str(tmp_path / "x.mp3")}],
+            },
+            tmp_path,
+        )
+
+    monkeypatch.setattr(ytdlp, "yt_dlp", MagicMock(YoutubeDL=_factory))
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    await dl.download("https://www.youtube.com/watch?v=x")
+
+    assert captured.get("retries") == 5, (
+        "config.download_max_retries (5) must be wired into ydl_opts['retries'] "
+        "or a transient 403 aborts the run instead of being retried"
+    )
+    ConfigFactory.clear_cache()
