@@ -30,10 +30,14 @@ Release dates are in YYYY-MM-DD format.
   backoff instead of aborting the whole run. Genuine 403s (private/
   region-locked video) still raise `DownloadError`.
 - **Download failures no longer flood the log with a yt-dlp traceback.**
-  `ydl_opts['verbose']` was `True` with a comment saying "Always set to
-  False" — the value contradicted the comment. Now `False`; a failed
-  download produces one clean message plus the CLI's single outermost
-  traceback.
+  Two causes, both fixed: (1) `ydl_opts['verbose']` was `True` with a comment
+  saying "Always set to False" — now `False`, suppressing yt-dlp's own
+  debug-level stderr spew; (2) the CLI's generic error handler logged
+  `exc_info=True` unconditionally, which printed the full exception chain —
+  yt-dlp's `HTTPError` traceback deep into its internals, "during handling of
+  the above exception", then the `DownloadError` — on every failure. The
+  traceback is now gated on `--debug`; at default verbosity a download error
+  logs one clean message (pass `--debug` for the full chain).
 - **Title-variant duplicates collapse in dedup.** Two detections of the same
   recording under different bracketed spellings — `(Club Mix)` vs bare title,
   `[Live At …]`, `feat.`/`ft.`/`featuring` spelling variants of the same
