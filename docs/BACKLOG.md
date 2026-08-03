@@ -53,6 +53,11 @@ from its "Suggested approach" (canonicalize, not strip) for the reasons above.
 
 **Spec:** `docs/dev/2026-08-02-dedup-title-variants-spec.md`
 
+> **The analysis below describes the PRE-FIX behavior** (exact-after-
+> normalize matching, which is what caused this P2). It is retained as the
+> historical record of the problem; the shipped rule is the "Status: Fixed"
+> summary above.
+
 Identity requires titles to be **exactly equal** after normalization
 (`_tracks_match`), so a track detected under two title spellings emits two
 rows. Confirmed on real output, not hypothetical:

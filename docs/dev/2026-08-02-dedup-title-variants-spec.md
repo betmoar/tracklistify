@@ -3,7 +3,9 @@
 **Date:** 2026-08-02
 **Backlog item:** `docs/BACKLOG.md` → "P2 — bracketed/parenthetical title
 variants survive dedup as separate rows"
-**Status:** specified, not implemented
+**Status:** implemented in `feat/dedup` (`_strip_title_variant` in
+`src/tracklistify/core/track.py`); see the rule set and reference
+implementation below for the binding semantics.
 **Required reading before implementing:** `docs/playbooks/changing-dedup.md`
 
 ---
