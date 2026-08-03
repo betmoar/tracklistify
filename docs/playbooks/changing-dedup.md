@@ -151,24 +151,27 @@ AND artist Jaccard ≥ 0.34.**
 
 - **Titles are canonicalize-then-normalize, deliberately.** `_strip_title_variant`
   runs on the RAW title (before `_normalize_token` would collapse the
-  brackets) and rewrites bracketed groups: it drops non-distinguishing
-  version/live tags — `(Mixed)`, `(Club Mix)`, `(Extended Mix)`, `(Original
-  Mix)`, `(Radio Edit)`, `(Radio Mix)`, `(Extended)`, `(Original)`,
-  `Live At …` — in BOTH `(...)` and `[...]`; it **canonicalizes** a
-  `feat.`/`ft.`/`featuring` marker to `feat` while **keeping the credited
-  name** (the credit is distinguishing — `(feat. Snoop Dogg)` ≠
-  `(feat. Pharrell)`). It defaults to KEEP: anything containing `remix`,
-  `bootleg`, `edit by`, or `vip` is retained, and so is anything
-  unrecognized — so a bare `(Remix)` or a named `(Someone Remix)` stays
-  title-distinguishing. The remainder is then normalized and compared
-  exactly. This is **comparison-only** — the cluster representative keeps its
-  raw `song_name`, so the displayed title is the provider's own spelling.
-- **Credits are canonicalized, not dropped.** Dropping a `feat.` group would
-  merge different featured artists and, because casing is normalized away,
-  swallow `Ft. <Place>` US abbreviations (`Ft. Lauderdale`). Canonicalizing
-  the marker (so `(ft. X)`/`(feat. X)`/`(Featuring X)` collapse) while
-  keeping the name fixes both. The accepted cost: a `feat. X` credit and a
-  `(Mixed)` tag of the *same* audio now separate (a visible duplicate).
+  brackets) and rewrites **trailing-suffix** bracket groups only: it drops
+  non-distinguishing version/live tags — `(Mixed)`, `(Club Mix)`, `(Extended
+  Mix)`, `(Original Mix)`, `(Radio Edit)`, `(Radio Mix)`, `(Extended)`,
+  `(Original)`, `Live At …` — in BOTH `(...)` and `[...]`; it **canonicalizes**
+  a `feat.`/`ft.`/`featuring` marker to `feat` while **keeping both the marker
+  word and the credited name** (`(ft. Carl Cox)` → `(feat carl cox)`, distinct
+  from a bare `(Carl Cox)`). It defaults to KEEP: anything containing
+  `remix`/`bootleg`/`edit by`/`vip` (as whole words) is retained, and so is
+  anything unrecognized — so a bare `(Remix)` or a named `(Someone Remix)`
+  stays title-distinguishing. Leading/middle brackets and nested same-type
+  brackets are left verbatim (they aren't the trailing suffix placement).
+  This is **comparison-only** — the cluster representative keeps its raw
+  `song_name`, so the displayed title is the provider's own spelling.
+- **Credits are canonicalized, not dropped — and the marker word is kept.**
+  Dropping a `feat.` group merges different featured artists and swallows
+  `Ft. <Place>` US abbreviations; deleting just the marker word collides the
+  feat-credit namespace with the bare-name namespace (`Song (Carl Cox)` =
+  `Song (feat. Carl Cox)`, silent over-merge). Canonicalizing the marker to
+  `feat` and keeping word + name fixes both. The accepted cost: a `feat. X`
+  credit and a `(Mixed)` tag of the *same* audio now separate (a visible
+  duplicate).
 - **No fuzzy ratio.** All three of these score ~0.727 against each other:
   `"Berghain"` vs `"Berghain (Remix)"` (must NOT merge), `"Berghain (Remix)"`
   vs `"Berghain (Radio Edit)"` (must NOT merge), and `"Outside World"` vs

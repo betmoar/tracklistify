@@ -15,11 +15,14 @@ Release dates are in YYYY-MM-DD format.
   recording under different bracketed spellings — `(Club Mix)` vs bare title,
   `[Live At …]`, `feat.`/`ft.`/`featuring` spelling variants of the same
   credit, etc. — no longer survive dedup as separate rows. `_strip_title_variant`
-  drops non-distinguishing version/live tags and canonicalizes `feat.`/
-  `ft.`/`featuring` markers to `feat` (both `(...)` and `[...]`), for the
-  comparison only. It defaults to KEEP: `remix`, `bootleg`, `edit by`, `vip`,
-  named remixes, the **credited artist** (so `(feat. Snoop Dogg)` ≠
-  `(feat. Pharrell)`), and anything unrecognized stay title-distinguishing.
+  rewrites trailing-suffix bracket groups (both `(...)` and `[...]`), for the
+  comparison only: it drops non-distinguishing version/live tags and
+  canonicalizes `feat.`/`ft.`/`featuring` markers to `feat`, keeping both the
+  marker word and the credited artist (so `(feat. Snoop Dogg)` ≠
+  `(feat. Pharrell)`, and a feat-credit `Song (feat. Carl Cox)` ≠ a bare-name
+  `Song (Carl Cox)`). It defaults to KEEP: `remix`, `bootleg`, `edit by`,
+  `vip` (whole words), named remixes, and anything unrecognized stay
+  title-distinguishing; leading/middle and nested brackets are left verbatim.
   The displayed `song_name` is unchanged — the representative keeps the raw
   title Shazam returned. Accepted trade-off: a `feat. X` credit and a
   `(Mixed)` tag of the same audio now separate (a visible duplicate).

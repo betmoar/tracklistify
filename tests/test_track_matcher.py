@@ -731,6 +731,71 @@ class TestDedupInvariants:
         assert merge_a.is_similar_to(merge_b) is True
         assert sep_a.is_similar_to(sep_b) is False
 
+    # --- Over-merge guards (max-review findings #1, #2, #4, #3) ------------
+    # Each pins a silent-data-loss path the d1-d12 suite missed. Silent
+    # over-merge = wrong direction for dedup; these must stay 2 rows.
+
+    def test_d13_bare_name_bracket_distinct_from_feat_credit(self, track_matcher):
+        """D5 over-merge guard: a bare parenthetical name `(Carl Cox)` is NOT
+        the same as a feat credit `(feat. Carl Cox)`. Canonicalizing keeps the
+        `feat` marker word, so the keys differ. The earlier draft deleted the
+        marker and the two collided — a silent over-merge.
+        """
+        track_matcher.tracks = [
+            _t("Song (Carl Cox)", "DJ Example", 7000),
+            _t("Song (feat. Carl Cox)", "DJ Example", 7050),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 2, (
+            "a bare-name bracket and a feat-credit of the same name are "
+            "distinct (the feat marker word is kept)"
+        )
+
+    def test_d14_leading_bracket_not_treated_as_suffix(self, track_matcher):
+        """D6 over-merge guard: a LEADING bracket `(Original) Sin` is not the
+        version-credit placement the drop rules are built for, so it is kept
+        verbatim and does not collapse with a bare `Sin`. Without the
+        trailing-suffix position anchor both would drop to `sin`.
+        """
+        track_matcher.tracks = [
+            _t("(Original) Sin", "DJ Example", 7500),
+            _t("Sin", "DJ Example", 7550),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 2, (
+            "a leading bracket is not a suffix and must not collapse with "
+            "the bare title"
+        )
+
+    def test_d15_nested_same_type_brackets_do_not_defeat_d4(self, track_matcher):
+        """D4 over-merge guard: `((Club Mix))` (nested same-type) must not
+        match the inner span and leave a malformed dangling `()` that
+        collapses to empty. The trailing regex's `[^()]*` cannot cross a
+        nested paren, so the group falls through to keep — distinct tags stay
+        distinct instead of both reducing to empty.
+        """
+        track_matcher.tracks = [
+            _t("Anthem ((Club Mix))", "DJ Example", 8000),
+            _t("Anthem ((Mixed))", "DJ Example", 8050),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 2, (
+            "nested same-type brackets must not defeat the D4 empty-collapse "
+            "guard and silently merge distinct version tags"
+        )
+
+    def test_d16_keep_markers_use_word_boundaries(self, track_matcher):
+        """Under-merge guard: a credited name CONTAINING a keep-marker
+        substring (`Vipul` contains `vip`) must not be shadowed into
+        keep-verbatim, which would split spelling variants of the same credit.
+        Word-boundary matching lets the feat-canonicalize rule still fire.
+        """
+        track_matcher.tracks = [
+            _t("Track (ft. Vipul)", "DJ Example", 8500),
+            _t("Track (feat. Vipul)", "DJ Example", 8550),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 1, (
+            "a name containing a keep-marker substring (Vipul ~ vip) must "
+            "still canonicalize across feat/ft spelling variants"
+        )
+
 
 def test_identified_track_is_logged_at_info(track_matcher, caplog):
     """The per-track success line must stay at INFO.

@@ -104,55 +104,79 @@ If rewriting leaves nothing but whitespace, return the original title. Without
 this, a track titled `(Mixed)` and one titled `(Club Mix)` both reduce to the
 empty string and merge.
 
-**D5 — Credits are distinguishing; canonicalize, don't drop.**
+**D5 — Credits are distinguishing; canonicalize the marker, keep word + name.**
 A `feat.`/`ft.`/`featuring` credit names a specific collaborator, which
 identifies a specific recording (`Song Title (feat. Artist Name)` is the
-streaming-metadata standard). Dropping the whole group merges different
-featured artists and, because casing is normalized away, also swallows `Ft.
-<Place>` US abbreviations. The marker is therefore rewritten to a single
-canonical `feat ` form (so spelling variants collapse) while the credited
-name is retained (so distinct credits separate). This overrides the earlier
-"strip the feat prefix" draft in every section below.
+streaming-metadata standard). The marker is normalized to `feat` and **both
+the marker word and the credited name are kept** (`(feat. Carl Cox)` →
+`(feat carl cox)`). Keeping the marker word is load-bearing: a bare-name
+bracket `(Carl Cox)` is a *different* thing from a feat-credit `(feat. Carl
+Cox)`, and deleting the marker collides the two namespaces (silent over-merge).
+Dropping the whole group additionally swallows `Ft. <Place>` US abbreviations.
+This overrides two earlier drafts — "strip the feat prefix" and "canonicalize
+but delete the marker word" — in every section below.
+
+**D6 — Only trailing-suffix groups are rewritten.**
+A bracket that is not the last non-space content of the title is kept
+verbatim. Version/credit tags are trailing suffixes by convention; a
+leading/middle bracket (`(Original) Sin`) is not that placement, and
+rewriting it silently merges with the bare title. The rewriter anchors on
+the trailing position and peels inward, stopping at the first kept group.
+
+**D7 — Keep-markers match on word boundaries.**
+`remix`/`bootleg`/`edit by`/`vip` are matched as whole words, not substrings.
+A credited name containing a marker substring (`Vipul` contains `vip`;
+`Vipingo`) would otherwise be shadowed into keep-verbatim and split
+spelling-variant duplicates of the same credit.
 
 ### Exact rule set
 
-Each bracketed group's inner text is normalized with `_normalize_token`, then
-the group is transformed by **exactly one** of these rules, tested in order.
-(The keep-list in rule 1 is checked first, so widening the drop-lists later
-cannot quietly swallow a named remix. Rules 2–4 act on disjoint inputs — a
-feat-marker is never a version tag — so their relative order is not
-load-bearing; the reference implementation checks canonicalize before drop.)
+**Scope:** only **trailing-suffix** groups are rewritten — a `(...)` or `[...]`
+that is the last non-space content of the title (D6). The rewriter peels
+groups from the end and stops at the first kept group, so a leading/middle
+bracket (`(Original) Sin`) is left verbatim and never collapses with a bare
+title. Each trailing group's inner text is normalized with `_normalize_token`,
+then transformed by **exactly one** of these rules, tested in order:
 
-1. **Never touch** — inner text contains any of:
+1. **Never touch** — inner text contains a keep-marker as a **whole word**:
    `remix`, `bootleg`, `edit by`, `vip`
-   (these are title-distinguishing; the group is kept verbatim)
-2. **Drop** — inner text is exactly one of:
+   (title-distinguishing; the group is kept verbatim. Word boundaries matter:
+   a credited name *containing* a marker substring — `Vipul`, `Vipingo` —
+   must not be shadowed into keep.)
+2. **Canonicalize the feat-marker** — inner text starts with any of:
+   `feat `, `ft `, `featuring `
+   The marker is normalized to `feat` and **both the marker word and the
+   credited name are kept**: the group becomes `(feat <credited name>)`. So
+   `(ft. Carl Cox)`, `(Ft. Carl Cox)`, and `(Featuring Carl Cox)` all reduce
+   to the same key — and crucially that key is **distinct** from a bare
+   `(Carl Cox)`, because the `feat` marker word survives. **The credit is NOT
+   dropped** — it is distinguishing information per the streaming-metadata
+   standard (`Song Title (feat. Artist Name)`; the featured artist
+   identifies a specific recording). Dropping the marker word collides the
+   feat-credit namespace with the bare-name namespace and silently merges
+   `Song (Carl Cox)` with `Song (feat. Carl Cox)`; dropping the whole group
+   also swallows `Ft. <Place>` US abbreviations. A marker with **no** credited
+   name (e.g. `(feat.)`, `(ft.)`) canonicalizes to `(feat)` so the spellings
+   still merge.
+3. **Drop** — inner text is exactly one of:
    `mixed`, `club mix`, `extended mix`, `original mix`, `radio edit`,
    `radio mix`, `extended`, `original`
    (non-distinguishing version tags; the group is removed)
-3. **Canonicalize the feat-marker** — inner text starts with any of:
-   `feat `, `ft `, `featuring `
-   The marker is stripped and the **credited name is kept**: the group
-   becomes `(<credited name>)`. So `(ft. Carl Cox)`, `(Ft. Carl Cox)`, and
-   `(Featuring Carl Cox)` all reduce to the same key. **The credit is NOT
-   dropped** — it is distinguishing information per the streaming-metadata
-   standard (`Song Title (feat. Artist Name)`; the featured artist
-   identifies a specific recording). Dropping it would merge
-   `(feat. Snoop Dogg)` with `(feat. Pharrell)`. Canonicalizing lets
-   spelling-variant duplicates collapse while keeping distinct credits apart.
-   A marker with **no** credited name (e.g. `(feat.)`, `(ft)`) falls through
-   to rule 5 (keep verbatim) — the safe direction, and it cannot be stripped
-   to empty because there is no credit to keep.
 4. **Drop** — inner text starts with `live at `
    (a live-recording tag; non-distinguishing for dedup)
 5. **Otherwise keep** the group verbatim.
 
-(Prefixes are written post-normalization: `"feat. Kiki Solvej"` normalizes to
-`"feat kiki solvej"`, so the prefix to match is `"feat "`, not `"feat. "`.
-Case does not matter — `_normalize_token` lowercases first, so `Ft.`,
-`FEAT`, `Featuring` all match.)
+(The keep-list in rule 1 is checked first, so widening the drop-lists later
+cannot quietly swallow a named remix. Prefixes are written post-normalization:
+`"feat. Kiki Solvej"` normalizes to `"feat kiki solvej"`, so the prefix to
+match is `"feat "`, not `"feat. "`. Case does not matter — `_normalize_token`
+lowercases first, so `Ft.`, `FEAT`, `Featuring` all match.)
 
-An empty group (`"Foo ()"`) is dropped — it is noise under either reading.
+An empty group (`"Foo ()"`) is kept verbatim (harmless). Nested same-type
+brackets (`((Club Mix))`) do **not** match the trailing regex — its inner
+class `[^()]*` cannot cross a nested paren — so the group falls through to
+keep rather than matching the inner span and leaving a malformed dangling
+outer paren that would defeat the D4 empty-collapse guard.
 
 **Why canonicalize feat instead of dropping it.** `feat.`, `ft.`, and
 `featuring` are all standard spellings of the same credit marker, and Shazam
@@ -177,9 +201,13 @@ which is the recoverable direction this feature always chooses.
 Not binding on style, but the semantics below are binding.
 
 ```python
-_TITLE_GROUP_RE = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
+# A trailing-suffix group: a (...) or [...] ending the title (optional
+# trailing whitespace). Inner [^()]* cannot cross a nested same-type paren,
+# so ((Club Mix)) does NOT match here — it falls through to keep.
+_TRAILING_GROUP_RE = re.compile(r"(\(([^()]*)\)|\[([^\[\]]*)\])\s*$")
 
-_SUFFIX_KEEP_MARKERS = ("remix", "bootleg", "edit by", "vip")
+# Keep-markers as whole words (D7): "Vipul" does not match "vip".
+_SUFFIX_KEEP_RE = re.compile(r"\b(?:remix|bootleg|edit by|vip)\b")
 
 _SUFFIX_DROP_EXACT = frozenset({
     "mixed", "club mix", "extended mix", "original mix",
@@ -188,46 +216,64 @@ _SUFFIX_DROP_EXACT = frozenset({
 
 _SUFFIX_DROP_PREFIXES = ("live at ",)
 
-# A feat-credit marker at the start of a bracketed group. Matched on the
-# NORMALIZED inner text (already lowercased), so it covers feat/ft/featuring
-# and every casing variant. The credited name that follows is KEPT.
+# A feat-credit marker at the start of a bracket group's normalized inner.
 _FEAT_MARKER_RE = re.compile(r"^(feat|ft|featuring)\b\s*")
 
 
-def _strip_title_variant(title: str) -> str:
-    def _decide(m: "re.Match[str]") -> str:
-        raw = m.group(1) if m.group(1) is not None else m.group(2)
-        inner = _normalize_token(raw)
-        if not inner:
-            return ""  # empty group is noise
-        if any(marker in inner for marker in _SUFFIX_KEEP_MARKERS):
-            return m.group(0)  # title-distinguishing: keep verbatim
-        # Canonicalize the feat-marker, KEEP the credited name.
-        if _FEAT_MARKER_RE.match(inner):
-            credit = _FEAT_MARKER_RE.sub("", inner)
-            return f"({credit})" if credit else m.group(0)
-        if inner in _SUFFIX_DROP_EXACT or inner.startswith(_SUFFIX_DROP_PREFIXES):
-            return ""  # non-distinguishing version/live tag: drop
-        return m.group(0)  # unrecognized: keep verbatim (default is keep)
+def _decide_title_group(inner_raw: str):
+    """Return ('keep',) | ('drop',) | ('rewrite', new_inner_str)."""
+    inner = _normalize_token(inner_raw)
+    if not inner:
+        return ("keep",)            # empty group: harmless, keep
+    if _SUFFIX_KEEP_RE.search(inner):
+        return ("keep",)            # title-distinguishing marker
+    if _FEAT_MARKER_RE.match(inner):
+        credit = _FEAT_MARKER_RE.sub("", inner).strip()
+        return ("rewrite", f"feat {credit}".strip() if credit else "feat")
+    if inner in _SUFFIX_DROP_EXACT or inner.startswith(_SUFFIX_DROP_PREFIXES):
+        return ("drop",)            # non-distinguishing version/live tag
+    return ("keep",)                # unrecognized: keep (default is keep)
 
-    rewritten = _TITLE_GROUP_RE.sub(_decide, title)
-    return rewritten if rewritten.strip() else title
+
+def _strip_title_variant(title: str) -> str:
+    result = title
+    for _ in range(8):              # cap peels; real titles have <=2-3
+        match = _TRAILING_GROUP_RE.search(result)
+        if not match:
+            break
+        group, g1, g2 = match.group(1), match.group(2), match.group(3)
+        action = _decide_title_group(g1 if g1 is not None else g2)
+        if action[0] == "keep":
+            break                   # trailing group stays; stop peeling
+        if action[0] == "drop":
+            result = (result[:match.start()] + " " + result[match.end():]).strip()
+        else:  # rewrite — preserve delimiter type
+            open_d, close_d, new_inner = group[0], group[-1], action[1]
+            result = (result[:match.start()].rstrip()
+                      + f" {open_d}{new_inner}{close_d}"
+                      + result[match.end():]).strip()
+    return result if result.strip() else title
 ```
 
 `_tracks_match`'s title clause becomes
-`_normalize_token(_strip_title_variant(t1.song_name)) == _normalize_token(_strip_title_variant(t2.song_name))`.
-The artist clause is untouched.
+`_comparison_title(t1.song_name) == _comparison_title(t2.song_name)`, where
+`_comparison_title = lru_cache(...)(_normalize_token ∘ _strip_title_variant)`.
+The composite is memoized (bounded, keyed on the raw title) because the
+clustering loop compares each candidate against an invariant anchor title
+repeatedly. The artist clause is untouched.
 
 ### Worked cases
 
 | Input | After rewrite + normalize |
 |---|---|
-| `Track (ft. Carl Cox)` | `track carl cox` |
-| `Track (feat. Carl Cox)` | `track carl cox` |
-| `Track (Featuring Carl Cox)` | `track carl cox` |
-| `Hit (ft. Snoop Dogg)` | `hit snoop dogg` |
-| `Hit (feat. Pharrell)` | `hit pharrell` (distinct credit → distinct key) |
-| `Sunrise (Ft. Lauderdale Session)` | `sunrise lauderdale session` (no longer drops → no place collision) |
+| `Track (ft. Carl Cox)` | `track feat carl cox` (marker canonicalized, word kept) |
+| `Track (feat. Carl Cox)` | `track feat carl cox` |
+| `Track (Featuring Carl Cox)` | `track feat carl cox` |
+| `Track (Carl Cox)` | `track carl cox` (bare name — **distinct** from the feat key) |
+| `Hit (ft. Snoop Dogg)` | `hit feat snoop dogg` |
+| `Hit (feat. Pharrell)` | `hit feat pharrell` (distinct credit → distinct key) |
+| `Sunrise (Ft. Lauderdale Session)` | `sunrise feat lauderdale session` (marker kept → no bare-title collision) |
+| `Song Title (feat. Artist Name) [Extended Mix]` | `song title feat artist name` (standard composition, both peel) |
 | `Outside World (Club Mix)` | `outside world` |
 | `Outside World` | `outside world` |
 | `Stereo Murder [Live At Tomorrowland]` | `stereo murder` |
@@ -237,11 +283,17 @@ The artist clause is untouched.
 | `Foo (Kiki's Extended Remix)` | `foo kiki s extended remix` (keep-list beats everything) |
 | `Club Mix` (real title, no brackets) | `club mix` (no group to match) |
 | `(Mixed)` | `mixed` (D4 fallback) |
-| `Meet Her At The Love Parade (feat. Kiki Solvej)` | `meet her at the love parade kiki solvej` |
-| `Meet Her At The Love Parade (Mixed)` | `meet her at the love parade` (**now separates** — trade-off) |
+| `(Original) Sin` | `original sin` (leading bracket kept — D6, ≠ bare `sin`) |
+| `Anthem ((Club Mix))` | `anthem club mix` (nested kept — distinct from `((Mixed))`) |
+| `Track (ft. Vipul)` | `track feat vipul` (word-boundary keep — `vip` in `vipul` ignored) |
+| `(feat.)` / `(ft.)` | `feat` (empty credit canonicalizes across spellings) |
+| `Meet Her At The Love Parade (feat. Kiki Solvej)` | `meet her at the love parade feat kiki solvej` |
+| `Meet Her At The Love Parade (Mixed)` | `meet her at the love parade` (**separates** — trade-off) |
 
-Nested parentheses are not handled by `[^()]*`; a non-match falls through to
-"keep", which is the safe default.
+Nested same-type parentheses (`((Club Mix))`) do not match the trailing regex
+— `[^()]*` cannot cross a nested paren — so the group falls through to keep
+(distinct tags stay distinct). A leading/middle bracket is likewise not a
+trailing suffix and is kept verbatim (D6).
 
 ---
 
@@ -261,21 +313,25 @@ outright. The backlog rules this out explicitly (lines 60–62).
 ## Performance requirement
 
 `_tracks_match` runs once per active cluster per candidate track. This change
-adds one regex pass and one extra `_normalize_token` per side per call.
+adds a trailing-regex match + `_normalize_token` per side per call. The
+composite (`_normalize_token ∘ _strip_title_variant`) is **memoized** via a
+bounded `lru_cache` keyed on the raw title, because the clustering loop
+compares each candidate against an invariant anchor title repeatedly (measured:
+~5996 calls collapsing to ~2 distinct results at n=2000).
 
-The implementation **must** run the scale probe from
-`docs/playbooks/changing-dedup.md` (verification section) and record the
-before/after delta. Expected budget: ~1.5 / 7 / 13 ms at n = 216 / 1000 / 2000.
-Over ~100 ms at n = 2000 means identity matching is scanning cluster members
-instead of anchoring on `cluster[0]` — a different bug.
+The implementation **must** run the scale probe and record the before/after
+delta. Over ~100 ms at n = 2000 means a bug.
 
-**The probe must use repeated detections.** The playbook records an earlier
-probe that generated all-distinct titles, left every cluster at size 1, and
-certified a quadratic implementation as linear.
+**The probe must use repeated detections AND bracketed titles.** Two traps:
+the playbook records an earlier probe that generated all-distinct titles (every
+cluster size 1, certified a quadratic impl as linear); and a later probe used
+bare titles like `S0`/`S1` that **never match `_TRAILING_GROUP_RE`**, so the new
+code path never executed and the recorded numbers certified a path it hadn't
+run. The probe titles MUST contain a trailing bracket group that the rewriter
+acts on, or the measurement is invalid.
 
-If the probe regresses beyond the budget, memoize the strip+normalize composite
-with a bounded `functools.lru_cache` keyed on the raw title. Do not memoize
-speculatively — measure first.
+Recorded (bracketed titles, memoized): **3.1 / 14.1 / 30.6 / 57.1 ms** at
+n = 216 / 1000 / 2000 / 4000 (linear; well under the 100 ms gate).
 
 ---
 
@@ -325,13 +381,29 @@ rule change", step 2.
     SEPARATE. The feat-credit is distinguishing, so it is kept even though
     this is the same recording Shazam tagged two ways. A visible duplicate is
     the recoverable direction.
+11. **Bare-name bracket vs feat-credit (D5 over-merge guard).** `Song (Carl
+    Cox)` vs `Song (feat. Carl Cox)`, same artist, 50 s apart — SEPARATE. The
+    `feat` marker word is kept, so the bare-name namespace and the feat-credit
+    namespace don't collide. (An earlier draft deleted the marker and the two
+    merged — silent over-merge.)
+12. **Leading bracket vs bare title (D6 over-merge guard).** `(Original) Sin`
+    vs `Sin`, same artist, 50 s apart — SEPARATE. Only trailing-suffix groups
+    are rewritten; a leading bracket is kept verbatim.
+13. **Nested same-type brackets (D4 over-merge guard).** `Anthem ((Club Mix))`
+    vs `Anthem ((Mixed))`, same artist, 50 s apart — SEPARATE. The trailing
+    regex cannot cross a nested paren, so the group falls through to keep
+    rather than matching the inner span and collapsing to empty.
+14. **Keep-marker word boundaries (under-merge guard).** `(ft. Vipul)` vs
+    `(feat. Vipul)`, same artist, 50 s apart — MERGE. `vip` is matched as a
+    whole word, so a credited name containing the substring (`Vipul`) is not
+    shadowed into keep-verbatim and the feat-canonicalize rule still fires.
 
 ### Non-regression
 
-11. The representative keeps its raw title: for case 1 the earlier detection
+15. The representative keeps its raw title: for case 1 the earlier detection
     wins by `_rep_key`, so the emitted `song_name` is the raw provider spelling
     `(ft. Carl Cox)` / `(feat. Carl Cox)` — never a canonicalized form.
-12. These must still pass unchanged: `test_artist_variant_merge_berghain`,
+16. These must still pass unchanged: `test_artist_variant_merge_berghain`,
     `test_similar_song_different_artist`, the two Jaccard-bound tests, and
     `test_f07_is_similar_to_agrees_with_dedup_predicate` —
     `Track.is_similar_to` delegates to `_tracks_match` and must keep agreeing
@@ -371,9 +443,11 @@ Update at implementation time:
 
 ## Success criteria
 
-1. All twelve new tests (cases 1–12) pass; the full suite shows no new failures
-   against the recorded baseline.
-2. The scale probe is within budget, with the delta recorded in the PR.
+1. All sixteen new tests (cases 1–16) pass; the full suite shows no new
+   failures against the recorded baseline.
+2. The scale probe — run with **bracketed, repeated-detection** titles so the
+   rewrite path is actually exercised — is within budget, with the delta
+   recorded.
 3. `uv run ruff check src/ tests/ scripts/`,
    `uv run ruff format --check src/ tests/ scripts/`, and
    `uv run python scripts/generate_env_example.py --check` all pass.

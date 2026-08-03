@@ -38,15 +38,18 @@ produce, or on someone outside the project.
 
 ## P2 — bracketed/parenthetical title variants survive dedup as separate rows
 
-**Status: Fixed.** `_strip_title_variant` rewrites bracketed suffixes before
-normalization, comparison-only (representative keeps its raw title): it drops
-non-distinguishing version/live tags (`(Mixed)`, `(Club Mix)`, `[Live At …]`,
-…) and **canonicalizes** `feat.`/`ft.`/`featuring` markers to `feat` while
-**keeping the credited artist** (a credit identifies a specific recording, so
-it is not dropped — that would merge different featured artists and swallow
-`Ft. <Place>` abbreviations). The analysis below is retained as historical
-record; note the `feat.` handling diverged from its "Suggested approach"
-(canonicalize, not strip) for the reasons above.
+**Status: Fixed.** `_strip_title_variant` rewrites **trailing-suffix** bracket
+groups before normalization, comparison-only (representative keeps its raw
+title): it drops non-distinguishing version/live tags (`(Mixed)`, `(Club Mix)`,
+`[Live At …]`, …) and **canonicalizes** `feat.`/`ft.`/`featuring` markers to
+`feat` while **keeping both the marker word and the credited artist** (a credit
+identifies a specific recording; dropping the group merges different featured
+artists and swallows `Ft. <Place>` abbreviations, while deleting just the
+marker word collides the feat-credit namespace with bare-name brackets).
+Keep-markers (`remix`/`bootleg`/`edit by`/`vip`) match on word boundaries;
+leading/middle and nested same-type brackets are left verbatim. The analysis
+below is retained as historical record; note the `feat.` handling diverged
+from its "Suggested approach" (canonicalize, not strip) for the reasons above.
 
 **Spec:** `docs/dev/2026-08-02-dedup-title-variants-spec.md`
 
