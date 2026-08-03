@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "tracklistify"
-version = "0.9.0"
+version = "0.9.1"
 description = "Automatic tracklist generator for DJ mixes and audio streams"
 readme = "README.md"
 authors = [
@@ -82,7 +82,14 @@ version_scheme = "pep440"
 # for [tool.poetry].version, which no longer exists since the uv migration —
 # `cz bump` was broken.
 version_provider = "pep621"
-update_changelog_on_bump = true
+# False: `cz bump` must NOT auto-generate the changelog. Commitizen's bump
+# runs the NON-incremental generator, which regenerates from
+# `changelog_start_rev` and overwrites curated history (observed: it replaced
+# the hand-written 0.9.0 `### Added` section with a wrong duplicate `### Fix`
+# from the same range's commits). The repeatable release flow is the two-step
+# `cz changelog --incremental` (adds one section, preserves the rest) then
+# `cz bump` (version + commit + tag, no changelog). See docs/PLAYBOOKS.md.
+update_changelog_on_bump = false
 major_version_zero = true
 # Was "v0.6.8", a tag that does not exist in this repo — `cz bump` aborted
 # on `git log v0.6.8..` before it could write a changelog. The oldest tag

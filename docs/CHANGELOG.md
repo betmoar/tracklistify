@@ -9,6 +9,8 @@ Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-03
+
 ### Fixed
 
 - **YouTube `&list=` URLs no longer 403.** A URL carrying a playlist param
@@ -17,37 +19,48 @@ Release dates are in YYYY-MM-DD format.
   `playlist_items='1'` could bound the download. YouTube playlist params
   (`&list=`, `&index=`, `&t=`, …) are now stripped for YouTube URLs before
   download — we only ever process one video, so the playlist context is never
-  wanted. SoundCloud/Mixcloud are untouched.
+  wanted. The video id is extracted regardless of query-param order
+  (`watch?v=…&list=…` and `watch?list=…&v=…` alike). SoundCloud/Mixcloud are
+  untouched.
 - **Transient download 403s are now retried.** `config.download_max_retries`
   (env `TRACKLISTIFY_DOWNLOAD_MAX_RETRIES`, default `3`) was declared but
-  never read — dead config, the same class of bug the dedup work fixed for
-  `time_threshold`. It is now wired into yt-dlp's native `retries` option, so
-  a transient YouTube HTTP 403 (bot-detection throttling — the case that
-  succeeds on a manual second run ~seconds later) is retried with backoff and
-  format/client rotation instead of aborting the whole run. Genuine 403s
-  (private/region-locked video) still raise `DownloadError`.
-- **Download failures no longer dump a yt-dlp traceback into the log.**
-  `ydl_opts['verbose']` was `True` with an inline comment saying "Always set
-  to False" — the value contradicted the comment. yt-dlp routes real errors
-  through our logger hook regardless of `verbose`; `verbose=True` only added
-  a duplicate full traceback to stderr on top of our own logged error. Now
-  `False`; a non-recoverable download error produces one clean message plus
-  the CLI's single (outermost) traceback.
+  never read — dead config. It is now wired into yt-dlp's native `retries`
+  option, so a transient YouTube HTTP 403 (bot-detection throttling — the
+  case that succeeds on a manual second run ~seconds later) is retried with
+  backoff instead of aborting the whole run. Genuine 403s (private/
+  region-locked video) still raise `DownloadError`.
+- **Download failures no longer flood the log with a yt-dlp traceback.**
+  `ydl_opts['verbose']` was `True` with a comment saying "Always set to
+  False" — the value contradicted the comment. Now `False`; a failed
+  download produces one clean message plus the CLI's single outermost
+  traceback.
 - **Title-variant duplicates collapse in dedup.** Two detections of the same
   recording under different bracketed spellings — `(Club Mix)` vs bare title,
   `[Live At …]`, `feat.`/`ft.`/`featuring` spelling variants of the same
-  credit, etc. — no longer survive dedup as separate rows. `_strip_title_variant`
-  rewrites trailing-suffix bracket groups (both `(...)` and `[...]`), for the
-  comparison only: it drops non-distinguishing version/live tags and
-  canonicalizes `feat.`/`ft.`/`featuring` markers to `feat`, keeping both the
-  marker word and the credited artist (so `(feat. Snoop Dogg)` ≠
-  `(feat. Pharrell)`, and a feat-credit `Song (feat. Carl Cox)` ≠ a bare-name
-  `Song (Carl Cox)`). It defaults to KEEP: `remix`, `bootleg`, `edit by`,
-  `vip` (whole words), named remixes, and anything unrecognized stay
-  title-distinguishing; leading/middle and nested brackets are left verbatim.
-  The displayed `song_name` is unchanged — the representative keeps the raw
-  title Shazam returned. Accepted trade-off: a `feat. X` credit and a
-  `(Mixed)` tag of the same audio now separate (a visible duplicate).
+  credit — no longer survive dedup as separate rows. `_strip_title_variant`
+  rewrites trailing-suffix bracket groups for the comparison only: it drops
+  non-distinguishing version/live tags and canonicalizes `feat.`/`ft.`/
+  `featuring` markers to `feat`, keeping both the marker word and the
+  credited artist (so `(feat. Snoop Dogg)` ≠ `(feat. Pharrell)`, and a
+  feat-credit ≠ a bare-name bracket). It defaults to KEEP: `remix`/
+  `bootleg`/`edit by`/`vip` (whole words), named remixes, and anything
+  unrecognized stay title-distinguishing; leading/middle and nested brackets
+  are left verbatim. The displayed `song_name` is unchanged. Accepted
+  trade-off: a `feat. X` credit and a `(Mixed)` tag of the same audio now
+  separate (a visible duplicate — the recoverable direction).
+- **Dedup over-merge hardening.** Closed four silent data-loss paths found in
+  review: bare-name vs feat-credit collision, cross-type nested brackets
+  defeating the empty-collapse guard, leading-bracket collapse, and
+  substring keep-marker shadowing. Comparison-only — `_rep_key`, exporters,
+  cache, and Spotify enrichment all still read the raw `song_name`.
+
+### Changed
+
+- **Release process:** `update_changelog_on_bump` is now `false`. Commitizen's
+  `cz bump` ran the non-incremental changelog generator, which regenerated
+  from `changelog_start_rev` and overwrote curated history. The repeatable
+  flow is now a hand-written version section + `cz bump` for version/tag only.
+- **Dependencies:** bumped `uv_build`, `ruff`, and `commitizen` versions.
 
 ## [0.9.0] - 2026-08-01
 
