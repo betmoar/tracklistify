@@ -5,6 +5,7 @@ yt-dlp video downloader implementation.
 # Standard library imports
 import asyncio
 import os
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -16,6 +17,7 @@ import yt_dlp
 from tracklistify.config import get_config
 from tracklistify.downloaders.base import Downloader
 from tracklistify.utils.logger import get_logger
+from tracklistify.utils.validation import is_youtube_url
 
 logger = get_logger(__name__)
 
@@ -97,6 +99,29 @@ def progress_hook(d):
     _progress_handler.update(d)
 
 
+# Match a YouTube video id in any of the standard URL shapes. Same pattern
+# family as ``downloaders/cache_key._YT_PATTERNS`` — kept local so the
+# downloader does not depend on the cache module.
+_YT_VIDEO_ID = re.compile(
+    r"(?:youtube\.com/(?:watch\?v=|shorts/|embed/|live/)|youtu\.be/|music\.youtube\.com/watch\?v=)"
+    r"([A-Za-z0-9_-]{11})"
+)
+
+
+def _strip_youtube_playlist_params(url: str) -> str:
+    """Reduce a YouTube URL to ``https://www.youtube.com/watch?v=<id>``.
+
+    Drops ``&list=``, ``&index=``, ``&t=``, ``&feature=``, etc. — playlist
+    context that we never act on and that triggers a non-retryable 403 on
+    ``RD`` (auto-mix) lists. Falls back to the original URL if no video id
+    can be extracted (let yt-dlp handle it / fail with its own message).
+    """
+    match = _YT_VIDEO_ID.search(url)
+    if match:
+        return f"https://www.youtube.com/watch?v={match.group(1)}"
+    return url
+
+
 class YtDlpDownloader(Downloader):
     """yt-dlp video downloader."""
 
@@ -174,6 +199,16 @@ class YtDlpDownloader(Downloader):
         """
         temp_dir = Path(self.temp_dir or self.config.temp_dir)
         temp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Strip YouTube playlist params (``&list=``, ``&index=``, ...) before
+        # yt-dlp sees the URL. We only ever process one video, so the playlist
+        # context is never wanted — and ``&list=RD...`` (a server-generated
+        # auto-mix) makes YouTube return 403 on programmatic resolution. yt-dlp
+        # descends into the playlist *before* ``playlist_items='1'`` bounds the
+        # download, so the 403 fires during resolution and is not retryable.
+        # ``?v=<id>`` is the only load-bearing param.
+        if is_youtube_url(url):
+            url = _strip_youtube_playlist_params(url)
 
         logger.info(f"Starting yt-dlp download: {url}")
 

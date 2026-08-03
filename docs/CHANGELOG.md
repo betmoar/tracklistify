@@ -11,6 +11,13 @@ Release dates are in YYYY-MM-DD format.
 
 ### Fixed
 
+- **YouTube `&list=` URLs no longer 403.** A URL carrying a playlist param
+  (e.g. `&list=RD...` — a YouTube auto-mix/radio list) made yt-dlp descend
+  into the playlist during resolution, triggering a non-retryable 403 before
+  `playlist_items='1'` could bound the download. YouTube playlist params
+  (`&list=`, `&index=`, `&t=`, …) are now stripped for YouTube URLs before
+  download — we only ever process one video, so the playlist context is never
+  wanted. SoundCloud/Mixcloud are untouched.
 - **Transient download 403s are now retried.** `config.download_max_retries`
   (env `TRACKLISTIFY_DOWNLOAD_MAX_RETRIES`, default `3`) was declared but
   never read — dead config, the same class of bug the dedup work fixed for

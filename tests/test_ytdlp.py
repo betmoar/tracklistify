@@ -400,3 +400,48 @@ async def test_ydl_opts_verbose_is_false(monkeypatch, tmp_path):
         "ydl_opts['verbose'] must be False or yt-dlp dumps its traceback to "
         "stderr on every failure, on top of our own logged error"
     )
+
+
+@pytest.mark.asyncio
+async def test_youtube_playlist_params_stripped_before_download(monkeypatch, tmp_path):
+    """A YouTube URL with ``&list=`` (an auto-mix / radio playlist) must have
+    the playlist params stripped before reaching yt-dlp. YouTube returns 403
+    on programmatic resolution of ``RD`` (server-generated mix) lists; yt-dlp
+    descends into the playlist before ``playlist_items='1'`` bounds the
+    *download*, so the 403 fires during resolution and is not retryable.
+
+    We only ever process one video, so the playlist context is never wanted.
+    ``?v=<id>`` is the only load-bearing param for a download. Verified
+    against a real ``&list=RD...`` URL: the bare video succeeds, the playlist
+    URL 403s.
+    """
+    captured_url = {}
+
+    class _UrlCapturingYdl(_FakeYdl):
+        def extract_info(self, url, download=True):
+            captured_url["url"] = url
+            return self._info
+
+    info = {
+        "id": "JH0tXHFmkS8",
+        "title": "T",
+        "uploader": "U",
+        "duration": 1,
+        "ext": "mp3",
+        "requested_downloads": [{"filepath": str(tmp_path / "JH0tXHFmkS8.mp3")}],
+    }
+
+    def _factory(opts):
+        return _UrlCapturingYdl(info, tmp_path)
+
+    monkeypatch.setattr(ytdlp, "yt_dlp", MagicMock(YoutubeDL=_factory))
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    await dl.download("https://www.youtube.com/watch?v=JH0tXHFmkS8&list=RDJH0tXHFmkS8")
+
+    passed = captured_url.get("url", "")
+    assert "list=" not in passed, (
+        f"the &list= playlist param must be stripped before yt-dlp sees the "
+        f"URL (it triggers a non-retryable 403 on RD auto-mixes); got {passed!r}"
+    )
+    assert "v=JH0tXHFmkS8" in passed, "the video id must be preserved"
