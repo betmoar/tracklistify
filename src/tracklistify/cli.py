@@ -88,7 +88,13 @@ async def main(args: argparse.Namespace) -> int:
         logger.error(f"Application error: {e}", exc_info=True)
         return 1
     except Exception as e:
-        logger.error(f"Unexpected error: {e}", exc_info=True)
+        # Gate the traceback on --debug. Download errors (notably yt-dlp
+        # 403s) carry a deep __cause__ chain into yt-dlp internals; logging
+        # exc_info unconditionally dumps that whole chain into the log — the
+        # flood an operator sees on a transient 403. At default verbosity
+        # one clean line is enough; --debug keeps the full chain. Matches
+        # base.process_input's `if self.config.debug` traceback gating.
+        logger.error(f"Unexpected error: {e}", exc_info=args.debug)
         return 1
     finally:
         if app:

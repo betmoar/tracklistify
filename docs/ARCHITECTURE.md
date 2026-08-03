@@ -77,10 +77,14 @@ json/markdown/m3u via `TracklistOutput`, clean up the temp dir.
   **These scales are different.** See landmine below.
 - **`get_unique_tracks` is the sole dedup authority.** `add_track` only
   confidence-gates and appends; it does not dedup. Two tracks are "the
-  same" iff their normalized titles are equal AND their artist token sets
-  overlap with Jaccard ≥ `_ARTIST_THRESHOLD` (0.34) — this collapses
-  Shazam's collaboration-string noise (`"A & B & C"` vs `"B, C"`) without
-  merging genuinely different artists (Jaccard 0.0).
+  same" iff their titles are equal after `_strip_title_variant` (rewrites
+  trailing-suffix bracket groups: drops non-distinguishing version/live tags,
+  canonicalizes `feat.`/`ft.`/`featuring` markers to `feat` keeping word +
+  credited name; comparison-only — the representative keeps its raw title)
+  AND normalization, AND their
+  artist token sets overlap with Jaccard ≥ `_ARTIST_THRESHOLD` (0.34) —
+  this collapses Shazam's collaboration-string noise (`"A & B & C"` vs
+  `"B, C"`) without merging genuinely different artists (Jaccard 0.0).
 - **Clusters chain on the gap to the last member.** A track joins a cluster
   only if it is within `_dedup_window()` of that cluster's **most recent**
   detection (`cluster[-1]`). Gap continuity — not total span — is what

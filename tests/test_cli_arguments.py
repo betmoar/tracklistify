@@ -123,6 +123,76 @@ class TestCLIArgumentPassing:
             assert "provider" in call_kwargs
             assert call_kwargs["provider"] == "acrcloud"
 
+
+@pytest.mark.asyncio
+class TestCLIDownloadErrorLogging:
+    """A download failure (e.g. yt-dlp 403) raises an exception whose
+    ``__cause__`` chain runs deep into yt-dlp internals. Logging it with
+    ``exc_info=True`` at default verbosity dumps that whole chain into the
+    log — the flood the operator sees on a 403. The traceback must be gated
+    on ``--debug``; at default verbosity only the one-line error is logged.
+    """
+
+    @staticmethod
+    def _chained_download_error():
+        """Build a DownloadError-like exception with a __cause__ chain,
+        mimicking yt-dlp: HTTPError caused -> DownloadError."""
+        try:
+            raise RuntimeError("HTTP Error 403: Forbidden")
+        except RuntimeError as cause:
+            try:
+                raise RuntimeError(
+                    "ERROR: unable to download video data: HTTP Error 403: Forbidden"
+                ) from cause
+            except RuntimeError as outer:
+                return outer
+
+    async def _run_with_raised_download(self, monkeypatch, tmp_path, debug=False):
+        test_file = tmp_path / "test.mp3"
+        test_file.write_bytes(b"fake audio")
+
+        with patch("tracklistify.cli.AsyncApp") as mock_app_class:
+            mock_app = AsyncMock()
+            mock_app.process_input = AsyncMock(
+                side_effect=self._chained_download_error()
+            )
+            mock_app.close = AsyncMock()
+            mock_app_class.return_value = mock_app
+
+            argv = [str(test_file)]
+            if debug:
+                argv.append("--debug")
+            args = parse_args(argv)
+            await main(args)
+
+    async def test_default_verbosity_no_traceback(self, monkeypatch, tmp_path, caplog):
+        """At default verbosity a download error logs one line, not the chain."""
+        import logging
+
+        with caplog.at_level(logging.ERROR, logger="tracklistify.cli"):
+            await self._run_with_raised_download(monkeypatch, tmp_path, debug=False)
+
+        # The one-line error is present...
+        assert any("unable to download" in r.getMessage() for r in caplog.records), (
+            "the error message line must be logged"
+        )
+        # ...but no traceback records are attached (exc_info suppressed).
+        assert not any(r.exc_info for r in caplog.records), (
+            "a download error must not log exc_info (the yt-dlp chain) at "
+            "default verbosity — gate it on --debug"
+        )
+
+    async def test_debug_shows_traceback(self, monkeypatch, tmp_path, caplog):
+        """With --debug the full traceback chain is logged (for diagnostics)."""
+        import logging
+
+        with caplog.at_level(logging.ERROR, logger="tracklistify.cli"):
+            await self._run_with_raised_download(monkeypatch, tmp_path, debug=True)
+
+        assert any(r.exc_info for r in caplog.records), (
+            "--debug must log exc_info so the full chain is available"
+        )
+
     async def test_no_fallback_passed_to_app(self, tmp_path):
         """Ensure --no-fallback argument is passed to process_input."""
         test_file = tmp_path / "test.mp3"

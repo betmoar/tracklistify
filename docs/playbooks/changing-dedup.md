@@ -6,7 +6,7 @@ DJ played. This playbook exists because two separate rewrites of this file
 shipped bugs that the tests at the time did not catch.
 
 Read this before touching `get_unique_tracks`, `_tracks_match`,
-`_artists_match`, `_rep_key`, or `_dedup_window`.
+`_artists_match`, `_rep_key`, `_dedup_window`, or `_strip_title_variant`.
 
 ---
 
@@ -146,14 +146,42 @@ class of bug as ARCHITECTURE.md invariant I2.)
 
 ## Changing the matching rule
 
-The predicate is: **normalized titles equal AND artist Jaccard ≥ 0.34.**
+The predicate is: **titles equal after `_strip_title_variant` + normalize,
+AND artist Jaccard ≥ 0.34.**
 
-- **Titles are exact-after-normalize, deliberately.** No fuzzy ratio. A ratio
-  cannot separate `"Berghain"` vs `"Berghain (Remix)"` (should merge, 0.727)
-  from `"Berghain (Remix)"` vs `"Berghain (Radio Edit)"` (should NOT merge,
-  also 0.727). Same score, opposite correct answers. Exact-after-normalize is
-  the only rule correct on both. The cost is a known false-negative: a bare
-  title and a parenthetical variant won't merge. Accepted.
+- **Titles are canonicalize-then-normalize, deliberately.** `_strip_title_variant`
+  runs on the RAW title (before `_normalize_token` would collapse the
+  brackets) and rewrites **trailing-suffix** bracket groups only: it drops
+  non-distinguishing version/live tags — `(Mixed)`, `(Club Mix)`, `(Extended
+  Mix)`, `(Original Mix)`, `(Radio Edit)`, `(Radio Mix)`, `(Extended)`,
+  `(Original)`, `Live At …` — in BOTH `(...)` and `[...]`; it **canonicalizes**
+  a `feat.`/`ft.`/`featuring` marker to `feat` while **keeping both the marker
+  word and the credited name** (`(ft. Carl Cox)` → `(feat carl cox)`, distinct
+  from a bare `(Carl Cox)`). It defaults to KEEP: anything containing
+  `remix`/`bootleg`/`edit by`/`vip` (as whole words) is retained, and so is
+  anything unrecognized — so a bare `(Remix)` or a named `(Someone Remix)`
+  stays title-distinguishing. Leading/middle brackets and nested same-type
+  brackets are left verbatim (they aren't the trailing suffix placement).
+  This is **comparison-only** — the cluster representative keeps its raw
+  `song_name`, so the displayed title is the provider's own spelling.
+- **Credits are canonicalized, not dropped — and the marker word is kept.**
+  Dropping a `feat.` group merges different featured artists and swallows
+  `Ft. <Place>` US abbreviations; deleting just the marker word collides the
+  feat-credit namespace with the bare-name namespace (`Song (Carl Cox)` =
+  `Song (feat. Carl Cox)`, silent over-merge). Canonicalizing the marker to
+  `feat` and keeping word + name fixes both. The accepted cost: a `feat. X`
+  credit and a `(Mixed)` tag of the *same* audio now separate (a visible
+  duplicate).
+- **No fuzzy ratio.** All three of these score ~0.727 against each other:
+  `"Berghain"` vs `"Berghain (Remix)"` (must NOT merge), `"Berghain (Remix)"`
+  vs `"Berghain (Radio Edit)"` (must NOT merge), and `"Outside World"` vs
+  `"Outside World (Club Mix)"` (SHOULD merge). Two should stay apart and one
+  should join, all at the same ratio — no single threshold separates them.
+  The allowlist does: it drops `(Club Mix)` so the third case merges while
+  `remix` on the keep-list keeps the first two apart. Canonicalize-then-
+  normalize is the only rule correct on all three. The residual false-
+  negative — a bare title vs a parenthetical the allowlist does not cover —
+  is accepted.
 - **The 0.34 threshold sits in an empirical gap**, not a tuned constant: real
   merge cases score ≥ 0.50, real separate cases score 0.00. Before moving it,
   re-run the numbers; if your new case lands between 0.34 and 0.50 you are

@@ -9,6 +9,63 @@ Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-03
+
+### Fixed
+
+- **YouTube `&list=` URLs no longer 403.** A URL carrying a playlist param
+  (e.g. `&list=RD...` — a YouTube auto-mix/radio list) made yt-dlp descend
+  into the playlist during resolution, triggering a non-retryable 403 before
+  `playlist_items='1'` could bound the download. YouTube playlist params
+  (`&list=`, `&index=`, `&t=`, …) are now stripped for YouTube URLs before
+  download — we only ever process one video, so the playlist context is never
+  wanted. The video id is extracted regardless of query-param order
+  (`watch?v=…&list=…` and `watch?list=…&v=…` alike). SoundCloud/Mixcloud are
+  untouched.
+- **Transient download 403s are now retried.** `config.download_max_retries`
+  (env `TRACKLISTIFY_DOWNLOAD_MAX_RETRIES`, default `3`) was declared but
+  never read — dead config. It is now wired into yt-dlp's native `retries`
+  option, so a transient YouTube HTTP 403 (bot-detection throttling — the
+  case that succeeds on a manual second run ~seconds later) is retried with
+  backoff instead of aborting the whole run. Genuine 403s (private/
+  region-locked video) still raise `DownloadError`.
+- **Download failures no longer flood the log with a yt-dlp traceback.**
+  Two causes, both fixed: (1) `ydl_opts['verbose']` was `True` with a comment
+  saying "Always set to False" — now `False`, suppressing yt-dlp's own
+  debug-level stderr spew; (2) the CLI's generic error handler logged
+  `exc_info=True` unconditionally, which printed the full exception chain —
+  yt-dlp's `HTTPError` traceback deep into its internals, "during handling of
+  the above exception", then the `DownloadError` — on every failure. The
+  traceback is now gated on `--debug`; at default verbosity a download error
+  logs one clean message (pass `--debug` for the full chain).
+- **Title-variant duplicates collapse in dedup.** Two detections of the same
+  recording under different bracketed spellings — `(Club Mix)` vs bare title,
+  `[Live At …]`, `feat.`/`ft.`/`featuring` spelling variants of the same
+  credit — no longer survive dedup as separate rows. `_strip_title_variant`
+  rewrites trailing-suffix bracket groups for the comparison only: it drops
+  non-distinguishing version/live tags and canonicalizes `feat.`/`ft.`/
+  `featuring` markers to `feat`, keeping both the marker word and the
+  credited artist (so `(feat. Snoop Dogg)` ≠ `(feat. Pharrell)`, and a
+  feat-credit ≠ a bare-name bracket). It defaults to KEEP: `remix`/
+  `bootleg`/`edit by`/`vip` (whole words), named remixes, and anything
+  unrecognized stay title-distinguishing; leading/middle and nested brackets
+  are left verbatim. The displayed `song_name` is unchanged. Accepted
+  trade-off: a `feat. X` credit and a `(Mixed)` tag of the same audio now
+  separate (a visible duplicate — the recoverable direction).
+- **Dedup over-merge hardening.** Closed four silent data-loss paths found in
+  review: bare-name vs feat-credit collision, cross-type nested brackets
+  defeating the empty-collapse guard, leading-bracket collapse, and
+  substring keep-marker shadowing. Comparison-only — `_rep_key`, exporters,
+  cache, and Spotify enrichment all still read the raw `song_name`.
+
+### Changed
+
+- **Release process:** `update_changelog_on_bump` is now `false`. Commitizen's
+  `cz bump` ran the non-incremental changelog generator, which regenerated
+  from `changelog_start_rev` and overwrote curated history. The repeatable
+  flow is now a hand-written version section + `cz bump` for version/tag only.
+- **Dependencies:** bumped `uv_build`, `ruff`, and `commitizen` versions.
+
 ## [0.9.0] - 2026-08-01
 
 ### Added

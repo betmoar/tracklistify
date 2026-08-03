@@ -4,64 +4,50 @@ From the 2026-07 handoff audit. Ordered by priority. Each item has enough
 context to be picked up cold. "Fixed" items are listed at the bottom so
 nobody re-audits them from scratch.
 
-## P2 — bracketed/parenthetical title variants survive dedup as separate rows
+---
 
-Identity requires titles to be **exactly equal** after normalization
-(`_tracks_match`), so a track detected under two title spellings emits two
-rows. Confirmed on real output, not hypothetical:
+## Open unknowns
 
-| Time | Title A | Title B |
-|---|---|---|
-| 08:20 / 09:10 | `Meet Her At The Love Parade (feat. Kiki Solvej)` | `Meet Her At The Love Parade (Mixed)` |
-| 57:30 / 58:20 | `Outside World (Club Mix)` | `Outside World` |
+The items below are blocked on something other than effort. Without this
+register the distinction is invisible — it is buried in prose inside the P2/P3
+entries, so "MusicBrainz enrichment" and "Spotify enrichment" look like the
+same size of job when only one of them is actually unblocked.
 
-Both pairs are ~50s apart (one segmentation step) with matching artists —
-the proximity and artist gates already agree they belong together; only
-the title check splits them. A reader sees one track played once and gets
-two lines.
+Three kinds of blocker: **measurement** (nobody has the number yet),
+**decision** (nobody has chosen yet), **external** (someone outside the project
+has to say yes).
 
-**Suffixes appear in `[...]` as well as `(...)`** — e.g. `Stereo Murder
-[Live At Tomorrowland]` in the same run. Handle both bracket styles or
-the fix covers half the cases.
+| ID | Question | Kind | Blocks | How it gets resolved |
+|---|---|---|---|---|
+| U1 | What is the overall ISRC presence rate in Shazam responses? | measurement | Sizes both enrichment items | The per-run isrc/search/none counter shipped by the Spotify spec. Current evidence is n=1 set: 7 of the 8 link-less tracks in a 20-track run carried an ISRC — that is a rate among *link-less* tracks, not the overall rate |
+| U2 | What fraction of ISRCs resolve to a Spotify track? | measurement | P2 Spotify payoff estimate (the 12/20 → ~19/20 claim) | Same counter |
+| U3 | How often does title/artist search return the *wrong* track for underground techno? | measurement | Trusting the P2 Spotify fallback path | Not resolvable up front. The Spotify spec records `spotify_match: "isrc"\|"search"` per track, so fuzzy hits are auditable in real output instead of silently presented as fact |
+| U4 | Flat per-platform keys or a nested `links` object in `Track.metadata`? | decision | P3 schema item | **Decided 2026-08-02 — nested `metadata.links`.** See `docs/dev/2026-08-02-spotify-link-enrichment-spec.md` unit E |
+| U5 | How well does MusicBrainz cover underground-electronic ISRCs? | measurement | P3 MusicBrainz — if coverage is low this buys little | Offline probe over a real `tracklist.json` once U1/U2 have produced ISRCs to probe with. Cheap, keyless, and worth doing before writing any MusicBrainz code |
+| U6 | Is the non-distinguishing title-suffix allowlist complete? | measurement | P2 dedup | Not resolvable up front, and deliberately so: the dedup spec defaults to *keep*, so an incomplete allowlist costs a visible duplicate row, never a silent deletion. Widen it from observed output over time |
+| U7 | RapidAPI Shazam: PCM conversion cost, metadata parity with shazamio, per-request price at ~216 segments/run, bot-defender reliability | external | P3 RapidAPI | Needs a paid key to answer any of it |
+| U8 | Will Beatport grant partner access? | external | P3 Beatport | Commercial-use review through the Partner Portal. No code path exists without it, and the known public-client-ID workaround is not shippable |
+| U9 | What is the real scope of the Spotify authorization-code + PKCE flow? | decision | Playlist export (`exporters/spotify.py`) | Unscoped. Client-credentials tokens can never reach `/me/playlists`, so this is a feature project, not a wiring task |
+| U10 | Should a `download_quality` / `download_format` change invalidate the download cache? | decision | P4 cache debt | Unowned behavior decision. Today those fields are not wired through the factory and are absent from the cache key, so a re-run at a different quality serves the old file |
 
-**Why this was left alone during the dedup rewrite:** the suffixes are not
-uniformly noise. `(Mixed)`, `(Club Mix)`, `(Radio Edit)`, `(Extended
-Mix)`, `(feat. X)` are usually the *same* recording under different
-Shazam spellings, but `(Remix)` and a named `(Someone Remix)` are a
-genuinely different track that must stay separate. No single similarity
-ratio separates `"Berghain"` vs `"Berghain (Remix)"` (must split) from
-`"Outside World"` vs `"Outside World (Club Mix)"` (should merge) — they
-are the same edit distance. This needs a **semantic** rule, not a fuzzier
-threshold.
+**Unblocked right now:** the two P2 items. Both have specs in `docs/dev/`.
+Everything else in this table is waiting on a measurement that those specs
+produce, or on someone outside the project.
 
-**Suggested approach:** strip a curated allowlist of non-distinguishing
-suffixes before comparison (`mixed`, `club mix`, `extended mix`, `radio
-edit`, `original mix`, `live at …`, `feat.`/`ft.`/`featuring …`) and keep
-everything else — notably anything containing `remix`, `bootleg`,
-`edit by`, `vip` — as title-distinguishing. Strip for the *comparison
-only*; the representative must keep its original title, since the
-displayed name should be what Shazam actually returned.
+---
 
-**Implementation constraint — strip BEFORE normalizing.** `_normalize_token`
-maps punctuation to spaces, so by the time it has run the delimiters are
-already gone and the suffix is indistinguishable from part of the title:
+## P2 — ~~bracketed/parenthetical title variants survive dedup as separate rows~~ ✅ Fixed
 
-```
-"Stereo Murder [Live At Tomorrowland]" -> "stereo murder live at tomorrowland"
-"Outside World (Club Mix)"             -> "outside world club mix"
-```
-
-A stripper that runs after normalization has no brackets left to anchor
-on and would have to substring-match, which will eat legitimate titles
-(a track actually called `Club Mix`). Operate on the raw title, matching
-`\((...)\)` and `\[(...)\]`, then normalize the remainder.
-
-Guard both directions with tests, as with the chaining rule: a merge case
-and a must-not-merge case. Do **not** attack this by loosening the artist
-Jaccard threshold — that is a different axis and would reintroduce the
-collab-bridge data loss (see `docs/playbooks/changing-dedup.md` rule 1b).
+**Fixed** (`feat/dedup`, PR #68) — see the [Fixed section](#fixed) below.
+The full design and rule set live in the spec
+(`docs/dev/2026-08-02-dedup-title-variants-spec.md`); the changelog entry is
+under `[Unreleased]`. The historical problem analysis is retained in the spec,
+not here, to keep the open backlog lean.
 
 ## P2 — Spotify enrichment is built but unreachable
+
+**Spec:** `docs/dev/2026-08-02-spotify-link-enrichment-spec.md` (also decides
+the P3 link-schema item below — unknown U4)
 
 `SpotifyProvider` (search/enrich, client-credentials auth) works but no
 pipeline stage calls `enrich_metadata`. The natural hook: after
@@ -206,6 +192,14 @@ problem than to the simple client-credentials enrichment above.
 
 ## P3 — decide the `metadata` link schema before more platforms land
 
+**Decided 2026-08-02 (unknown U4): nested `metadata.links`.** Specified in
+`docs/dev/2026-08-02-spotify-link-enrichment-spec.md` unit E, which lands it
+alongside the Spotify enrichment as this entry recommends. The flat keys are
+removed rather than aliased, and `links.spotify` is canonical-only — the
+Shazam-supplied search URLs keep distinct `spotify_search` / `deezer_search`
+keys so a consumer can tell a resolved track link from a search. The rest of
+this entry is retained as the rationale.
+
 `Track.metadata` currently carries flat, per-platform keys: `shazam_url`,
 `apple_music_id`, `spotify_search_url`, `deezer_search_url`. That is fine
 at four and gets ugly at eight, and every consumer of the JSON has to
@@ -295,6 +289,23 @@ field description. Low value — consider generating from
 
 ## Fixed
 
+### 2026-08 P2 dedup title-variants + download fixes (`feat/dedup`, PR #68)
+
+| Fix | Where | Test |
+|---|---|---|
+| Bracketed title variants (`(Club Mix)`, `[Live At …]`, `feat.`/`ft.`/`featuring` spellings) survived dedup as duplicate rows — titles compared exact-after-normalize | `core/track.py::_strip_title_variant` + `_comparison_title` (canonicalize trailing-suffix groups before normalize; comparison-only) | `tests/test_track_matcher.py::TestDedupInvariants` d1–d21 |
+| `config.download_max_retries` was dead config (declared, never read) — transient YouTube 403 aborted the run | `downloaders/ytdlp.py` wires it into yt-dlp's native `retries` option | `tests/test_ytdlp.py::test_download_max_retries_is_wired_into_ydl_opts` |
+| YouTube `&list=RD…` (auto-mix) URLs 403'd — yt-dlp descended into the playlist before `playlist_items='1'` bounded the download (non-retryable) | `downloaders/ytdlp.py::_strip_youtube_playlist_params` strips playlist params for YouTube | `tests/test_ytdlp.py::test_youtube_playlist_params_stripped_before_download` |
+| `ydl_opts['verbose']` was `True` with a comment saying "Always set to False" — flooded the log with a yt-dlp traceback on every download failure | `downloaders/ytdlp.py` (`verbose: False`) | `tests/test_ytdlp.py::test_ydl_opts_verbose_is_false` |
+
+**Design:** the feat-credit marker is canonicalized, not dropped — keeping
+both the marker word and the credited artist (a credit identifies a specific
+recording). Accepted trade-off: a `feat. X` credit and a `(Mixed)` tag of the
+same audio now separate (visible duplicate — the recoverable direction). Full
+rule set, design decisions (D1–D7), and truth table in
+`docs/dev/2026-08-02-dedup-title-variants-spec.md`. Survived 3 review passes
+(2× `/code-review max`, 4-agent PR-review) + code-simplifier polish.
+
 ### 2026-07 P2 correctness batch (`fix/p2-dedup-confidence-downloader`)
 
 | Fix | Where | Test |
@@ -316,11 +327,41 @@ proposed levers (fuzzy `is_similar_to`, raise `time_threshold`) would not
 have fixed anything. `add_track` no longer dedups; it confidence-gates and
 appends.
 
-**Known limitation (accepted, not fixed):** `"Berghain"` vs
-`"Berghain (Remix)"` will not merge — titles must match exactly after
-normalization. No fuzzy ratio separates that case from the
-correctly-separate `"(Remix)"` vs `"(Radio Edit)"` pair (both score 0.727),
-so exact-after-normalize is the only rule correct on both.
+**Known limitation (narrowed, not fully fixed):** the matching rule is now
+canonicalize-then-normalize (not exact-after-normalize): `_strip_title_variant`
+drops non-distinguishing version/live tags (`(Mixed)`, `(Club Mix)`,
+`(Extended Mix)`, `(Original Mix)`, `(Radio Edit)`, `(Radio Mix)`,
+`(Extended)`, `(Original)`, `Live At …`, in both `(...)` and `[...]`) and
+canonicalizes `feat.`/`ft.`/`featuring` markers to `feat` while keeping the
+credited artist. The **specific** `"Berghain"` vs `"Berghain (Remix)"` case
+this note cites **still will not merge**: `remix` is on the keep-list, and
+the default is keep (anything unrecognized stays too). What *did* open up is
+the allowlisted set — e.g. `Outside World` vs `Outside World (Club Mix)` now
+merges. No fuzzy ratio is used; the keep-list beats a drop-list because
+`(Someone Remix)` and a bare `(Remix)` must stay separate rows.
+
+**Known over-merge (accepted, awaits more data):** two *named-different* live
+recordings collapse because `Live At …` is a drop-prefix.
+`Song (Live At Wembley 95)` and `Song (Live At Madison Square Garden 98)` by
+the same artist both drop to `Song` and merge into one row (verified
+end-to-end). The spec's `Live At …` case was bare-title-vs-live
+(`Stereo Murder [Live At Tomorrowland]` vs `Stereo Murder`); it did not
+consider live-vs-live with different venues. In a DJ-mix context two live
+recordings 50s apart by the same artist are usually the same track Shazam
+spelled differently, not two genuinely different plays — but two *named*
+venues/years is a real over-merge class that can only be sized against real
+output over time.
+
+**By design (not a limitation):** the drop-exact version tags
+(`(Original Mix)`, `(Radio Edit)`, `(Extended)`, `(Extended Mix)`, etc.) are
+*deliberately* treated as non-distinguishing — the spec's premise is that
+these are "usually the same recording under different Shazam spellings." So
+`(Original Mix)` vs `(Radio Edit)`, or a bare title vs `(Original Mix)`,
+merge by design. They are *sometimes* different masters; that is the accepted
+cost of the allowlist, not an undocumented over-merge. Likewise the accepted
+trade-off of treating `feat.` credits as distinguishing: a `feat. X` credit
+and a `(Mixed)` tag of the *same* audio now separate (a visible duplicate —
+the recoverable direction).
 
 ### 2026-07 cache + output work (`feat/wire-cache-identification`, PR #65)
 

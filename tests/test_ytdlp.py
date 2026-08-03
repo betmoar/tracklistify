@@ -320,3 +320,185 @@ async def test_requested_downloads_without_filepath_falls_back(
     assert any("carries no filepath" in r.message for r in caplog.records), (
         "the degraded-path fallback must be logged, not silent"
     )
+
+
+@pytest.mark.asyncio
+async def test_download_max_retries_is_wired_into_ydl_opts(monkeypatch, tmp_path):
+    """``config.download_max_retries`` must reach yt-dlp's native ``retries``
+    option. yt-dlp's own retry layer handles transient HTTP 403s (YouTube
+    bot-detection throttling — the case that succeeds on a manual second
+    run ~3s later) with backoff and format/client rotation, which a
+    Python-level loop re-running ``extract_info`` can't match.
+
+    Without this wiring the knob is dead config (advertised in
+    ``.env.example``, never read), so a transient 403 aborts the whole run.
+    """
+    from tracklistify.config.factory import ConfigFactory, get_config
+
+    ConfigFactory.clear_cache()
+    monkeypatch.setenv("TRACKLISTIFY_DOWNLOAD_MAX_RETRIES", "5")
+    get_config(force_refresh=True)
+
+    captured = {}
+
+    def _factory(opts):
+        captured.update(opts)
+        return _FakeYdl(
+            {
+                "id": "x",
+                "title": "T",
+                "uploader": "U",
+                "duration": 1,
+                "ext": "mp3",
+                "requested_downloads": [{"filepath": str(tmp_path / "x.mp3")}],
+            },
+            tmp_path,
+        )
+
+    monkeypatch.setattr(ytdlp, "yt_dlp", MagicMock(YoutubeDL=_factory))
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    await dl.download("https://www.youtube.com/watch?v=x")
+
+    assert captured.get("retries") == 5, (
+        "config.download_max_retries (5) must be wired into ydl_opts['retries'] "
+        "or a transient 403 aborts the run instead of being retried"
+    )
+    ConfigFactory.clear_cache()
+
+
+@pytest.mark.asyncio
+async def test_ydl_opts_verbose_is_false(monkeypatch, tmp_path):
+    """``ydl_opts['verbose']`` must be False. yt-dlp routes real errors through
+    our ``YTDLPLogger.error`` hook regardless of ``verbose``; ``verbose=True``
+    only dumps debug-level frames (the traceback flood) to stderr. The inline
+    comment said "Always set to False" while the value was True — a one-line
+    contradiction that flooded the log on every download failure.
+    """
+    captured = {}
+
+    def _factory(opts):
+        captured.update(opts)
+        return _FakeYdl(
+            {
+                "id": "x",
+                "title": "T",
+                "uploader": "U",
+                "duration": 1,
+                "ext": "mp3",
+                "requested_downloads": [{"filepath": str(tmp_path / "x.mp3")}],
+            },
+            tmp_path,
+        )
+
+    monkeypatch.setattr(ytdlp, "yt_dlp", MagicMock(YoutubeDL=_factory))
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    await dl.download("https://www.youtube.com/watch?v=x")
+
+    assert captured.get("verbose") is False, (
+        "ydl_opts['verbose'] must be False or yt-dlp dumps its traceback to "
+        "stderr on every failure, on top of our own logged error"
+    )
+
+
+@pytest.mark.asyncio
+async def test_youtube_playlist_params_stripped_before_download(monkeypatch, tmp_path):
+    """A YouTube URL with ``&list=`` (an auto-mix / radio playlist) must have
+    the playlist params stripped before reaching yt-dlp. YouTube returns 403
+    on programmatic resolution of ``RD`` (server-generated mix) lists; yt-dlp
+    descends into the playlist before ``playlist_items='1'`` bounds the
+    *download*, so the 403 fires during resolution and is not retryable.
+
+    We only ever process one video, so the playlist context is never wanted.
+    ``?v=<id>`` is the only load-bearing param for a download. Verified
+    against a real ``&list=RD...`` URL: the bare video succeeds, the playlist
+    URL 403s.
+    """
+    captured_url = {}
+
+    class _UrlCapturingYdl(_FakeYdl):
+        def extract_info(self, url, download=True):
+            captured_url["url"] = url
+            return self._info
+
+    info = {
+        "id": "JH0tXHFmkS8",
+        "title": "T",
+        "uploader": "U",
+        "duration": 1,
+        "ext": "mp3",
+        "requested_downloads": [{"filepath": str(tmp_path / "JH0tXHFmkS8.mp3")}],
+    }
+
+    def _factory(opts):
+        return _UrlCapturingYdl(info, tmp_path)
+
+    monkeypatch.setattr(ytdlp, "yt_dlp", MagicMock(YoutubeDL=_factory))
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    await dl.download("https://www.youtube.com/watch?v=JH0tXHFmkS8&list=RDJH0tXHFmkS8")
+
+    passed = captured_url.get("url", "")
+    assert "list=" not in passed, (
+        f"the &list= playlist param must be stripped before yt-dlp sees the "
+        f"URL (it triggers a non-retryable 403 on RD auto-mixes); got {passed!r}"
+    )
+    assert "v=JH0tXHFmkS8" in passed, "the video id must be preserved"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        # v= first (the common case the original test covered).
+        "https://www.youtube.com/watch?v=JH0tXHFmkS8&list=RDJH0tXHFmkS8",
+        # list= first — YouTube emits playlist URLs with the list param in
+        # either order; the video id must still be extracted and the list
+        # stripped, or the non-retryable 403 survives.
+        "https://www.youtube.com/watch?list=RDJH0tXHFmkS8&v=JH0tXHFmkS8",
+        # v= in the middle (feature/shared params before it).
+        "https://www.youtube.com/watch?feature=shared&v=JH0tXHFmkS8&list=RDx",
+        # music.youtube.com with list first.
+        "https://music.youtube.com/watch?list=RDx&v=JH0tXHFmkS8",
+    ],
+)
+async def test_youtube_playlist_params_stripped_v_in_any_position(
+    monkeypatch, tmp_path, url
+):
+    """The video id must be extracted regardless of where ``v=`` sits in the
+    query string. YouTube emits playlist URLs with params in either order; a
+    regex that only matches ``watch?v=`` (v first) misses ``watch?list=...&v=``
+    and leaves the playlist param — so the non-retryable 403 survives. The
+    extractor needs a ``[?&]v=<id>`` fallback (mirroring
+    ``downloaders/cache_key._YT_PATTERNS``)."""
+    captured_url = {}
+
+    class _UrlCapturingYdl(_FakeYdl):
+        def extract_info(self, url, download=True):
+            captured_url["url"] = url
+            return self._info
+
+    info = {
+        "id": "JH0tXHFmkS8",
+        "title": "T",
+        "uploader": "U",
+        "duration": 1,
+        "ext": "mp3",
+        "requested_downloads": [{"filepath": str(tmp_path / "JH0tXHFmkS8.mp3")}],
+    }
+
+    monkeypatch.setattr(
+        ytdlp,
+        "yt_dlp",
+        MagicMock(YoutubeDL=lambda opts: _UrlCapturingYdl(info, tmp_path)),
+    )
+
+    dl = YtDlpDownloader(stream_copy=True, temp_dir=str(tmp_path))
+    await dl.download(url)
+
+    passed = captured_url.get("url", "")
+    assert "list=" not in passed, (
+        f"playlist param not stripped for {url!r} -> {passed!r}"
+    )
+    assert "v=JH0tXHFmkS8" in passed, f"video id lost for {url!r} -> {passed!r}"
