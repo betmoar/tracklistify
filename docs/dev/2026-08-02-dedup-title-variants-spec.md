@@ -172,11 +172,14 @@ cannot quietly swallow a named remix. Prefixes are written post-normalization:
 match is `"feat "`, not `"feat. "`. Case does not matter — `_normalize_token`
 lowercases first, so `Ft.`, `FEAT`, `Featuring` all match.)
 
-An empty group (`"Foo ()"`) is kept verbatim (harmless). Nested same-type
-brackets (`((Club Mix))`) do **not** match the trailing regex — its inner
-class `[^()]*` cannot cross a nested paren — so the group falls through to
-keep rather than matching the inner span and leaving a malformed dangling
-outer paren that would defeat the D4 empty-collapse guard.
+An empty group (`"Foo ()"`) is kept verbatim (harmless). Nested brackets of
+ANY kind — same-type `((Club Mix))` or cross-type `([Club Mix])` /
+`[(Club Mix)]` — do **not** match the trailing regex: each inner class
+excludes both `()` and `[]`, so a group containing a nested bracket of either
+type falls through to keep. Otherwise the cross-type case would match the
+outer span and `_normalize_token` would collapse the inner brackets to
+spaces, dropping `([Club Mix])` to `club mix` and silently merging distinct
+tags (defeating the D4 empty-collapse guard).
 
 **Why canonicalize feat instead of dropping it.** `feat.`, `ft.`, and
 `featuring` are all standard spellings of the same credit marker, and Shazam
@@ -247,11 +250,15 @@ def _strip_title_variant(title: str) -> str:
             break                   # trailing group stays; stop peeling
         if action[0] == "drop":
             result = (result[:match.start()] + " " + result[match.end():]).strip()
+                                    # drop loops — there may be another suffix
         else:  # rewrite — preserve delimiter type
             open_d, close_d, new_inner = group[0], group[-1], action[1]
             result = (result[:match.start()].rstrip()
                       + f" {open_d}{new_inner}{close_d}"
                       + result[match.end():]).strip()
+            break                   # rewritten group is retained in place, like
+                                    # keep — stop peeling (rewriting it again is
+                                    # a no-op that would spin to the cap)
     return result if result.strip() else title
 ```
 
@@ -290,10 +297,11 @@ repeatedly. The artist clause is untouched.
 | `Meet Her At The Love Parade (feat. Kiki Solvej)` | `meet her at the love parade feat kiki solvej` |
 | `Meet Her At The Love Parade (Mixed)` | `meet her at the love parade` (**separates** — trade-off) |
 
-Nested same-type parentheses (`((Club Mix))`) do not match the trailing regex
-— `[^()]*` cannot cross a nested paren — so the group falls through to keep
-(distinct tags stay distinct). A leading/middle bracket is likewise not a
-trailing suffix and is kept verbatim (D6).
+Nested brackets of any kind (`((Club Mix))`, `([Club Mix])`, `[(Club Mix)]`)
+do not match the trailing regex — each inner class excludes both `()` and
+`[]`, so a nested group of either type falls through to keep (distinct tags
+stay distinct). A leading/middle bracket is likewise not a trailing suffix
+and is kept verbatim (D6).
 
 ---
 

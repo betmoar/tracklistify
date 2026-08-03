@@ -796,6 +796,98 @@ class TestDedupInvariants:
             "still canonicalize across feat/ft spelling variants"
         )
 
+    # --- Coverage gaps surfaced by the PR-review test-analyzer --------------
+
+    def test_d17_keep_list_beats_drop_list(self, track_matcher):
+        """Keep-list precedence: `(Extended Remix)` carries a keep-marker
+        (`remix`) AND a drop-exact token (`extended`). The keep-list is
+        checked first, so the group stays — a bare title and the remix stay
+        two rows. Without this, a future widening of `_SUFFIX_DROP_EXACT`
+        would silently swallow any named remix containing a drop token.
+        """
+        track_matcher.tracks = [
+            _t("Foo (Extended Remix)", "DJ Example", 9000),
+            _t("Foo", "DJ Example", 9050),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 2, (
+            "a keep-marker (remix) must survive even when the group also "
+            "contains a drop-exact token (extended)"
+        )
+
+    def test_d18_featuring_spelling_canonicalizes_on_title_side(self, track_matcher):
+        """The third feat-marker spelling — `(Featuring X)` — must collapse
+        with `(feat. X)`. Every prior test pair used only ft./feat.; this
+        pins the `featuring` arm of `_FEAT_MARKER_RE` so it can't be silently
+        dropped from the alternation.
+        """
+        track_matcher.tracks = [
+            _t("Track (Featuring Carl Cox)", "DJ Example", 9500),
+            _t("Track (feat. Carl Cox)", "DJ Example", 9550),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 1, (
+            "(Featuring X) must canonicalize to the same key as (feat. X)"
+        )
+
+    def test_d19_multi_group_peel_merges_with_bare(self, track_matcher):
+        """The peel loop processes two trailing groups of different delimiter
+        types in one call: `Outside World (Club Mix) [Radio Edit]` peels BOTH
+        version tags, leaving the bare title, which merges with a bare
+        detection. Pins the multi-group cascade + the drop-then-drop
+        termination. (A feat+version composition does NOT merge with the bare
+        title — the feat credit is kept by D5; that pole is d19b.)
+        """
+        track_matcher.tracks = [
+            _t("Outside World (Club Mix) [Radio Edit]", "DJ Example", 10000),
+            _t("Outside World", "DJ Example", 10050),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 1, (
+            "two trailing version tags must both peel and merge with the bare title"
+        )
+
+    def test_d19b_multi_group_distinct_credits_separate(self, track_matcher):
+        """Other pole of the multi-group peel: the feat credit is kept, so
+        two compositions with different featured artists stay two rows even
+        when their version tag matches.
+        """
+        track_matcher.tracks = [
+            _t("Song Title (feat. Snoop Dogg) [Extended Mix]", "DJ Example", 10500),
+            _t("Song Title (feat. Pharrell) [Extended Mix]", "DJ Example", 10550),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 2, (
+            "different featured artists stay separate even with matching version tags"
+        )
+
+    def test_d20_empty_credit_canonicalizes_across_spellings(self, track_matcher):
+        """A feat marker with no credited name (`(feat.)`, `(ft.)`) is
+        canonicalized to `(feat)` so the spellings merge — not dropped to
+        empty (which would merge with the bare title). Pins the
+        `else 'feat'` arm of the rewrite path.
+        """
+        track_matcher.tracks = [
+            _t("(feat.)", "DJ Example", 11000),
+            _t("(ft.)", "DJ Example", 11050),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 1, (
+            "empty-credit feat markers (feat.)/(ft.) must canonicalize and merge"
+        )
+
+    def test_d21_cross_type_nested_brackets_do_not_defeat_d4(self, track_matcher):
+        """D4 over-merge guard (cross-type nesting). d15 pins same-type
+        `((..))`; this pins the cross-type case `([..])` / `[(..)]`. The
+        trailing regex's inner classes exclude BOTH bracket types, so a
+        nested group of any kind falls through to keep — distinct tags stay
+        distinct instead of the inner brackets normalizing to spaces and
+        collapsing to the drop-list.
+        """
+        track_matcher.tracks = [
+            _t("Anthem ([Club Mix])", "DJ Example", 11500),
+            _t("Anthem ([Mixed])", "DJ Example", 11550),
+        ]
+        assert len(track_matcher.get_unique_tracks()) == 2, (
+            "cross-type nested brackets ([..]) must not defeat the D4 guard "
+            "and silently merge distinct version tags"
+        )
+
 
 def test_identified_track_is_logged_at_info(track_matcher, caplog):
     """The per-track success line must stay at INFO.

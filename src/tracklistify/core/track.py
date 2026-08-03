@@ -48,7 +48,7 @@ _FALLBACK_DEDUP_WINDOW = 100.0
 # drive the split). Word-boundary alternations (\band\b, \bfeat\b, ...) ensure
 # "Commander" is not split on its interior "and".
 _ARTIST_SEP = re.compile(
-    r"\s*(?:&|,|/|\\|\band\b|\bfeat\.?\b|\bfeaturing\b|\bft\.?\b|\bvs\.?\b|\bx\b|\+|\||;)\s*",
+    r"\s*(?:&|,|/|\\|\band\b|\bfeat\.?\b|\bft\.?\b|\bvs\.?\b|\bx\b|\+|\||;)\s*",
     re.IGNORECASE,
 )
 
@@ -94,9 +94,13 @@ def _normalize_token(s: str) -> str:
 # D5: feat/ft/featuring credits are CANONICALIZED to `feat`, not dropped.
 # The credited artist identifies a specific recording, so the marker word AND
 # the name are kept: `(ft. Carl Cox)` -> `(feat carl cox)`, which is DISTINCT
-# from a bare `(Carl Cox)` -> `(carl cox)`. Dropping the marker would collide
-# the two namespaces and merge different featured artists; dropping the whole
-# group would also swallow `Ft. <Place>` US abbreviations.
+# from a bare `(Carl Cox)` -> `(carl cox)`. Two earlier drafts are rejected:
+# dropping the WHOLE GROUP merges different featured artists (`(feat. Snoop
+# Dogg)` == `(feat. Pharrell)`, both -> bare title) AND swallows `Ft. <Place>`
+# US abbreviations; deleting only the MARKER WORD but keeping the name collides
+# the feat-credit namespace with the bare-name bracket (`Song (Carl Cox)` ==
+# `Song (feat. Carl Cox)`, both -> `(carl cox)`). Keeping both marker and name
+# avoids both.
 #
 # D6: only TRAILING-SUFFIX groups are rewritten. A bracket that is not the last
 # non-space content of the title (e.g. a leading `(Original) Sin`) is kept
@@ -109,11 +113,14 @@ def _normalize_token(s: str) -> str:
 # widening the drop-lists later can never quietly swallow a named remix.
 
 # A trailing-suffix group: a `(...)` or `[...]` that ends the title (optional
-# trailing whitespace). Inner is `[^()]*` / `[^\[\]]*`, so a NESTED same-type
-# bracket (`((Club Mix))`) does NOT match here — it falls through to keep
-# (the safe default), rather than matching the inner span and leaving a
-# malformed dangling outer paren that defeats the D4 empty-collapse guard.
-_TRAILING_GROUP_RE = re.compile(r"(\(([^()]*)\)|\[([^\[\]]*)\])\s*$")
+# trailing whitespace). Each inner class excludes BOTH bracket types
+# (`[^()\[\]]*`), so a NESTED group of ANY kind — same-type `((Club Mix))` or
+# cross-type `([Club Mix])` / `[(Club Mix)]` — does NOT match here and falls
+# through to keep (the safe default). Otherwise the cross-type case would
+# match the outer span and `_normalize_token` would collapse the inner
+# brackets to spaces, dropping a `([Club Mix])` to `club mix` and silently
+# merging distinct tags (defeating the D4 empty-collapse guard).
+_TRAILING_GROUP_RE = re.compile(r"(\(([^()\[\]]*)\)|\[([^()\[\]]*)\])\s*$")
 
 # Keep-markers as whole words only (so "Vipul" does not match "vip").
 _SUFFIX_KEEP_RE = re.compile(r"\b(?:remix|bootleg|edit by|vip)\b")
@@ -137,7 +144,10 @@ _SUFFIX_DROP_PREFIXES = ("live at ",)
 # group. Covers feat/ft/featuring and every casing variant.
 _FEAT_MARKER_RE = re.compile(r"^(feat|ft|featuring)\b\s*")
 
-# Cap on trailing-group peels per title (safety; real titles have <=2-3).
+# Cap on trailing-group peels per title. `drop` loops (there may be another
+# suffix to peel); `keep` and `rewrite` break (a kept/rewritten group is
+# retained in place, so nothing before it is a trailing suffix). Real titles
+# peel <=2-3 groups; the cap is a backstop against pathological input.
 _MAX_GROUP_PEELS = 8
 
 
@@ -194,6 +204,8 @@ def _strip_title_variant(title: str) -> str:
                 + f" {open_d}{new_inner}{close_d}"
                 + result[match.end() :]
             ).strip()
+            break  # rewritten group is retained in place (like keep); nothing
+            # before it is a trailing suffix, so peeling stops here
     return result if result.strip() else title
 
 
