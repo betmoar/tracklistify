@@ -99,6 +99,10 @@ changelog_start_rev = "v0.8.1"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
+# Pinned: every async test must carry @pytest.mark.asyncio. This is
+# pytest-asyncio's current default, but relying on the default means a
+# future release flipping it would silently start auto-collecting.
+asyncio_mode = "strict"
 addopts = "-ra -q -v"
 testpaths = [
     "tests"
