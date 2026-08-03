@@ -36,82 +36,13 @@ produce, or on someone outside the project.
 
 ---
 
-## P2 — bracketed/parenthetical title variants survive dedup as separate rows
+## P2 — ~~bracketed/parenthetical title variants survive dedup as separate rows~~ ✅ Fixed
 
-**Status: Fixed.** `_strip_title_variant` rewrites **trailing-suffix** bracket
-groups before normalization, comparison-only (representative keeps its raw
-title): it drops non-distinguishing version/live tags (`(Mixed)`, `(Club Mix)`,
-`[Live At …]`, …) and **canonicalizes** `feat.`/`ft.`/`featuring` markers to
-`feat` while **keeping both the marker word and the credited artist** (a credit
-identifies a specific recording; dropping the group merges different featured
-artists and swallows `Ft. <Place>` abbreviations, while deleting just the
-marker word collides the feat-credit namespace with bare-name brackets).
-Keep-markers (`remix`/`bootleg`/`edit by`/`vip`) match on word boundaries;
-leading/middle and nested same-type brackets are left verbatim. The analysis
-below is retained as historical record; note the `feat.` handling diverged
-from its "Suggested approach" (canonicalize, not strip) for the reasons above.
-
-**Spec:** `docs/dev/2026-08-02-dedup-title-variants-spec.md`
-
-> **The analysis below describes the PRE-FIX behavior** (exact-after-
-> normalize matching, which is what caused this P2). It is retained as the
-> historical record of the problem; the shipped rule is the "Status: Fixed"
-> summary above.
-
-Identity requires titles to be **exactly equal** after normalization
-(`_tracks_match`), so a track detected under two title spellings emits two
-rows. Confirmed on real output, not hypothetical:
-
-| Time | Title A | Title B |
-|---|---|---|
-| 08:20 / 09:10 | `Meet Her At The Love Parade (feat. Kiki Solvej)` | `Meet Her At The Love Parade (Mixed)` |
-| 57:30 / 58:20 | `Outside World (Club Mix)` | `Outside World` |
-
-Both pairs are ~50s apart (one segmentation step) with matching artists —
-the proximity and artist gates already agree they belong together; only
-the title check splits them. A reader sees one track played once and gets
-two lines.
-
-**Suffixes appear in `[...]` as well as `(...)`** — e.g. `Stereo Murder
-[Live At Tomorrowland]` in the same run. Handle both bracket styles or
-the fix covers half the cases.
-
-**Why this was left alone during the dedup rewrite:** the suffixes are not
-uniformly noise. `(Mixed)`, `(Club Mix)`, `(Radio Edit)`, `(Extended
-Mix)`, `(feat. X)` are usually the *same* recording under different
-Shazam spellings, but `(Remix)` and a named `(Someone Remix)` are a
-genuinely different track that must stay separate. No single similarity
-ratio separates `"Berghain"` vs `"Berghain (Remix)"` (must split) from
-`"Outside World"` vs `"Outside World (Club Mix)"` (should merge) — they
-are the same edit distance. This needs a **semantic** rule, not a fuzzier
-threshold.
-
-**Suggested approach:** strip a curated allowlist of non-distinguishing
-suffixes before comparison (`mixed`, `club mix`, `extended mix`, `radio
-edit`, `original mix`, `live at …`, `feat.`/`ft.`/`featuring …`) and keep
-everything else — notably anything containing `remix`, `bootleg`,
-`edit by`, `vip` — as title-distinguishing. Strip for the *comparison
-only*; the representative must keep its original title, since the
-displayed name should be what Shazam actually returned.
-
-**Implementation constraint — strip BEFORE normalizing.** `_normalize_token`
-maps punctuation to spaces, so by the time it has run the delimiters are
-already gone and the suffix is indistinguishable from part of the title:
-
-```
-"Stereo Murder [Live At Tomorrowland]" -> "stereo murder live at tomorrowland"
-"Outside World (Club Mix)"             -> "outside world club mix"
-```
-
-A stripper that runs after normalization has no brackets left to anchor
-on and would have to substring-match, which will eat legitimate titles
-(a track actually called `Club Mix`). Operate on the raw title, matching
-`\((...)\)` and `\[(...)\]`, then normalize the remainder.
-
-Guard both directions with tests, as with the chaining rule: a merge case
-and a must-not-merge case. Do **not** attack this by loosening the artist
-Jaccard threshold — that is a different axis and would reintroduce the
-collab-bridge data loss (see `docs/playbooks/changing-dedup.md` rule 1b).
+**Fixed** (`feat/dedup`, PR #68) — see the [Fixed section](#fixed) below.
+The full design and rule set live in the spec
+(`docs/dev/2026-08-02-dedup-title-variants-spec.md`); the changelog entry is
+under `[Unreleased]`. The historical problem analysis is retained in the spec,
+not here, to keep the open backlog lean.
 
 ## P2 — Spotify enrichment is built but unreachable
 
@@ -357,6 +288,23 @@ field description. Low value — consider generating from
 ---
 
 ## Fixed
+
+### 2026-08 P2 dedup title-variants + download fixes (`feat/dedup`, PR #68)
+
+| Fix | Where | Test |
+|---|---|---|
+| Bracketed title variants (`(Club Mix)`, `[Live At …]`, `feat.`/`ft.`/`featuring` spellings) survived dedup as duplicate rows — titles compared exact-after-normalize | `core/track.py::_strip_title_variant` + `_comparison_title` (canonicalize trailing-suffix groups before normalize; comparison-only) | `tests/test_track_matcher.py::TestDedupInvariants` d1–d21 |
+| `config.download_max_retries` was dead config (declared, never read) — transient YouTube 403 aborted the run | `downloaders/ytdlp.py` wires it into yt-dlp's native `retries` option | `tests/test_ytdlp.py::test_download_max_retries_is_wired_into_ydl_opts` |
+| YouTube `&list=RD…` (auto-mix) URLs 403'd — yt-dlp descended into the playlist before `playlist_items='1'` bounded the download (non-retryable) | `downloaders/ytdlp.py::_strip_youtube_playlist_params` strips playlist params for YouTube | `tests/test_ytdlp.py::test_youtube_playlist_params_stripped_before_download` |
+| `ydl_opts['verbose']` was `True` with a comment saying "Always set to False" — flooded the log with a yt-dlp traceback on every download failure | `downloaders/ytdlp.py` (`verbose: False`) | `tests/test_ytdlp.py::test_ydl_opts_verbose_is_false` |
+
+**Design:** the feat-credit marker is canonicalized, not dropped — keeping
+both the marker word and the credited artist (a credit identifies a specific
+recording). Accepted trade-off: a `feat. X` credit and a `(Mixed)` tag of the
+same audio now separate (visible duplicate — the recoverable direction). Full
+rule set, design decisions (D1–D7), and truth table in
+`docs/dev/2026-08-02-dedup-title-variants-spec.md`. Survived 3 review passes
+(2× `/code-review max`, 4-agent PR-review) + code-simplifier polish.
 
 ### 2026-07 P2 correctness batch (`fix/p2-dedup-confidence-downloader`)
 
