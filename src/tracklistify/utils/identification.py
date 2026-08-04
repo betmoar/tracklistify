@@ -374,12 +374,10 @@ class IdentificationManager:
                 if track.metadata.get("links", {}).get("spotify"):
                     continue
 
-                match = await self._enrich_one(
-                    provider, limiter, track, counts, disabled=[False]
-                )
-                # AuthenticationError disables enrichment for the rest of the
-                # run; ``_enrich_one`` flips ``disabled`` in place via the
-                # shared flag below.
+                match = await self._enrich_one(provider, limiter, track, counts)
+                # AuthenticationError/RateLimitError halt enrichment for the
+                # rest of the run — ``_enrich_one`` signals that by returning
+                # the "disabled" sentinel.
                 if match == "disabled":
                     break
 
@@ -397,14 +395,13 @@ class IdentificationManager:
         limiter,
         track: Track,
         counts: Dict[str, int],
-        disabled: List[bool],
     ) -> str:
         """Enrich a single track; return the match kind or sentinel.
 
         Returns ``"isrc"`` / ``"search"`` / ``"none"`` for a processed track,
-        or ``"disabled"`` when an AuthenticationError has halted enrichment for
-        the remainder of the run (the shared ``disabled`` flag is how the
-        caller learns to break).
+        or ``"disabled"`` when an AuthenticationError or RateLimitError has
+        halted enrichment for the remainder of the run — the caller breaks its
+        loop on that sentinel.
 
         Acquire/release pairing is verbatim from the identification loop
         (identification.py:375-407): every ``acquire`` is matched by a
@@ -435,7 +432,6 @@ class IdentificationManager:
                 logger.warning(
                     "Spotify enrichment disabled for this run: authentication failed"
                 )
-                disabled[0] = True
                 limiter.record_result("spotify", success=False)
                 return "disabled"
             except RateLimitError:
