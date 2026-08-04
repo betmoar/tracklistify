@@ -3,9 +3,13 @@
 # Standard library imports
 import os
 import threading
+from typing import TYPE_CHECKING, Optional
 
 # Local imports
 from tracklistify.core.exceptions import ConfigError
+
+if TYPE_CHECKING:
+    from tracklistify.providers.spotify import SpotifyProvider
 
 _provider_factory = None
 _provider_lock = threading.Lock()
@@ -102,6 +106,42 @@ class ProviderFactory:
                 )
             self.providers[provider_name] = provider
             return provider
+
+    # Cache key for the enrichment-only Spotify provider. Distinct from any
+    # identification provider name (KNOWN_PROVIDERS) so it cannot collide, and
+    # leading underscore keeps it out of the identification name space.
+    _SPOTIFY_ENRICHMENT_KEY = "_spotify_enrichment"
+
+    def get_spotify_provider(self) -> "Optional[SpotifyProvider]":
+        """Return a configured Spotify enrichment provider, or None.
+
+        Reads ``TRACKLISTIFY_SPOTIFY_CLIENT_ID`` and
+        ``TRACKLISTIFY_SPOTIFY_CLIENT_SECRET`` from the environment, following
+        the ACRCloud env-only pattern — secrets are deliberately NOT on the
+        config dataclass (they would leak through ``repr()`` and validation
+        error messages).
+
+        Unlike ``get_identification_provider`` for ACRCloud, missing
+        credentials return ``None`` rather than raising ``ConfigError``:
+        identification *requires* its provider, enrichment does not. Absent
+        creds are a skip, not an error. The instance is cached under a
+        non-colliding key so ``close_all()`` closes its aiohttp session; no
+        new lifecycle code.
+        """
+        cached = self.providers.get(self._SPOTIFY_ENRICHMENT_KEY)
+        if cached is not None:
+            return cached
+
+        client_id = os.getenv("TRACKLISTIFY_SPOTIFY_CLIENT_ID")
+        client_secret = os.getenv("TRACKLISTIFY_SPOTIFY_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            return None
+
+        from tracklistify.providers.spotify import SpotifyProvider
+
+        provider = SpotifyProvider(client_id=client_id, client_secret=client_secret)
+        self.providers[self._SPOTIFY_ENRICHMENT_KEY] = provider
+        return provider
 
     async def close_all(self) -> None:
         """Close all providers."""
