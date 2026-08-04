@@ -9,6 +9,32 @@ Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 
+### Added
+
+- **Canonical Spotify track links via post-dedup enrichment.** After
+  deduplication, each unique track is enriched with a canonical
+  `https://open.spotify.com/track/<id>` link when Spotify credentials are
+  configured (`TRACKLISTIFY_SPOTIFY_CLIENT_ID`/`_SECRET`, client-credentials
+  auth). The lookup is ISRC-first (exact, via `search_by_isrc`) with a
+  title/artist search fallback, and each track records `spotify_match`
+  (`"isrc"` | `"search"`) so a consumer can tell a trustworthy exact match
+  from a best-effort search hit. A run summary logs the `isrc`/`search`/`none`
+  counts. Strictly optional: a silent no-op without credentials or when
+  `enrichment_enabled` (env `TRACKLISTIFY_ENRICHMENT_ENABLED`, default `true`)
+  is off. Best-effort — enrichment never fails a run.
+
+### Changed
+
+- **`Track.metadata` platform links moved under a nested `links` object.**
+  `tracklist.json` is the public surface, so this is a consumer-visible
+  change. The flat `shazam_url`, `spotify_search_url`, and
+  `deezer_search_url` keys are now `links.shazam`, `links.spotify_search`,
+  and `links.deezer_search` respectively. `links.spotify` (canonical, set by
+  the new enrichment hook) is distinct from `links.spotify_search`
+  (Shazam-supplied search URL), so a consumer can tell a resolved track link
+  from a search. `apple_music_id` stays flat (an id, not a URL). A track with
+  no link omits `links` entirely.
+
 ## [0.9.1] - 2026-08-03
 
 ### Fixed
