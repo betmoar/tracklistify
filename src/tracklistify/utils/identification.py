@@ -104,6 +104,21 @@ def _extra_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         else []
     )
 
+    # Per-platform links nest under a ``links`` object (spec unit E / unknown
+    # U4): ``links.spotify`` is canonical-only (set by the enrichment hook),
+    # while Shazam-supplied *search* URLs keep distinct ``spotify_search`` /
+    # ``deezer_search`` keys so a consumer can tell a resolved track link from
+    # a search. ``apple_music_id`` stays flat — it is an id, not a URL.
+    links = {
+        "shazam": metadata.get("shazam_url"),
+        # Platform search links Shazam ships with the match, converted to
+        # clickable https by the provider. Named ``*_search`` because they
+        # are searches, not canonical track URLs — see the provider.
+        "spotify_search": metadata.get("spotify_search_url"),
+        "deezer_search": metadata.get("deezer_search_url"),
+    }
+    links = {k: v for k, v in links.items() if v}
+
     extras = {
         "isrc": isrc,
         "album": metadata.get("album"),
@@ -113,12 +128,7 @@ def _extra_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         "shazam_id": metadata.get("shazam_id"),
         "apple_music_id": metadata.get("apple_music_id"),
         "artwork_url": metadata.get("artwork_url"),
-        "shazam_url": metadata.get("shazam_url"),
-        # Platform search links Shazam ships with the match, converted to
-        # clickable https by the provider. Named ``*_search_url`` because
-        # they are searches, not canonical track URLs — see the provider.
-        "spotify_search_url": metadata.get("spotify_search_url"),
-        "deezer_search_url": metadata.get("deezer_search_url"),
+        "links": links or None,
     }
     return {k: v for k, v in extras.items() if v}
 
