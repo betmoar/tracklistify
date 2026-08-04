@@ -215,39 +215,12 @@ End-to-end caching and self-contained output: wires the existing
 identification cache into the pipeline, adds a URL-keyed download cache so
 re-runs skip the network, restructures output into per-set subfolders
 (audio + tracklist + playable M3U), and fixes Mixcloud metadata. Builds on
-the audit-driven hardening of 0.7.0 (importability, provider ABC
-alignment, config bug fixes, test modernisation, lint hygiene).
+the audit-driven hardening of [0.8.1] (config validation, provider repair,
+importability) and the [0.8.0] reliability/perf pass — see those sections.
+Comprises PRs #59, #62, #63, #64, #65.
 
 ### Added
 
-- `tracklistify.utils.validation.clean_url` — URL normaliser used by the Spotify
-  downloader (strips query/fragment/trailing slash, lowercases scheme + host).
-- `Track.metadata: Dict[str, Any]` field for provider enrichment (e.g.
-  `spotify_id`), seeded by `field(default_factory=dict)` so every instance
-  gets an independent dict via the dataclass-generated `__init__`. Validation
-  and config back-fill run in `__post_init__`.
-- `SecureConfigLoader.needs_rotation(secret_version)` — previously called by
-  `get_secret()` but never defined; now compares secret age against
-  `_rotation_interval` (default 90 days).
-- Async context-manager protocol (`__aenter__` / `__aexit__`) on
-  `TrackIdentificationProvider` and `MetadataProvider` for deterministic
-  resource cleanup.
-- `tracklistify.utils.constants` module consolidating timeouts, thresholds,
-  and other magic numbers previously scattered across the codebase.
-- New test modules: `tests/test_imports.py` (smoke-tests every public import),
-  `tests/test_security.py`, `tests/test_track_metadata.py`,
-  `tests/test_providers_spotify.py`, plus the broader Phase 4 / consistency
-  suites added on this branch. Total: **335 passing tests**.
-- `docs/archive/` for historical implementation artefacts (audit report,
-  multi-phase implementation plans, summaries) with a README explaining
-  their status.
-- `CLAUDE.md` at repo root with a comprehensive guide for AI-assisted
-  development (project layout, conventions, common tasks).
-- `TRACKLISTIFY_SHAZAM_PROXY` config option — routes `ShazamProvider`
-  identification requests through an HTTP proxy via shazamio's
-  `recognize(..., proxy=...)`. Empty by default (direct connection);
-  `proxy` added to the sensitive-field patterns so a credential embedded
-  in the proxy URL is redacted in logs.
 - Identification results are now cached. `IdentificationManager.identify_tracks`
   consults the cache (`get_cache()`) before each provider call, keyed by
   `f"{provider}:{sha256(segment_bytes)}"`, and stores successful responses
@@ -273,6 +246,11 @@ alignment, config bug fixes, test modernisation, lint hygiene).
   EXTINF duration is the inter-track gap (last track uses
   `total_duration − last_start`). Previously it emitted only comments with
   no playable URI lines and EXTINF was always `-1`.
+- `TRACKLISTIFY_SHAZAM_PROXY` config option (#63) — routes `ShazamProvider`
+  identification requests through an HTTP proxy via shazamio's
+  `recognize(..., proxy=...)`. Empty by default (direct connection);
+  `proxy` added to the sensitive-field patterns so a credential embedded
+  in the proxy URL is redacted in logs.
 
 ### Changed
 
@@ -281,89 +259,19 @@ alignment, config bug fixes, test modernisation, lint hygiene).
   `output/[date] Artist - Title/tracklist.{json,md,m3u}` (+ audio).
 - `AsyncApp.save_output` now wires `self.uploader` into `mix_info["artist"]`
   and passes `total_duration`.
-- `core/__init__.py` now eager-loads only leaf modules (`exceptions`, `types`)
-  and lazy-loads `AsyncApp` / `Track` / `TrackMatcher` via PEP 562
-  `__getattr__`. This is what unblocks `import tracklistify` — see Fixed below.
-- `SpotifyProvider.search_track` realigned with the `MetadataProvider` ABC:
-  `(title, artist=None, album=None, duration=None) -> Dict`. Returns the
-  top-match result as a flat dict keyed on `spotify_id` (was: `(query)` →
-  `List[Dict]`, which no internal caller actually used).
-- `TrackIdentificationConfig.__post_init__` reduced to a single
-  `super().__post_init__()` call. The override previously ran
-  `_load_from_env`, `_setup_validation`, and `_validate` twice each; virtual
-  dispatch ensures the subclass's `_setup_validation` extra rules still run.
-- `_is_platform_url` now delegates subdomain matching to the existing
-  `_is_domain_or_subdomain` helper instead of reimplementing the logic;
-  `allowed_domains` typed as `Iterable[str]` so list/set callers both fit.
-- `URLValidationError` reparented under `ValidationError` so
-  `except ValidationError:` catches URL failures.
-- `mask_sensitive_data` / `is_sensitive_field` casing now consistent —
-  `SENSITIVE_FIELDS` holds only lowercase substrings, matching is done after
-  `.lower()` so `ACR_ACCESS_KEY` / `acr_access_key` / `secret` all match.
-- `CryptoManager` docstrings: replaced "AES-256 in CBC mode" with truthful
-  description (PBKDF2-derived key + XOR-block obfuscation; not
-  cryptographically secure — for real protection use OS keychain or KMS).
-- Singletons (`get_config`, cache factory, rate limiter) made thread-safe via
-  `threading.Lock` and stable hashing so concurrent first-access doesn't
-  produce duplicate instances.
-- Time-elapsed measurements now use `time.monotonic()` consistently across
-  rate limiter, decorators, and identification manager.
-- `[tool.ruff] include` now points at `src/tracklistify/**/*.py` /
-  `tests/**/*.py` — previously pointed at `tracklistify/**/*.py` and was
-  silently linting zero files.
+- CI workflow now uses least-privilege permissions (#62).
 - Dependencies bumped: aiohttp 3.13, yt-dlp 2025.11, click 8.3, pytest 8.4,
-  pytest-asyncio 1.3, ruff 0.14, plus minor bumps across the dev group.
+  pytest-asyncio 1.3, ruff 0.14, plus minor bumps across the dev group (#59).
 
 ### Fixed
 
-- **Circular import** that prevented `import tracklistify` from succeeding.
-  The chain ran through `utils.identification → config.factory →
-  core.exceptions → core/__init__.py → core/base.py → downloaders.factory →
-  config` (back to a partially-initialised `config`). Fix: lazy `core`
-  re-exports + lazy `get_config` import in `core.base`.
-- `core/__init__.py` imported `ApplicationError` from `.base`; the class
-  actually lives in `.exceptions`.
-- `tracklistify.downloaders.spotify` imported a non-existent `clean_url`
-  symbol; the function now exists in `utils.validation`.
-- `Track.metadata` was referenced by `exporters/spotify.py` and
-  `providers/spotify.py` but never declared on the dataclass.
-- `SecureConfigLoader.get_secret` called `self.needs_rotation(secret_version)`
-  without that method existing.
-- Spotify provider's `search_track` signature didn't match the
-  `MetadataProvider` ABC, breaking the internal `enrich_metadata` call.
-- `tests/test_to_dict` asserted `verbose=False` while reading from the local
-  `.env` (which commonly sets `TRACKLISTIFY_VERBOSE=true`); now uses
-  `monkeypatch.delenv` for determinism.
-- Logger handler duplication on reconfiguration (each `set_logger` call no
-  longer stacks a new handler).
-- Downloaders no longer return `None` from exception handlers — they raise
-  `DownloadError` so failures propagate.
-- `cli` `--verbose` flag default corrected to `False`.
-- Various type hints corrected and return-type annotations added.
-
-### Removed
-
-- **Breaking:** `tracklistify.utils.SimpleLimiter` and
-  `get_simple_rate_limiter` — the secondary in-process limiter was a parallel
-  code path that duplicated `GlobalRateLimiter`. Public callers should migrate
-  to `tracklistify.utils.rate_limiter.get_global_rate_limiter()`, which
-  returns the singleton token-bucket-plus-circuit-breaker limiter used by
-  the rest of the codebase.
-- **Breaking:** `TrackMatcher.process_file` — legacy stub that cleared
-  `self.tracks` then merged the empty list, so it always returned `[]`
-  regardless of input. No callers in `src/` or `tests/`. Use
-  `tracklistify.utils.identification.IdentificationManager` for real
-  identification.
-- Deprecated `mask_sensitive_value_old` (no callers; superseded by the
-  key-aware `mask_sensitive_value`).
-- Duplicate `ConfigurationError` in `core.exceptions` (the canonical name is
-  `ConfigError`; zero importers referenced the duplicate).
-- Test/mock code that had leaked into production sources under `core/` and
-  `cache/`.
-- Five session-artefact MDs from repo root (`AUDIT_REPORT.md`,
-  `IMPLEMENTATION_PLAN.md`, `IMPLEMENTATION_PLAN_PHASES_3_6.md`,
-  `IMPLEMENTATION_QUICK_REFERENCE.md`, `IMPLEMENTATION_SUMMARY.md`) — moved
-  to `docs/archive/` rather than deleted, to preserve the paper trail.
+- **Shazam typed errors** (#64): a non-string `type` in `hub.providers`
+  raised from `.strip()` inside `identify_track`'s outer try, escalating to
+  `ShazamError` and discarding a match whose title, artist and ISRC were
+  all valid.
+- **Spotify async metadata** (#64): the provider's enrichment path no longer
+  blocks; perf salvages applied to avoid dropping identifications.
+- `uv_build` version range corrected (#62, #59).
 
 ### Deprecated
 
@@ -372,15 +280,132 @@ alignment, config bug fixes, test modernisation, lint hygiene).
   so existing callers continue to work; removal is deferred to a future
   release.
 
+## [0.8.1] - 2026-07-31
+
+The principal-architect handoff audit. Tagged `v0.8.1`. Fixes eight
+production bugs (each locked by an invariant test in
+`tests/test_handoff_invariants.py`, I1–I8) and adds the CI + docs missing
+from the repo.
+
+### Fixed
+
+- **Config validation never ran.** `_validate()` was an empty body; the ~13
+  declarative rules were dead code. Now executes at construction time, plus a
+  cross-field `overlap < segment_length` rule (I1).
+- **`split_audio` hung in an infinite loop** when `overlap >= segment_length`
+  (step <= 0). Runtime guard added — the load-time check alone was
+  insufficient since config is mutable post-load (I2).
+- **ACRCloud was unusable since inception.** The factory called it with no
+  credentials (`TypeError`), and `identify_track` took bytes while the
+  pipeline passes `AudioSegment`. Factory now reads env creds with an
+  actionable `ConfigError`; `identify_track` accepts both shapes (I3, I4).
+- **Provider fallback was a complete no-op** — `fallback_enabled` was never
+  read. `IdentificationManager` now walks a primary→fallback chain (I5).
+- **Circuit breaker never received outcomes** —
+  `_update_circuit_breaker` had zero callers. New public `record_result()`
+  called on every provider result (I6).
+- **Cache TTL was disabled:** `set()` stored `ttl=None`, shadowing the
+  strategy default, so entries never expired (I7). The cache index was only
+  persisted from `cleanup()`/`clear()`, so cross-process writes were
+  invisible then deleted as orphans (I8).
+
+### Added
+
+- CI (`.github/workflows/ci.yml`): ruff lint + format, `.env.example` drift
+  check, and the test suite on Python 3.11–3.13.
+- `.env.example` documenting every config field with its env-var override.
+- `tests/test_handoff_invariants.py` locking I1–I8 against regression.
+- ffmpeg-absence fail-fast in the CLI (was a cryptic per-segment error).
+
+## [0.8.0] - 2026-05-12
+
+Multi-phase audit: security, concurrency/reliability, correctness,
+performance, and dead-code removal. Tagged `v0.8.0` at the audit commit
+`86fa9fc` (whose `pyproject.toml` still read `0.7.0` — the version string
+caught up at 0.8.1; the tag marks the work, not the bump).
+
 ### Security
 
-- `is_sensitive_field` casing bug fixed (described under Changed).
-- `CryptoManager` docstrings no longer claim AES-256 — callers can now make
-  informed decisions about whether the obfuscation is fit for purpose.
-- Centralised exception consolidation reduces the chance of `except` blocks
-  silently missing a divergent error class.
+- Removed a shell-injection vector in `dev_cli` (dropped an unsafe
+  `shell=` kwarg).
+- Added `bandit` to pre-commit (`-ll` severity).
+- Mask sensitive config values in error messages.
+- `clean_url()` strips userinfo so credentials don't leak via logs.
+- `_is_platform_url()` rejects non-HTTP(S) schemes (no
+  `ftp://youtube.com`).
 
-## [Rate Limiter Enhancements] - 2024-11-25
+### Changed
+
+- **Concurrency & reliability:** replaced the blocking `threading.Lock`
+  with `asyncio.Lock` in the rate limiter; made singletons
+  (`get_config`/`get_cache`/`get_global_rate_limiter`) thread-safe via
+  double-checked locking with `force_refresh` for tests; always release
+  rate-limiter semaphores in `finally`; per-invocation
+  `.tracklistify/temp/<pid>-<hex>/` dirs so concurrent runs can't trample
+  each other (with a stale-dir sweep for dead PIDs); Ctrl+C cancels the
+  running task and double-press force-exits; providers used via
+  `async with` so sessions close; Spotify wrappers propagate
+  `RateLimitError`/`AuthenticationError` before the generic catch;
+  `_api_request` accepts any 2xx incl. 204; logger closes prior handlers
+  (no FD leak).
+- **Correctness:** `Track.time_in_mix` validated at construction and accepts
+  elapsed offsets > 23h; `time_to_seconds()` infallible; `get_cache()`
+  honors `cache_dir`/`ttl`/`max_size` (previously silently dropped — always
+  wrote to `~/.tracklistify/cache`); cache-size semantics reconciled to
+  bytes (default 1KB → 1MB); `process_input()` preserves
+  `output_format` when `--formats` omitted; CLI respects `fallback_enabled`
+  when `--no-fallback` not given; `set_logger()` honors `log_level` again;
+  `ProgressDisplay.clear()` blanks the rendered width; `mutagen.File`
+  imported from the public API.
+
+### Added
+
+- **`-sc` / `--stream-copy`:** skip yt-dlp's MP3 transcode and segment with
+  `-c:a copy` end-to-end (major speedup on long mixes).
+- Per-segment progress logging via `concurrent.futures.as_completed`.
+- `FFMPEG_SEGMENT_TIMEOUT` prevents stuck segments from hanging the run.
+- Named constants in `utils/constants.py` (replacing magic numbers).
+
+### Removed
+
+- Dead code: `CryptoManager` + `SecureConfigLoader` (~414 lines),
+  `SimpleLimiter`, four unused exception classes, the `run_async` helper,
+  and the `TrackMatcher.process_file` legacy stub.
+- Consolidated `Track` init into dataclass + `__post_init__`.
+
+## [0.7.0] - 2025-09-15
+
+The clean-slate modular restructure: the prior development branch was
+squashed into a single commit (`f847c83`, "initial project restructure with
+modular architecture and development tools"), giving the project a clean
+base under the `0.7.0` version. Tagged `v0.7.0` in 2026-08 (it was never
+tagged at release). The subsystem work consolidated by this squash —
+configuration management, the cache system, Spotify integration, the rate
+limiter, and the early track-identification/output phases — is recorded in
+the pre-squash sections below ("Phase 1–4", "Rate Limiter Enhancements",
+`[0.6.0]`–`[0.1.0]`).
+
+### Added
+
+- **Local file processing support** alongside URL input, with improved
+  track identification (#27).
+- **Metadata extraction and string sanitization** for downloaded files (#26).
+- **Advanced rate limiter with circuit breaker and metrics** (#31); delay
+  between Shazam API requests to avoid rate limiting (#29).
+- **Cache improvements:** better stats tracking and TTL handling (#30).
+- **`poetry` → `uv` migration** (`f12d4e4`) — the package manager the rest
+  of this changelog assumes.
+- **Project-root discovery utilities** (#35), streamlining path handling.
+
+### Changed
+
+- Replaced the YouTube downloader with a generic `yt-dlp` implementation
+  for broader URL support (`26abfff`).
+- Simplified `clear_config` and improved the track-similarity check (#28).
+- Coverage configuration and test imports updated for the core-module
+  refactor (#32).
+
+
 
 ### Added
 
