@@ -11,6 +11,19 @@ Release dates are in YYYY-MM-DD format.
 
 ### Added
 
+- **MusicBrainz link enrichment (keyless, free).** A second link source runs
+  after the Spotify enrichment pass, resolving canonical streaming URLs
+  (Spotify/Deezer/Tidal/Apple/Beatport) per unique track via MusicBrainz's
+  ISRC lookup — no credentials, no Premium, no key. It needs only an ISRC
+  (Shazam supplies one for most tracks) and fills link keys the Spotify source
+  didn't set (first-writer-wins per key). When it supplies the Spotify link it
+  records `spotify_match: "musicbrainz"`. Measured coverage on underground/EDM:
+  ~25% of tracks gain a Spotify link (vs the Spotify-source ~95% estimate that
+  is currently blocked behind a Premium-backed developer app). Gated by
+  `musicbrainz_enabled` (default `true`); a silent no-op when disabled or when a
+  track has no ISRC. Requests are serialized with bounded 503 retry —
+  MusicBrainz rate-limits with 503 under burst load.
+
 - **Canonical Spotify track links via post-dedup enrichment.** After
   deduplication, each unique track is enriched with a canonical
   `https://open.spotify.com/track/<id>` link when Spotify credentials are
@@ -33,7 +46,11 @@ Release dates are in YYYY-MM-DD format.
   the new enrichment hook) is distinct from `links.spotify_search`
   (Shazam-supplied search URL), so a consumer can tell a resolved track link
   from a search. `apple_music_id` stays flat (an id, not a URL). A track with
-  no link omits `links` entirely.
+  no link omits `links` entirely. The MusicBrainz enrichment source may also
+  add canonical `links.deezer` / `links.tidal` / `links.apple` / `links.beatport`
+  keys (distinct from the Shazam-supplied `links.deezer_search`).
+
+## [0.9.1] - 2026-08-03
 
 ## [0.9.1] - 2026-08-03
 
