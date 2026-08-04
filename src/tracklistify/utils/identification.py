@@ -29,6 +29,11 @@ logger = get_logger(__name__)
 # wolf. A full mix returning nothing at all is worth flagging.
 _MIN_SEGMENTS_FOR_MISS_RATE_WARNING = 10
 
+# MusicBrainz asks for ≤1 req/s and 503s under burst load; this explicit
+# inter-request spacing in the MB enrichment pass keeps us polite (the
+# token-bucket limiter alone permits a burst). See _enrich_musicbrainz.
+_MUSICBRAINZ_REQUEST_INTERVAL = 1.1
+
 
 def format_duration(duration: float) -> str:
     """Format duration in seconds to HH:MM:SS.
@@ -423,6 +428,13 @@ class IdentificationManager:
         limiter = get_global_rate_limiter()
         counts = {"resolved": 0, "none": 0}
 
+        # MusicBrainz rate-limits with 503 under *burst* load even well under
+        # its 1200/min ceiling. The token-bucket limiter starts with a full
+        # bucket, so it permits a burst and never spaces requests politely —
+        # measured (2026-08-04): the bursted hook resolved 3% of resolvable
+        # links while the same provider paced at ~1 req/s resolved 26%. MB's
+        # own etiquette asks for ≤1 req/s, so pace explicitly here. This is
+        # MB-specific courtesy, not a general limiter change.
         async with provider:
             for track in unique_tracks:
                 isrc = track.metadata.get("isrc")
@@ -433,6 +445,8 @@ class IdentificationManager:
                     counts["resolved"] += 1
                 else:
                     counts["none"] += 1
+                # Polite inter-request spacing (≤1 req/s).
+                await asyncio.sleep(_MUSICBRAINZ_REQUEST_INTERVAL)
 
         if counts["resolved"]:
             logger.info(

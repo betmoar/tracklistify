@@ -77,6 +77,10 @@ def _mgr(mb_provider, limiter, monkeypatch):
     monkeypatch.setattr(
         "tracklistify.utils.identification.get_global_rate_limiter", lambda: limiter
     )
+    # Zero the MB inter-request spacing so tests don't sleep ~1s/track.
+    monkeypatch.setattr(
+        "tracklistify.utils.identification._MUSICBRAINZ_REQUEST_INTERVAL", 0.0
+    )
     config = get_config(force_refresh=True)
     config.enrichment_enabled = True
     config.musicbrainz_enabled = True
