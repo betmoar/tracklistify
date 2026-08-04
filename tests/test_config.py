@@ -585,3 +585,17 @@ def test_post_init_runs_each_step_once(monkeypatch):
     cfg_mod.TrackIdentificationConfig()
 
     assert counts == {"load": 1, "setup": 1, "validate": 1}
+
+
+def test_enrichment_enabled_default_and_override(monkeypatch):
+    """enrichment_enabled defaults to True (a no-op without creds, so on is
+    safe) and is overridable via TRACKLISTIFY_ENRICHMENT_ENABLED."""
+    for key in [k for k in os.environ if k.startswith("TRACKLISTIFY_")]:
+        monkeypatch.delenv(key, raising=False)
+
+    clear_config()
+    assert get_config().enrichment_enabled is True
+
+    monkeypatch.setenv("TRACKLISTIFY_ENRICHMENT_ENABLED", "false")
+    clear_config()
+    assert get_config().enrichment_enabled is False
