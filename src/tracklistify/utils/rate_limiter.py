@@ -132,10 +132,10 @@ class RateLimiter:
                 )
             elif provider_str == "musicbrainz":
                 rpm = max_requests_per_minute or getattr(
-                    self._config, "musicbrainz_max_rpm", 50
+                    self._config, "musicbrainz_max_rpm", 30
                 )
                 concurrent = max_concurrent_requests or getattr(
-                    self._config, "musicbrainz_max_concurrent", 5
+                    self._config, "musicbrainz_max_concurrent", 1
                 )
             else:
                 # Fall back to global config or defaults

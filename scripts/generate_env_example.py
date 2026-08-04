@@ -148,8 +148,8 @@ INLINE_COMMENTS: dict[str, str] = {
     "shazam_proxy": "e.g. http://127.0.0.1:8080",
     "enrichment_enabled": "resolve Spotify links post-dedup (no-op w/o creds)",
     "musicbrainz_enabled": "keyless ISRC link source (no-op w/o ISRC)",
-    "musicbrainz_max_rpm": "requests/min (MB allows ~1200; default conservative)",
-    "musicbrainz_max_concurrent": "concurrent MB requests",
+    "musicbrainz_max_rpm": "requests/min (paced; MB 503s under burst)",
+    "musicbrainz_max_concurrent": "concurrent MB requests (1 = serialize)",
 }
 
 # Fields rendered as commented-out (optional / not always set).
