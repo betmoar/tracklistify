@@ -197,6 +197,54 @@ class SpotifyProvider(MetadataProvider):
             "artists": [a["name"] for a in top["artists"]],
             "album": top["album"]["name"],
             "release_date": top["album"]["release_date"],
+            # Optional fields — use ``.get`` (not bare subscripts) so a
+            # response missing them degrades to empty/None rather than raising.
+            # The enrichment hook builds a canonical track URL from
+            # ``external_urls["spotify"]`` when present.
+            "external_urls": top.get("external_urls") or {},
+            "isrc": (top.get("external_ids") or {}).get("isrc"),
+        }
+
+    async def search_by_isrc(self, isrc: str) -> Dict:
+        """Look up a track by its exact ISRC.
+
+        An ISRC lookup is exact, not fuzzy — the whole point of preferring it
+        over ``search_track`` for enrichment. Returns the same dict shape as
+        ``search_track`` (so a caller handles one shape), or ``{}`` when there
+        are no items.
+
+        Args:
+            isrc: International Standard Recording Code (e.g. ``USABC1234567``).
+
+        Error posture is identical to ``search_track``: re-raise
+        ``RateLimitError`` and ``AuthenticationError`` unchanged (callers
+        honor retry-after timing and 401-driven token refresh), wrap
+        everything else in ``ProviderError``.
+        """
+        try:
+            response = await self._api_request(
+                "GET",
+                "search",
+                params={"q": f"isrc:{isrc}", "type": "track", "limit": 1},
+            )
+        except (RateLimitError, AuthenticationError):
+            raise
+        except Exception as e:
+            raise ProviderError(f"Error searching by ISRC: {e}") from e
+
+        items = response.get("tracks", {}).get("items", [])
+        if not items:
+            return {}
+
+        top = items[0]
+        return {
+            "spotify_id": top["id"],
+            "name": top["name"],
+            "artists": [a["name"] for a in top["artists"]],
+            "album": top["album"]["name"],
+            "release_date": top["album"]["release_date"],
+            "external_urls": top.get("external_urls") or {},
+            "isrc": (top.get("external_ids") or {}).get("isrc"),
         }
 
     async def get_track_details(self, track_id: str) -> Dict:

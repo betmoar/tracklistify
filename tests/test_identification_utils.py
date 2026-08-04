@@ -278,9 +278,11 @@ class TestExtraMetadata:
             "shazam_id": "k1",
             "apple_music_id": "am-999",
             "artwork_url": "https://img/hq.jpg",
-            "shazam_url": "https://shazam/1",
-            "spotify_search_url": "https://open.spotify.com/search/Berghain",
-            "deezer_search_url": "https://www.deezer.com/search/Berghain",
+            "links": {
+                "shazam": "https://shazam/1",
+                "spotify_search": "https://open.spotify.com/search/Berghain",
+                "deezer_search": "https://www.deezer.com/search/Berghain",
+            },
         }
 
     def test_empty_values_are_dropped_not_stored_as_none(self):
@@ -301,6 +303,35 @@ class TestExtraMetadata:
         assert _extra_metadata({"genres": "Techno"}) == {}
         assert _extra_metadata({"genres": [None, {"no_name": 1}]}) == {}
         assert _extra_metadata(None) == {}
+
+    def test_links_omitted_when_no_link_present(self):
+        """A track with no platform link has no ``links`` key at all — the
+        existing falsy-drop extends to an empty links object (spec E / test 17)."""
+        from tracklistify.utils.identification import _extra_metadata
+
+        # isrc/album/etc. present but none of the *_url fields → no links key.
+        extras = _extra_metadata(
+            {"title": "X", "external_ids": {"isrc": "USABC1234567"}, "album": "A"}
+        )
+        assert "links" not in extras
+
+    def test_save_json_round_trips_nested_links(self):
+        """_save_json emits metadata verbatim (default=str); a nested links
+        object must survive a json round-trip (spec E / test 18)."""
+        import json
+
+        from tracklistify.utils.identification import _extra_metadata
+
+        extras = _extra_metadata(
+            {"shazam_url": "https://shazam/1", "spotify_search_url": "https://sp/s"}
+        )
+        assert extras["links"] == {
+            "shazam": "https://shazam/1",
+            "spotify_search": "https://sp/s",
+        }
+        # _save_json uses json.dumps(..., default=str); links is plain str→str.
+        round_tripped = json.loads(json.dumps(extras, default=str))
+        assert round_tripped["links"] == extras["links"]
 
     def test_track_from_info_attaches_metadata(self):
         """The extras reach Track.metadata through the real build path."""

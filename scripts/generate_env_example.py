@@ -115,6 +115,12 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
             "download_cache_enabled",
         ],
     ),
+    (
+        "Metadata enrichment",
+        [
+            "enrichment_enabled",
+        ],
+    ),
 ]
 
 # Inline annotations (units, bounds) that aren't derivable from the dataclass.
@@ -137,6 +143,7 @@ INLINE_COMMENTS: dict[str, str] = {
     "download_quality": "kbps",
     "download_format": "mp3 | flac | ...",
     "shazam_proxy": "e.g. http://127.0.0.1:8080",
+    "enrichment_enabled": "resolve Spotify links post-dedup (no-op w/o creds)",
 }
 
 # Fields rendered as commented-out (optional / not always set).
@@ -155,8 +162,10 @@ CREDENTIALS_BLOCK = """\
 # TRACKLISTIFY_ACR_ACCESS_SECRET=
 # TRACKLISTIFY_ACR_HOST=identify-eu-west-1.acrcloud.com
 #
-# Spotify credentials: currently consumed only by the UNWIRED Spotify
-# downloader/exporter (see docs/BACKLOG.md); not needed for normal runs.
+# Spotify credentials: consumed by the metadata-enrichment hook (resolves a
+# canonical Spotify track link per identified track via client-credentials
+# auth; gated by ENRICHMENT_ENABLED). The downloader/exporter is still
+# unwired (see docs/BACKLOG.md). Not needed for normal identification runs.
 # TRACKLISTIFY_SPOTIFY_CLIENT_ID=
 # TRACKLISTIFY_SPOTIFY_CLIENT_SECRET=
 # TRACKLISTIFY_SPOTIFY_COOKIES=~/.mozilla/firefox/profile/cookies.sqlite

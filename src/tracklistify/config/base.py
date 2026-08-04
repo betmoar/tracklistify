@@ -231,6 +231,11 @@ class TrackIdentificationConfig(BaseConfig):
     spotify_max_rpm: int = field(default=120)
     spotify_max_concurrent: int = field(default=20)
 
+    # Metadata enrichment: after dedup, resolve a canonical Spotify track link
+    # per unique track (ISRC-first, title/artist fallback). A silent no-op
+    # when Spotify credentials are absent, so ``true`` is a safe default.
+    enrichment_enabled: bool = field(default=True)
+
     # Output formats
     output_format: str = field(default="json")
 

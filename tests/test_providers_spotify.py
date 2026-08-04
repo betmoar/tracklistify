@@ -233,3 +233,163 @@ async def test_add_tracks_propagates_rate_limit(provider, monkeypatch):
 
     with pytest.raises(RateLimitError):
         await provider.add_tracks_to_playlist("pid", ["tid1", "tid2"])
+
+
+# --- Unit A: search_track returns external_urls + isrc (spec tests 1, 2) ---
+
+
+@pytest.mark.asyncio
+async def test_search_track_surfaces_external_urls_and_isrc(provider, monkeypatch):
+    """search_track returns external_urls and isrc alongside its other keys."""
+
+    async def fake_api_request(self, method, endpoint, **kwargs):
+        return {
+            "tracks": {
+                "items": [
+                    {
+                        "id": "abc123",
+                        "name": "Song A",
+                        "artists": [{"name": "Artist X"}],
+                        "album": {"name": "Album Z", "release_date": "2024-01-01"},
+                        "external_urls": {
+                            "spotify": "https://open.spotify.com/track/abc123"
+                        },
+                        "external_ids": {"isrc": "USABC1234567"},
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(SpotifyProvider, "_api_request", fake_api_request)
+
+    result = await provider.search_track("Song A", "Artist X")
+
+    assert result["external_urls"] == {
+        "spotify": "https://open.spotify.com/track/abc123"
+    }
+    assert result["isrc"] == "USABC1234567"
+
+
+@pytest.mark.asyncio
+async def test_search_track_tolerates_missing_external_fields(provider, monkeypatch):
+    """A response with neither external_urls nor external_ids must not raise."""
+
+    async def fake_api_request(self, method, endpoint, **kwargs):
+        return {
+            "tracks": {
+                "items": [
+                    {
+                        "id": "abc123",
+                        "name": "Song A",
+                        "artists": [{"name": "Artist X"}],
+                        "album": {"name": "Album Z", "release_date": "2024-01-01"},
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(SpotifyProvider, "_api_request", fake_api_request)
+
+    result = await provider.search_track("Song A", "Artist X")
+
+    assert result["external_urls"] == {}
+    assert result["isrc"] is None
+
+
+# --- Unit B: search_by_isrc (spec tests 3, 4) ---
+
+
+@pytest.mark.asyncio
+async def test_search_by_isrc_sends_exact_params(provider, monkeypatch):
+    """search_by_isrc sends q=isrc:<isrc>, type=track, limit=1."""
+    captured = {}
+
+    async def fake_api_request(self, method, endpoint, **kwargs):
+        captured["params"] = kwargs.get("params", {})
+        return {"tracks": {"items": []}}
+
+    monkeypatch.setattr(SpotifyProvider, "_api_request", fake_api_request)
+
+    result = await provider.search_by_isrc("USABC1234567")
+
+    assert captured["params"] == {
+        "q": "isrc:USABC1234567",
+        "type": "track",
+        "limit": 1,
+    }
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_search_by_isrc_returns_same_shape_as_search_track(provider, monkeypatch):
+    """search_by_isrc returns the same dict shape as search_track, not raw API."""
+
+    async def fake_api_request(self, method, endpoint, **kwargs):
+        return {
+            "tracks": {
+                "items": [
+                    {
+                        "id": "abc123",
+                        "name": "Song A",
+                        "artists": [{"name": "Artist X"}],
+                        "album": {"name": "Album Z", "release_date": "2024-01-01"},
+                        "external_urls": {
+                            "spotify": "https://open.spotify.com/track/abc123"
+                        },
+                        "external_ids": {"isrc": "USABC1234567"},
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(SpotifyProvider, "_api_request", fake_api_request)
+
+    result = await provider.search_by_isrc("USABC1234567")
+
+    assert result["spotify_id"] == "abc123"
+    assert result["external_urls"]["spotify"] == (
+        "https://open.spotify.com/track/abc123"
+    )
+    assert result["isrc"] == "USABC1234567"
+
+
+@pytest.mark.asyncio
+async def test_search_by_isrc_re_raises_rate_limit(provider, monkeypatch):
+    """RateLimitError must propagate unchanged, not be wrapped."""
+    from tracklistify.providers.base import RateLimitError
+
+    async def fake_api_request(self, method, endpoint, **kwargs):
+        raise RateLimitError("Spotify rate limit exceeded. Retry after 30s")
+
+    monkeypatch.setattr(SpotifyProvider, "_api_request", fake_api_request)
+
+    with pytest.raises(RateLimitError, match="Retry after 30s"):
+        await provider.search_by_isrc("USABC1234567")
+
+
+@pytest.mark.asyncio
+async def test_search_by_isrc_re_raises_auth_error(provider, monkeypatch):
+    """AuthenticationError must propagate unchanged, not be wrapped."""
+    from tracklistify.providers.base import AuthenticationError
+
+    async def fake_api_request(self, method, endpoint, **kwargs):
+        raise AuthenticationError("Spotify token expired")
+
+    monkeypatch.setattr(SpotifyProvider, "_api_request", fake_api_request)
+
+    with pytest.raises(AuthenticationError, match="token expired"):
+        await provider.search_by_isrc("USABC1234567")
+
+
+@pytest.mark.asyncio
+async def test_search_by_isrc_wraps_generic_error(provider, monkeypatch):
+    """Any non-RateLimit/non-Auth error is wrapped in ProviderError."""
+    from tracklistify.core.exceptions import ProviderError
+
+    async def fake_api_request(self, method, endpoint, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(SpotifyProvider, "_api_request", fake_api_request)
+
+    with pytest.raises(ProviderError, match="Error searching by ISRC"):
+        await provider.search_by_isrc("USABC1234567")

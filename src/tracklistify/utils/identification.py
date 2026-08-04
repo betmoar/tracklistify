@@ -15,6 +15,7 @@ from tracklistify.config.factory import get_config
 
 # Local/package imports
 from tracklistify.core.track import Track, TrackMatcher
+from tracklistify.providers.base import AuthenticationError, RateLimitError
 from tracklistify.providers.factory import create_provider_factory
 from .constants import DEFAULT_PROGRESS_BAR_WIDTH, TERMINAL_LINE_WIDTH
 from .logger import get_logger
@@ -104,6 +105,21 @@ def _extra_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         else []
     )
 
+    # Per-platform links nest under a ``links`` object (spec unit E / unknown
+    # U4): ``links.spotify`` is canonical-only (set by the enrichment hook),
+    # while Shazam-supplied *search* URLs keep distinct ``spotify_search`` /
+    # ``deezer_search`` keys so a consumer can tell a resolved track link from
+    # a search. ``apple_music_id`` stays flat — it is an id, not a URL.
+    links = {
+        "shazam": metadata.get("shazam_url"),
+        # Platform search links Shazam ships with the match, converted to
+        # clickable https by the provider. Named ``*_search`` because they
+        # are searches, not canonical track URLs — see the provider.
+        "spotify_search": metadata.get("spotify_search_url"),
+        "deezer_search": metadata.get("deezer_search_url"),
+    }
+    links = {k: v for k, v in links.items() if v}
+
     extras = {
         "isrc": isrc,
         "album": metadata.get("album"),
@@ -113,12 +129,7 @@ def _extra_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         "shazam_id": metadata.get("shazam_id"),
         "apple_music_id": metadata.get("apple_music_id"),
         "artwork_url": metadata.get("artwork_url"),
-        "shazam_url": metadata.get("shazam_url"),
-        # Platform search links Shazam ships with the match, converted to
-        # clickable https by the provider. Named ``*_search_url`` because
-        # they are searches, not canonical track URLs — see the provider.
-        "spotify_search_url": metadata.get("spotify_search_url"),
-        "deezer_search_url": metadata.get("deezer_search_url"),
+        "links": links or None,
     }
     return {k: v for k, v in extras.items() if v}
 
@@ -312,6 +323,154 @@ class IdentificationManager:
             logger.error(f"Failed to create track from provider response: {e}")
             return None
 
+    async def _enrich_tracks(self, unique_tracks: List[Track]) -> None:
+        """Resolve a canonical Spotify track link per unique track (spec unit D).
+
+        ISRC-first (exact lookup via ``search_by_isrc``), title/artist search
+        fallback (``search_track``). Writes ``metadata["links"]["spotify"]``,
+        ``metadata["spotify_id"]`` and ``metadata["spotify_match"]`` ("isrc" |
+        "search") on a hit. Each run logs a summary count of isrc / search /
+        none — the instrumentation for backlog unknowns U1/U2/U3.
+
+        Post-dedup by design. Sequential, not gather — the volume is ~22 and
+        concurrency buys nothing worth the added failure modes.
+
+        Best-effort (R5): enrichment never fails a run. Error posture —
+        ``AuthenticationError`` → warn once, disable for the rest of the run;
+        ``RateLimitError`` → warn, stop, return enriched-so-far; any other
+        ``Exception`` → debug log, continue to the next track;
+        ``asyncio.CancelledError`` → re-raise, never swallowed.
+
+        Structured so the per-source logic (resolve provider → look up one
+        track → write into ``metadata["links"]``) is separable from the loop
+        scaffolding (gating, limiter pairing, error posture, summary). A
+        MusicBrainz source (backlog U5) slots in without touching the
+        scaffolding — do NOT build an ABC/registry for one implementation.
+        """
+        if not unique_tracks:
+            return
+        if not getattr(self.config, "enrichment_enabled", True):
+            return
+
+        # ``getattr`` fallback: a factory that doesn't supply a Spotify
+        # enrichment provider (e.g. an identification-only stub) degrades to a
+        # no-op, consistent with the no-op-without-credentials posture.
+        get_spotify = getattr(self.provider_factory, "get_spotify_provider", None)
+        provider = get_spotify() if get_spotify is not None else None
+        if provider is None:
+            # No credentials — a skip, not an error. Never touch the limiter.
+            logger.debug("Spotify enrichment skipped: no credentials configured")
+            return
+
+        limiter = get_global_rate_limiter()
+        counts = {"isrc": 0, "search": 0, "none": 0}
+
+        # ``async with provider:`` ensures the aiohttp session is closed even
+        # on an early return. ``close()`` is re-entrant, so the later
+        # ``close_all()`` closing it again is safe (providers/base.py:113-119).
+        async with provider:
+            for track in unique_tracks:
+                # Idempotence: skip a track already carrying a canonical link.
+                if track.metadata.get("links", {}).get("spotify"):
+                    continue
+
+                match = await self._enrich_one(provider, limiter, track, counts)
+                # AuthenticationError/RateLimitError halt enrichment for the
+                # rest of the run — ``_enrich_one`` signals that by returning
+                # the "disabled" sentinel.
+                if match == "disabled":
+                    break
+
+        enriched = counts["isrc"] + counts["search"]
+        if enriched:
+            logger.info(
+                f"Spotify enrichment: {enriched} links resolved "
+                f"(isrc={counts['isrc']}, search={counts['search']}, "
+                f"none={counts['none']})"
+            )
+
+    async def _enrich_one(
+        self,
+        provider,
+        limiter,
+        track: Track,
+        counts: Dict[str, int],
+    ) -> str:
+        """Enrich a single track; return the match kind or sentinel.
+
+        Returns ``"isrc"`` / ``"search"`` / ``"none"`` for a processed track,
+        or ``"disabled"`` when an AuthenticationError or RateLimitError has
+        halted enrichment for the remainder of the run — the caller breaks its
+        loop on that sentinel.
+
+        Acquire/release pairing is verbatim from the identification loop
+        (identification.py:375-407): every ``acquire`` is matched by a
+        ``release`` in ``finally``, and every outcome is reported via
+        ``record_result`` or the circuit breaker never learns (invariant I6).
+        """
+        isrc = track.metadata.get("isrc")
+
+        acquired = False
+        try:
+            acquired = await limiter.acquire("spotify")
+            if not acquired:
+                logger.debug("Spotify enrichment: rate limiter rejected request")
+                counts["none"] += 1
+                return "none"
+
+            try:
+                if isrc:
+                    result = await provider.search_by_isrc(isrc)
+                    match_kind = "isrc"
+                else:
+                    result = await provider.search_track(
+                        title=track.song_name, artist=track.artist
+                    )
+                    match_kind = "search"
+            except AuthenticationError:
+                # Warn once, disable enrichment for the remainder of the run.
+                logger.warning(
+                    "Spotify enrichment disabled for this run: authentication failed"
+                )
+                limiter.record_result("spotify", success=False)
+                return "disabled"
+            except RateLimitError:
+                # Warn, stop enriching, return tracks enriched so far.
+                logger.warning(
+                    "Spotify enrichment stopped: rate limit hit; tracks "
+                    "enriched so far are kept"
+                )
+                limiter.record_result("spotify", success=False)
+                return "disabled"
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                # Debug log, continue to the next track.
+                logger.debug(f"Spotify enrichment failed for one track: {e}")
+                limiter.record_result("spotify", success=False)
+                counts["none"] += 1
+                return "none"
+
+            if not result:
+                counts["none"] += 1
+                limiter.record_result("spotify", success=True)
+                return "none"
+
+            # On a hit, prefer external_urls["spotify"] over the constructed URL.
+            external = result.get("external_urls") or {}
+            link = external.get("spotify") or (
+                f"https://open.spotify.com/track/{result['spotify_id']}"
+            )
+            track.metadata.setdefault("links", {})["spotify"] = link
+            track.metadata["spotify_id"] = result["spotify_id"]
+            track.metadata["spotify_match"] = match_kind
+            counts[match_kind] += 1
+            limiter.record_result("spotify", success=True)
+            return match_kind
+        finally:
+            if acquired:
+                limiter.release("spotify")
+
     async def identify_tracks(self, audio_segments):
         provider_names = self._provider_chain()
 
@@ -418,6 +577,13 @@ class IdentificationManager:
                 f"{len(identified_tracks)} total matches"
             )
         )
+
+        # Enrich unique tracks with canonical Spotify links (post-dedup by
+        # design: ~22 unique tracks, not ~216 raw detections — a 10x cut in
+        # API calls, and keeps the rate limiter out of the hot path). Strictly
+        # optional: a silent no-op without credentials or when disabled. Best-
+        # effort (R5): every error path leaves the identified tracks intact.
+        await self._enrich_tracks(unique_tracks)
 
         # A broken pipeline and an unidentifiable set look identical from
         # here: both end with zero matches. The per-segment no-match line
