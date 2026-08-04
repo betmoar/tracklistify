@@ -9,6 +9,7 @@ that runs after the Spotify client-credentials source.
 """
 
 # Standard library imports
+import asyncio
 import os
 from typing import Dict
 from urllib.parse import urlparse
@@ -106,21 +107,52 @@ class MusicBrainzProvider:
         url = f"{self.API_BASE}/isrc/{isrc}"
         params = {"inc": "url-rels", "fmt": "json"}
 
-        async with self._session.get(url, params=params) as response:
-            if response.status in (400, 404):
-                # Clean miss: malformed ISRC, or ISRC not in MusicBrainz.
-                return {}
-            if not 200 <= response.status < 300:
-                # 5xx etc. — surface to the hook, which treats it as a miss.
-                raise aiohttp.ClientResponseError(
-                    response.request_info,
-                    response.history,
-                    status=response.status,
-                    message=f"MusicBrainz API error: {response.status}",
-                )
-            data = await response.json()
+        # MusicBrainz rate-limits with 503 under load even well under its
+        # stated 1200/min ceiling — measured ~19% of ISRCs 503 on a first
+        # attempt (2026-08-04). A 503 is transient, not a real miss: retry a
+        # bounded number of times, honoring Retry-After when present, so a
+        # resolvable link is not silently lost to a one-shot rate-limit blip.
+        # Other 5xx/4xx surface to the hook unchanged.
+        for attempt in range(self._MAX_503_RETRIES + 1):
+            async with self._session.get(url, params=params) as response:
+                if response.status in (400, 404):
+                    # Clean miss: malformed ISRC, or ISRC not in MusicBrainz.
+                    return {}
+                if response.status == 503 and attempt < self._MAX_503_RETRIES:
+                    retry_after = self._retry_after_seconds(response, attempt)
+                    logger.debug(
+                        f"MusicBrainz 503 for {isrc}; retry {attempt + 1} "
+                        f"in {retry_after:.1f}s"
+                    )
+                    await asyncio.sleep(retry_after)
+                    continue
+                if not 200 <= response.status < 300:
+                    # Exhausted retries (503) or a non-retryable error — surface
+                    # to the hook, which treats it as a per-track miss (R5).
+                    raise aiohttp.ClientResponseError(
+                        response.request_info,
+                        response.history,
+                        status=response.status,
+                        message=f"MusicBrainz API error: {response.status}",
+                    )
+                data = await response.json()
+                return self._extract_links(data)
+        # Unreachable: the loop returns or raises on every path.
+        return {}
 
-        return self._extract_links(data)
+    # Max retries on a 503 before giving up on a track.
+    _MAX_503_RETRIES = 2
+
+    @staticmethod
+    def _retry_after_seconds(response, attempt: int) -> float:
+        """Honor Retry-After when present, else exponential backoff (2s, 4s)."""
+        header = response.headers.get("Retry-After")
+        if header:
+            try:
+                return float(header)
+            except (TypeError, ValueError):
+                logger.debug(f"Unparseable Retry-After header {header!r}; backoff")
+        return 2.0 * (2**attempt)
 
     @staticmethod
     def _extract_links(data: dict) -> Dict[str, str]:
