@@ -236,6 +236,15 @@ class TrackIdentificationConfig(BaseConfig):
     # when Spotify credentials are absent, so ``true`` is a safe default.
     enrichment_enabled: bool = field(default=True)
 
+    # MusicBrainz link enrichment (keyless, free): a second source that
+    # resolves canonical streaming URLs (Spotify/Deezer/Tidal/Apple/Beatport)
+    # via the ISRC lookup. Runs after the Spotify source; first-writer-wins
+    # per link key. ~20% Spotify-link coverage on underground/EDM (measured
+    # 2026-08-04); additive, not exclusive. A no-op without an ISRC.
+    musicbrainz_enabled: bool = field(default=True)
+    musicbrainz_max_rpm: int = field(default=50)
+    musicbrainz_max_concurrent: int = field(default=5)
+
     # Output formats
     output_format: str = field(default="json")
 
