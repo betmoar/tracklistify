@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Optional
 from tracklistify.core.exceptions import ConfigError
 
 if TYPE_CHECKING:
+    from tracklistify.providers.musicbrainz import MusicBrainzProvider
     from tracklistify.providers.spotify import SpotifyProvider
 
 _provider_factory = None
@@ -141,6 +142,32 @@ class ProviderFactory:
 
         provider = SpotifyProvider(client_id=client_id, client_secret=client_secret)
         self.providers[self._SPOTIFY_ENRICHMENT_KEY] = provider
+        return provider
+
+    # Cache key for the keyless MusicBrainz enrichment provider. Distinct from
+    # any identification provider name so it cannot collide; the leading
+    # underscore keeps it out of the identification name space.
+    _MUSICBRAINZ_ENRICHMENT_KEY = "_musicbrainz_enrichment"
+
+    def get_musicbrainz_provider(self) -> "Optional[MusicBrainzProvider]":
+        """Return the keyless MusicBrainz enrichment provider.
+
+        MusicBrainz needs no credentials — the only configuration is an
+        optional descriptive User-Agent (``TRACKLISTIFY_MUSICBRAINZ_CONTACT``,
+        read inside the provider). Unlike ``get_spotify_provider``, this
+        always returns a provider (the hook gates on
+        ``musicbrainz_enabled``); it returns ``None`` only if the factory
+        cannot build one, which it currently never does. Cached under a
+        non-colliding key so ``close_all()`` closes its aiohttp session.
+        """
+        cached = self.providers.get(self._MUSICBRAINZ_ENRICHMENT_KEY)
+        if cached is not None:
+            return cached
+
+        from tracklistify.providers.musicbrainz import MusicBrainzProvider
+
+        provider = MusicBrainzProvider()
+        self.providers[self._MUSICBRAINZ_ENRICHMENT_KEY] = provider
         return provider
 
     async def close_all(self) -> None:
