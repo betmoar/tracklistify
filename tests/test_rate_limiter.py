@@ -216,3 +216,30 @@ class TestRateLimiter:
 
         # Should have waited approximately the timeout duration
         assert 0.1 <= duration <= 0.2
+
+
+def test_register_provider_musicbrainz_reads_config_fields():
+    """register_provider('musicbrainz') resolves limits from the config
+    fields, same parametric-branch pattern as spotify/shazam/acrcloud."""
+    from types import SimpleNamespace
+
+    from tracklistify.utils.rate_limiter import RateLimiter
+
+    cfg = SimpleNamespace(
+        musicbrainz_max_rpm=42,
+        musicbrainz_max_concurrent=7,
+        # other branches' fields, in case the fallback ever touches them
+        shazam_max_rpm=25,
+        shazam_max_concurrent=1,
+        acrcloud_max_rpm=300,
+        acrcloud_max_concurrent=10,
+        spotify_max_rpm=120,
+        spotify_max_concurrent=20,
+        max_requests_per_minute=25,
+        max_concurrent_requests=2,
+    )
+    limiter = RateLimiter(config=cfg)
+    limiter.register_provider("musicbrainz")
+    limits = limiter._provider_limits["musicbrainz"]
+    assert limits.max_requests_per_minute == 42
+    assert limits.max_concurrent_requests == 7
