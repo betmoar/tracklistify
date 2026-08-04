@@ -29,6 +29,11 @@ logger = get_logger(__name__)
 # wolf. A full mix returning nothing at all is worth flagging.
 _MIN_SEGMENTS_FOR_MISS_RATE_WARNING = 10
 
+# MusicBrainz asks for ≤1 req/s and 503s under burst load; this explicit
+# inter-request spacing in the MB enrichment pass keeps us polite (the
+# token-bucket limiter alone permits a burst). See _enrich_musicbrainz.
+_MUSICBRAINZ_REQUEST_INTERVAL = 1.1
+
 
 def format_duration(duration: float) -> str:
     """Format duration in seconds to HH:MM:SS.
@@ -324,34 +329,43 @@ class IdentificationManager:
             return None
 
     async def _enrich_tracks(self, unique_tracks: List[Track]) -> None:
-        """Resolve a canonical Spotify track link per unique track (spec unit D).
+        """Resolve canonical streaming links per unique track (spec unit D + MB).
 
-        ISRC-first (exact lookup via ``search_by_isrc``), title/artist search
-        fallback (``search_track``). Writes ``metadata["links"]["spotify"]``,
-        ``metadata["spotify_id"]`` and ``metadata["spotify_match"]`` ("isrc" |
-        "search") on a hit. Each run logs a summary count of isrc / search /
-        none — the instrumentation for backlog unknowns U1/U2/U3.
+        Two sources, run in sequence so they compose (first-writer-wins per
+        link key):
+
+        1. **Spotify** (client-credentials) — ISRC-first via
+           ``search_by_isrc``, title/artist search fallback. Writes
+           ``metadata["links"]["spotify"]``, ``spotify_id`` and
+           ``spotify_match`` ("isrc" | "search"). A no-op without credentials.
+        2. **MusicBrainz** (keyless) — exact ISRC lookup returning canonical
+           URLs for any of spotify/deezer/tidal/apple/beatport. Adds links the
+           Spotify source didn't set; when it supplies the Spotify link it
+           records ``spotify_match = "musicbrainz"``. A no-op when disabled or
+           when a track has no ISRC.
 
         Post-dedup by design. Sequential, not gather — the volume is ~22 and
         concurrency buys nothing worth the added failure modes.
 
-        Best-effort (R5): enrichment never fails a run. Error posture —
-        ``AuthenticationError`` → warn once, disable for the rest of the run;
-        ``RateLimitError`` → warn, stop, return enriched-so-far; any other
-        ``Exception`` → debug log, continue to the next track;
-        ``asyncio.CancelledError`` → re-raise, never swallowed.
+        Best-effort (R5): enrichment never fails a run. Each source's error
+        posture is local — a source that errors or is disabled leaves the
+        other and the identified tracks intact.
 
-        Structured so the per-source logic (resolve provider → look up one
-        track → write into ``metadata["links"]``) is separable from the loop
-        scaffolding (gating, limiter pairing, error posture, summary). A
-        MusicBrainz source (backlog U5) slots in without touching the
-        scaffolding — do NOT build an ABC/registry for one implementation.
+        The two sources share the loop scaffolding's *shape* (gating, limiter
+        pairing, error posture) but are separate methods, not an ABC — the
+        charter forbids a registry for two implementations.
         """
         if not unique_tracks:
             return
         if not getattr(self.config, "enrichment_enabled", True):
             return
 
+        await self._enrich_spotify(unique_tracks)
+        if getattr(self.config, "musicbrainz_enabled", True):
+            await self._enrich_musicbrainz(unique_tracks)
+
+    async def _enrich_spotify(self, unique_tracks: List[Track]) -> None:
+        """Spotify client-credentials enrichment pass (spec unit D)."""
         # ``getattr`` fallback: a factory that doesn't supply a Spotify
         # enrichment provider (e.g. an identification-only stub) degrades to a
         # no-op, consistent with the no-op-without-credentials posture.
@@ -387,6 +401,57 @@ class IdentificationManager:
                 f"Spotify enrichment: {enriched} links resolved "
                 f"(isrc={counts['isrc']}, search={counts['search']}, "
                 f"none={counts['none']})"
+            )
+
+    async def _enrich_musicbrainz(self, unique_tracks: List[Track]) -> None:
+        """Keyless MusicBrainz ISRC enrichment pass (spec unit C, MB doc).
+
+        Runs after the Spotify pass. For each track with an ISRC, resolves
+        canonical streaming URLs and merges them into ``metadata["links"]``
+        with first-writer-wins per key — a Spotify link the Spotify source set
+        survives. When MusicBrainz supplies the Spotify link (the Spotify
+        source was unconfigured or missed), records
+        ``spotify_match = "musicbrainz"``.
+
+        Exact ISRC lookup only — no title/artist fuzzy search (a fuzzy path
+        would reimport the wrong-match risk ``spotify_match`` provenance
+        exists to audit). No credentials; gated only by
+        ``musicbrainz_enabled``.
+        """
+        # ``getattr`` fallback: an identification-only factory stub degrades to
+        # a no-op (mirrors the Spotify pass).
+        get_mb = getattr(self.provider_factory, "get_musicbrainz_provider", None)
+        provider = get_mb() if get_mb is not None else None
+        if provider is None:
+            return
+
+        limiter = get_global_rate_limiter()
+        counts = {"resolved": 0, "none": 0}
+
+        # MusicBrainz rate-limits with 503 under *burst* load even well under
+        # its 1200/min ceiling. The token-bucket limiter starts with a full
+        # bucket, so it permits a burst and never spaces requests politely —
+        # measured (2026-08-04): the bursted hook resolved 3% of resolvable
+        # links while the same provider paced at ~1 req/s resolved 26%. MB's
+        # own etiquette asks for ≤1 req/s, so pace explicitly here. This is
+        # MB-specific courtesy, not a general limiter change.
+        async with provider:
+            for track in unique_tracks:
+                isrc = track.metadata.get("isrc")
+                if not isrc:
+                    continue
+                ok = await self._enrich_one_mb(provider, limiter, track)
+                if ok:
+                    counts["resolved"] += 1
+                else:
+                    counts["none"] += 1
+                # Polite inter-request spacing (≤1 req/s).
+                await asyncio.sleep(_MUSICBRAINZ_REQUEST_INTERVAL)
+
+        if counts["resolved"]:
+            logger.info(
+                f"MusicBrainz enrichment: {counts['resolved']} tracks resolved "
+                f"a link ({counts['none']} no match)"
             )
 
     async def _enrich_one(
@@ -470,6 +535,54 @@ class IdentificationManager:
         finally:
             if acquired:
                 limiter.release("spotify")
+
+    async def _enrich_one_mb(self, provider, limiter, track: Track) -> bool:
+        """Resolve one track's links via MusicBrainz; return True if any added.
+
+        Acquire/release pairing mirrors the Spotify pass: every ``acquire`` is
+        matched by ``release`` in ``finally``, every outcome reported via
+        ``record_result`` (invariant I6). MusicBrainz has no
+        RateLimit/Auth-specific exceptions — 404/400 are clean misses returned
+        as ``{}`` by the provider, and a transport/5xx error is caught here as
+        a per-track miss and the run continues (R5).
+        """
+        acquired = False
+        try:
+            acquired = await limiter.acquire("musicbrainz")
+            if not acquired:
+                logger.debug("MusicBrainz enrichment: rate limiter rejected request")
+                return False
+
+            try:
+                links = await provider.lookup_isrc(track.metadata["isrc"])
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.debug(f"MusicBrainz enrichment failed for one track: {e}")
+                limiter.record_result("musicbrainz", success=False)
+                return False
+
+            if not links:
+                limiter.record_result("musicbrainz", success=True)
+                return False
+
+            # First-writer-wins per key: the Spotify source's canonical link
+            # (set earlier in the same run) survives. ``setdefault`` applies.
+            track_links = track.metadata.setdefault("links", {})
+            added = False
+            for service, url in links.items():
+                if not track_links.get(service):
+                    track_links[service] = url
+                    added = True
+                    # Provenance: if MB supplied the Spotify link, record that.
+                    if service == "spotify":
+                        track.metadata["spotify_match"] = "musicbrainz"
+
+            limiter.record_result("musicbrainz", success=True)
+            return added
+        finally:
+            if acquired:
+                limiter.release("musicbrainz")
 
     async def identify_tracks(self, audio_segments):
         provider_names = self._provider_chain()

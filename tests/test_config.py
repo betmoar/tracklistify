@@ -599,3 +599,22 @@ def test_enrichment_enabled_default_and_override(monkeypatch):
     monkeypatch.setenv("TRACKLISTIFY_ENRICHMENT_ENABLED", "false")
     clear_config()
     assert get_config().enrichment_enabled is False
+
+
+def test_musicbrainz_config_defaults_and_override(monkeypatch):
+    """musicbrainz_enabled + rate-limit fields default sensibly and override."""
+    for key in [k for k in os.environ if k.startswith("TRACKLISTIFY_")]:
+        monkeypatch.delenv(key, raising=False)
+
+    clear_config()
+    cfg = get_config()
+    assert cfg.musicbrainz_enabled is True
+    assert cfg.musicbrainz_max_rpm == 30
+    assert cfg.musicbrainz_max_concurrent == 1
+
+    monkeypatch.setenv("TRACKLISTIFY_MUSICBRAINZ_ENABLED", "false")
+    monkeypatch.setenv("TRACKLISTIFY_MUSICBRAINZ_MAX_RPM", "15")
+    clear_config()
+    cfg = get_config()
+    assert cfg.musicbrainz_enabled is False
+    assert cfg.musicbrainz_max_rpm == 15

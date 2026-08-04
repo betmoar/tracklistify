@@ -119,6 +119,9 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
         "Metadata enrichment",
         [
             "enrichment_enabled",
+            "musicbrainz_enabled",
+            "musicbrainz_max_rpm",
+            "musicbrainz_max_concurrent",
         ],
     ),
 ]
@@ -144,6 +147,9 @@ INLINE_COMMENTS: dict[str, str] = {
     "download_format": "mp3 | flac | ...",
     "shazam_proxy": "e.g. http://127.0.0.1:8080",
     "enrichment_enabled": "resolve Spotify links post-dedup (no-op w/o creds)",
+    "musicbrainz_enabled": "keyless ISRC link source (no-op w/o ISRC)",
+    "musicbrainz_max_rpm": "requests/min (paced; MB 503s under burst)",
+    "musicbrainz_max_concurrent": "concurrent MB requests (1 = serialize)",
 }
 
 # Fields rendered as commented-out (optional / not always set).
@@ -171,6 +177,10 @@ CREDENTIALS_BLOCK = """\
 # TRACKLISTIFY_SPOTIFY_COOKIES=~/.mozilla/firefox/profile/cookies.sqlite
 # TRACKLISTIFY_SPOTIFY_QUALITY=AAC_256
 # TRACKLISTIFY_SPOTIFY_FORMAT=m4a
+#
+# MusicBrainz is keyless and free, but asks for a descriptive User-Agent
+# (it blocks generic agents). Optional — a generic UA is used if unset.
+# TRACKLISTIFY_MUSICBRAINZ_CONTACT=your-email@example.com
 """
 
 
