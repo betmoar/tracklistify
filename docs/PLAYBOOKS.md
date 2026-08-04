@@ -130,6 +130,25 @@ supported long before anything reads it.
 - `cz bump` (commitizen) reads `[project].version` via
   `version_provider = "pep621"`. Don't set it back to `"poetry"`; the
   project migrated to uv and there is no `[tool.poetry]` table.
+- **Tag chain is `v0.7.0`→HEAD, all `v`-prefixed.** `v0.7.0` (2025-09
+  clean-slate squash) and `v0.8.0` (2026-05 audit) were reconstructed as
+  back-dated annotated tags; `changelog_start_rev = "v0.7.0"` is the oldest
+  commitizen sees. If a tag is missing or lacks the `v` prefix, `cz` silently
+  mis-ranges or aborts — create back-dated annotated tags (`git tag -a` with
+  `GIT_COMMITTER_DATE`) to match.
+- **Never let `cz` auto-regenerate the changelog.** `update_changelog_on_bump`
+  is `false` because `cz bump` runs the *non-incremental* generator, which
+  regenerates from `changelog_start_rev` and overwrites curated history
+  (observed: it replaced a hand-written `### Added` section with a wrong
+  duplicate `### Fix`). The repeatable flow is two steps:
+  1. `cz changelog --incremental` — adds one section for the new version,
+     preserves the rest. Then hand-curate it to match the existing
+     narrative style (bold lead-ins, one fix per bullet).
+  2. `cz bump` — bumps `pyproject.toml`, commits, and tags `v$version`.
+     Changelog untouched.
+- Back-dating a tag at a past commit:
+  `GIT_COMMITTER_DATE="2025-09-15T21:07:03+02:00" git tag -a v0.7.0 <sha>
+  -m "Release …"`. Use the commit's author date (`git log -1 --format=%ci`).
 
 ## Debugging a 3am "no tracks identified" report
 

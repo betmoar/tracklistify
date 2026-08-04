@@ -91,11 +91,12 @@ version_provider = "pep621"
 # `cz bump` (version + commit + tag, no changelog). See docs/PLAYBOOKS.md.
 update_changelog_on_bump = false
 major_version_zero = true
-# Was "v0.6.8", a tag that does not exist in this repo — `cz bump` aborted
-# on `git log v0.6.8..` before it could write a changelog. The oldest tag
-# present is `0.8.0` (no `v` prefix, predating tag_format), so start from
-# the oldest tag that actually matches tag_format.
-changelog_start_rev = "v0.8.1"
+# The oldest real release tag. 0.7.0 (the clean-slate modular restructure,
+# 2025-09-15) was never tagged and the 0.8.0 tag lacked the `v` prefix
+# `tag_format` requires; both were reconstructed in 2026-08 so cz sees a
+# consistent v0.7.0 → HEAD chain. Pre-0.7.0 history is the pre-squash record
+# (hand-curated sections below v0.7.0) and is deliberately outside cz's range.
+changelog_start_rev = "v0.7.0"
 
 [tool.pytest.ini_options]
 minversion = "8.0"

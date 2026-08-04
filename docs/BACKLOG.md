@@ -17,37 +17,31 @@ Three kinds of blocker: **measurement** (nobody has the number yet),
 **decision** (nobody has chosen yet), **external** (someone outside the project
 has to say yes).
 
-| ID | Question | Kind | Blocks | How it gets resolved |
-|---|---|---|---|---|
-| U1 | What is the overall ISRC presence rate in Shazam responses? | measurement | Sizes both enrichment items | The per-run isrc/search/none counter shipped by the Spotify spec. Current evidence is n=1 set: 7 of the 8 link-less tracks in a 20-track run carried an ISRC — that is a rate among *link-less* tracks, not the overall rate |
-| U2 | What fraction of ISRCs resolve to a Spotify track? | measurement | P2 Spotify payoff estimate (the 12/20 → ~19/20 claim) | Same counter |
-| U3 | How often does title/artist search return the *wrong* track for underground techno? | measurement | Trusting the P2 Spotify fallback path | Not resolvable up front. The Spotify spec records `spotify_match: "isrc"\|"search"` per track, so fuzzy hits are auditable in real output instead of silently presented as fact |
-| U4 | Flat per-platform keys or a nested `links` object in `Track.metadata`? | decision | P3 schema item | **Decided 2026-08-02 — nested `metadata.links`.** See `docs/dev/2026-08-02-spotify-link-enrichment-spec.md` unit E |
-| U5 | How well does MusicBrainz cover underground-electronic ISRCs? | measurement | P3 MusicBrainz — if coverage is low this buys little | Offline probe over a real `tracklist.json` once U1/U2 have produced ISRCs to probe with. Cheap, keyless, and worth doing before writing any MusicBrainz code |
-| U6 | Is the non-distinguishing title-suffix allowlist complete? | measurement | P2 dedup | Not resolvable up front, and deliberately so: the dedup spec defaults to *keep*, so an incomplete allowlist costs a visible duplicate row, never a silent deletion. Widen it from observed output over time |
-| U7 | RapidAPI Shazam: PCM conversion cost, metadata parity with shazamio, per-request price at ~216 segments/run, bot-defender reliability | external | P3 RapidAPI | Needs a paid key to answer any of it |
-| U8 | Will Beatport grant partner access? | external | P3 Beatport | Commercial-use review through the Partner Portal. No code path exists without it, and the known public-client-ID workaround is not shippable |
-| U9 | What is the real scope of the Spotify authorization-code + PKCE flow? | decision | Playlist export (`exporters/spotify.py`) | Unscoped. Client-credentials tokens can never reach `/me/playlists`, so this is a feature project, not a wiring task |
-| U10 | Should a `download_quality` / `download_format` change invalidate the download cache? | decision | P4 cache debt | Unowned behavior decision. Today those fields are not wired through the factory and are absent from the cache key, so a re-run at a different quality serves the old file |
+| ID  | Question                                                                                                                              | Kind        | Blocks                                                | How it gets resolved                                                                                                                                                                                                         |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| U1  | What is the overall ISRC presence rate in Shazam responses?                                                                           | measurement | Sizes both enrichment items                           | The per-run isrc/search/none counter shipped by the Spotify spec. Current evidence is n=1 set: 7 of the 8 link-less tracks in a 20-track run carried an ISRC — that is a rate among _link-less_ tracks, not the overall rate |
+| U2  | What fraction of ISRCs resolve to a Spotify track?                                                                                    | measurement | P2 Spotify payoff estimate (the 12/20 → ~19/20 claim) | Same counter                                                                                                                                                                                                                 |
+| U3  | How often does title/artist search return the _wrong_ track for underground techno?                                                   | measurement | Trusting the P2 Spotify fallback path                 | Not resolvable up front. The Spotify spec records `spotify_match: "isrc"\|"search"` per track, so fuzzy hits are auditable in real output instead of silently presented as fact                                              |
+| U4  | Flat per-platform keys or a nested `links` object in `Track.metadata`?                                                                | decision    | P3 schema item                                        | **Decided 2026-08-02 — nested `metadata.links`** (flat keys removed, `links.spotify` canonical-only, search URLs keep `*_search` keys). Detail in the P3 schema item below                                                                                                           |
+| U5  | How well does MusicBrainz cover underground-electronic ISRCs?                                                                         | measurement | P3 MusicBrainz — if coverage is low this buys little  | Offline probe over a real `tracklist.json` once U1/U2 have produced ISRCs to probe with. Cheap, keyless, and worth doing before writing any MusicBrainz code                                                                 |
+| U6  | Is the non-distinguishing title-suffix allowlist complete?                                                                            | measurement | P2 dedup                                              | Not resolvable up front, and deliberately so: the dedup spec defaults to _keep_, so an incomplete allowlist costs a visible duplicate row, never a silent deletion. Widen it from observed output over time                  |
+| U7  | RapidAPI Shazam: PCM conversion cost, metadata parity with shazamio, per-request price at ~216 segments/run, bot-defender reliability | external    | P3 RapidAPI                                           | Needs a paid key to answer any of it                                                                                                                                                                                         |
+| U8  | Will Beatport grant partner access?                                                                                                   | external    | P3 Beatport                                           | Commercial-use review through the Partner Portal. No code path exists without it, and the known public-client-ID workaround is not shippable                                                                                 |
+| U9  | What is the real scope of the Spotify authorization-code + PKCE flow?                                                                 | decision    | Playlist export (`exporters/spotify.py`)              | Unscoped. Client-credentials tokens can never reach `/me/playlists`, so this is a feature project, not a wiring task                                                                                                         |
+| U10 | Should a `download_quality` / `download_format` change invalidate the download cache?                                                 | decision    | P4 cache debt                                         | Unowned behavior decision. Today those fields are not wired through the factory and are absent from the cache key, so a re-run at a different quality serves the old file                                                    |
 
-**Unblocked right now:** the two P2 items. Both have specs in `docs/dev/`.
-Everything else in this table is waiting on a measurement that those specs
-produce, or on someone outside the project.
+**Unblocked right now:** the two P2 items. Both have design specs (local-only,
+`docs/dev/` — not in the released repo; the decision summaries are inlined
+below). Everything else in this table is waiting on a measurement that those
+specs produce, or on someone outside the project.
 
 ---
 
-## P2 — ~~bracketed/parenthetical title variants survive dedup as separate rows~~ ✅ Fixed
-
-**Fixed** (`feat/dedup`, PR #68) — see the [Fixed section](#fixed) below.
-The full design and rule set live in the spec
-(`docs/dev/2026-08-02-dedup-title-variants-spec.md`); the changelog entry is
-under `[Unreleased]`. The historical problem analysis is retained in the spec,
-not here, to keep the open backlog lean.
-
 ## P2 — Spotify enrichment is built but unreachable
 
-**Spec:** `docs/dev/2026-08-02-spotify-link-enrichment-spec.md` (also decides
-the P3 link-schema item below — unknown U4)
+**Spec:** `docs/dev/2026-08-02-spotify-link-enrichment-spec.md` (local-only,
+not in the released repo; also decides the P3 link-schema item below —
+unknown U4). The decision summary is inlined in this entry.
 
 `SpotifyProvider` (search/enrich, client-credentials auth) works but no
 pipeline stage calls `enrich_metadata`. The natural hook: after
@@ -75,7 +69,7 @@ Keep Spotify **out** of `KNOWN_PROVIDERS` (it has no `identify_track`, so
 accessor that returns `None` when creds are absent.
 
 **Concrete goal, now that links are the driver:** a canonical Spotify
-track URL per track. Shazam already gives us a *search* URL for free
+track URL per track. Shazam already gives us a _search_ URL for free
 (`spotify_search_url`, shipped 2026-08-01) — this item is what upgrades it
 to a real `https://open.spotify.com/track/<id>`. `search_track` already
 returns `spotify_id`, so the URL is string construction, not another API
@@ -101,7 +95,7 @@ sometimes confidently return the wrong track. Prefer ISRC lookup
 and fall back to title/artist search only when it didn't.
 
 No wiring path exists yet: `KNOWN_PROVIDERS` is `("shazam", "acrcloud")`
-and the factory has no Spotify branch. Rate-limiter fields *are* already
+and the factory has no Spotify branch. Rate-limiter fields _are_ already
 present (`spotify_max_rpm`, `spotify_max_concurrent` in `config/base.py`),
 but credentials are not — add them env-only
 (`TRACKLISTIFY_SPOTIFY_CLIENT_ID`/`_SECRET`, read in
@@ -154,7 +148,7 @@ that fragility for cost and a rate cap.
   payload. Confirm the RapidAPI response carries the same fields before
   assuming `_extra_metadata` works unchanged.
 - **Cost model.** RapidAPI tiers are per-request. A 3h mix at a 50s step
-  is ~216 segments *per run*, times the fallback chain. Price a realistic
+  is ~216 segments _per run_, times the fallback chain. Price a realistic
   run before wiring it as primary; it may only make sense as a fallback
   for when shazamio breaks.
 - Some apidojo endpoints carry a "bot-defender" warning in their own docs
@@ -187,16 +181,17 @@ own docs frontend. It is fragile and near-certainly outside Beatport's
 terms; not something to build a user-facing feature on.
 
 Revisit only if partner access is granted. If it is, the token refresh
-and PKCE flow make it closer in shape to the Spotify *playlist export*
+and PKCE flow make it closer in shape to the Spotify _playlist export_
 problem than to the simple client-credentials enrichment above.
 
 ## P3 — decide the `metadata` link schema before more platforms land
 
-**Decided 2026-08-02 (unknown U4): nested `metadata.links`.** Specified in
-`docs/dev/2026-08-02-spotify-link-enrichment-spec.md` unit E, which lands it
-alongside the Spotify enrichment as this entry recommends. The flat keys are
-removed rather than aliased, and `links.spotify` is canonical-only — the
-Shazam-supplied search URLs keep distinct `spotify_search` / `deezer_search`
+**Decided 2026-08-02 (unknown U4): nested `metadata.links`.** Specified
+(local-only, `docs/dev/` — not in the released repo) in the Spotify
+enrichment spec unit E, which lands it alongside the Spotify enrichment as
+this entry recommends. The flat keys are removed rather than aliased, and
+`links.spotify` is canonical-only — the Shazam-supplied search URLs keep
+distinct `spotify_search` / `deezer_search`
 keys so a consumer can tell a resolved track link from a search. The rest of
 this entry is retained as the rationale.
 
@@ -269,7 +264,7 @@ field description. Low value — consider generating from
   real `downloaders/base.py` ABC (different signature/return). Delete the
   Protocol.
 - `core/run.py` cleanup-task registry is never populated; `ACRCLOUD_SUCCESS_CODE = 2000`
-  in constants is actually ACRCloud's *auth error* code and is unused.
+  in constants is actually ACRCloud's _auth error_ code and is unused.
 - `tests/test_cli_arguments.py` uses an unregistered `integration` pytest
   mark (warning noise); register it in pyproject or drop it.
 - `pytest-asyncio` will eventually require `asyncio_default_fixture_loop_scope`;
@@ -289,105 +284,105 @@ field description. Low value — consider generating from
 
 ## Fixed
 
+### 2026-08 changelog + tag reconstruction (`docs/changelog-tag-reconstruction`)
+
+The changelog and git tags disagreed with the real release history, so
+commitizen could not generate reliably. Three real releases had no changelog
+section; this reconstructs them.
+
+| Fix                                                                                                      | Where                                                                        | Test |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---- |
+| `0.7.0` (clean-slate modular restructure, 2025-09-15) had no changelog section                          | `docs/CHANGELOG.md` — added `[0.7.0]` from `f847c83` + #26–#35 commit bodies | —    |
+| `0.8.0` (the 2026-05 multi-phase audit) had no changelog section — its work was misfiled under `[0.8.2]` | `docs/CHANGELOG.md` — added `[0.8.0]` from `86fa9fc` body                     | —    |
+| `0.8.1` (the #53 handoff-audit hardening) had no changelog section — misfiled under `[0.8.2]`            | `docs/CHANGELOG.md` — added `[0.8.1]` from `40af3e9` body (I1–I8)             | —    |
+| `[0.8.2]` over-bundled 0.8.0/0.8.1 work (importability, ABC, CryptoManager)                             | `docs/CHANGELOG.md` — trimmed to PR #65's actual scope                       | —    |
+| `0.7.0` was never tagged                                                                                | created back-dated annotated `v0.7.0` at `f847c83`                           | —    |
+| `0.8.0` tag lacked the `v` prefix `tag_format` requires                                                 | recreated as back-dated annotated `v0.8.0` at `86fa9fc`                      | —    |
+| `changelog_start_rev = "v0.8.1"` made cz blind to all pre-0.8.1 history                                 | `pyproject.toml` — moved to `v0.7.0`                                         | —    |
+
+**Design:** cz now sees a consistent `v0.7.0 → HEAD` tag chain and generates
+end-to-end (`cz changelog --dry-run` and `cz bump --dry-run` both exit 0).
+The `[0.1.0]`–`[0.6.0]` + "Phase 1–4" sections are the genuine pre-squash
+record (the old branch's work, consolidated into the 0.7.0 clean slate) and
+are kept verbatim below `v0.7.0`. `update_changelog_on_bump` stays `false`
+(full regen is off-limits; the repeatable flow is `cz changelog
+--incremental` then `cz bump`). This item was itself only recoverable from
+the session transcript — it had never been recorded in the backlog.
+
 ### 2026-08 P2 dedup title-variants + download fixes (`feat/dedup`, PR #68)
 
-| Fix | Where | Test |
-|---|---|---|
-| Bracketed title variants (`(Club Mix)`, `[Live At …]`, `feat.`/`ft.`/`featuring` spellings) survived dedup as duplicate rows — titles compared exact-after-normalize | `core/track.py::_strip_title_variant` + `_comparison_title` (canonicalize trailing-suffix groups before normalize; comparison-only) | `tests/test_track_matcher.py::TestDedupInvariants` d1–d21 |
-| `config.download_max_retries` was dead config (declared, never read) — transient YouTube 403 aborted the run | `downloaders/ytdlp.py` wires it into yt-dlp's native `retries` option | `tests/test_ytdlp.py::test_download_max_retries_is_wired_into_ydl_opts` |
-| YouTube `&list=RD…` (auto-mix) URLs 403'd — yt-dlp descended into the playlist before `playlist_items='1'` bounded the download (non-retryable) | `downloaders/ytdlp.py::_strip_youtube_playlist_params` strips playlist params for YouTube | `tests/test_ytdlp.py::test_youtube_playlist_params_stripped_before_download` |
-| `ydl_opts['verbose']` was `True` with a comment saying "Always set to False" — flooded the log with a yt-dlp traceback on every download failure | `downloaders/ytdlp.py` (`verbose: False`) | `tests/test_ytdlp.py::test_ydl_opts_verbose_is_false` |
+| Fix                                                                                                                                                                  | Where                                                                                                                               | Test                                                                         |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Bracketed title variants (`(Club Mix)`, `[Live At …]`, `feat.`/`ft.`/`featuring` spellings) survived dedup as duplicate rows — titles compared exact-after-normalize | `core/track.py::_strip_title_variant` + `_comparison_title` (canonicalize trailing-suffix groups before normalize; comparison-only) | `tests/test_track_matcher.py::TestDedupInvariants` d1–d21                    |
+| `config.download_max_retries` was dead config (declared, never read) — transient YouTube 403 aborted the run                                                         | `downloaders/ytdlp.py` wires it into yt-dlp's native `retries` option                                                               | `tests/test_ytdlp.py::test_download_max_retries_is_wired_into_ydl_opts`      |
+| YouTube `&list=RD…` (auto-mix) URLs 403'd — yt-dlp descended into the playlist before `playlist_items='1'` bounded the download (non-retryable)                      | `downloaders/ytdlp.py::_strip_youtube_playlist_params` strips playlist params for YouTube                                           | `tests/test_ytdlp.py::test_youtube_playlist_params_stripped_before_download` |
+| `ydl_opts['verbose']` was `True` with a comment saying "Always set to False" — flooded the log with a yt-dlp traceback on every download failure                     | `downloaders/ytdlp.py` (`verbose: False`)                                                                                           | `tests/test_ytdlp.py::test_ydl_opts_verbose_is_false`                        |
 
 **Design:** the feat-credit marker is canonicalized, not dropped — keeping
 both the marker word and the credited artist (a credit identifies a specific
 recording). Accepted trade-off: a `feat. X` credit and a `(Mixed)` tag of the
-same audio now separate (visible duplicate — the recoverable direction). Full
-rule set, design decisions (D1–D7), and truth table in
-`docs/dev/2026-08-02-dedup-title-variants-spec.md`. Survived 3 review passes
-(2× `/code-review max`, 4-agent PR-review) + code-simplifier polish.
+same audio now separate (visible duplicate — the recoverable direction). The
+full rule set, allowlist/keep-list trade-offs, and representative-selection
+invariants are in `docs/playbooks/changing-dedup.md`. Survived 3 review
+passes (2× `/code-review max`, 4-agent PR-review) + code-simplifier polish.
 
 ### 2026-07 P2 correctness batch (`fix/p2-dedup-confidence-downloader`)
 
-| Fix | Where | Test |
-|---|---|---|
-| Dedup missed artist-string variants (`Berghain (Remix)` twice, 50s apart) — the shipping `get_unique_tracks` keyed on exact `artist\|song` and was time-blind | `core/track.py::TrackMatcher.get_unique_tracks` | `tests/test_track_matcher.py::test_artist_variant_merge_berghain` |
-| Representative `time_in_mix` flipped between runs (strict `>` on noisy confidence) | `core/track.py::_rep_key` (earliest time; confidence excluded outright — bucketing was tried and still flipped at bucket edges) | `test_representative_is_deterministic_under_confidence_noise` |
-| `config.min_confidence` was a no-op (hardcoded 0); default 0.5 → 0.0 so output is unchanged until the knob is turned | `core/track.py::TrackMatcher.__init__`, `config/base.py` | `test_min_confidence_filters_low_confidence` |
-| `TrackMatcher` re-resolved the global config, ignoring an injected one | `utils/identification.py` passes `self.config` | `tests/test_track_matcher.py` fixture |
-| SoundCloud `/sets/` container metadata propagated (wrong title/duration/filename) | `downloaders/ytdlp.py::download` unwraps `_type == "playlist"` → `entries[0]` | `tests/test_ytdlp.py` |
-| Output path reconstructed via `prepare_filename` missed muxing ext changes | prefer `requested_downloads[0]["filepath"]` | `tests/test_ytdlp.py` |
-| Stale pre-fix `/sets/` metadata served forever (cache has no TTL) | `cache/download.py::KEY_VERSION` in key material | `tests/test_download_cache.py` |
+| Fix                                                                                                                                                           | Where                                                                                                                           | Test                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Dedup missed artist-string variants (`Berghain (Remix)` twice, 50s apart) — the shipping `get_unique_tracks` keyed on exact `artist\|song` and was time-blind | `core/track.py::TrackMatcher.get_unique_tracks`                                                                                 | `tests/test_track_matcher.py::test_artist_variant_merge_berghain` |
+| Representative `time_in_mix` flipped between runs (strict `>` on noisy confidence)                                                                            | `core/track.py::_rep_key` (earliest time; confidence excluded outright — bucketing was tried and still flipped at bucket edges) | `test_representative_is_deterministic_under_confidence_noise`     |
+| `config.min_confidence` was a no-op (hardcoded 0); default 0.5 → 0.0 so output is unchanged until the knob is turned                                          | `core/track.py::TrackMatcher.__init__`, `config/base.py`                                                                        | `test_min_confidence_filters_low_confidence`                      |
+| `TrackMatcher` re-resolved the global config, ignoring an injected one                                                                                        | `utils/identification.py` passes `self.config`                                                                                  | `tests/test_track_matcher.py` fixture                             |
+| SoundCloud `/sets/` container metadata propagated (wrong title/duration/filename)                                                                             | `downloaders/ytdlp.py::download` unwraps `_type == "playlist"` → `entries[0]`                                                   | `tests/test_ytdlp.py`                                             |
+| Output path reconstructed via `prepare_filename` missed muxing ext changes                                                                                    | prefer `requested_downloads[0]["filepath"]`                                                                                     | `tests/test_ytdlp.py`                                             |
+| Stale pre-fix `/sets/` metadata served forever (cache has no TTL)                                                                                             | `cache/download.py::KEY_VERSION` in key material                                                                                | `tests/test_download_cache.py`                                    |
+
+**Design:** the matching rule (canonicalize-then-normalize via
+`_strip_title_variant`: drop non-distinguishing version/live tags,
+canonicalize `feat.`/`ft.`/`featuring` to `feat` keeping the credited artist,
+default keep), the allowlist-vs-keep-list trade-off, representative selection
+(jitter-proof earliest-time), and the accepted over-merges
+(`(Original Mix)` vs `(Radio Edit)` merge by design; two _named-different_
+`Live At …` venues collapse — a real over-merge class awaitable against real
+output) are all specified canonically in
+`docs/playbooks/changing-dedup.md`. The keep-list beats a drop-list because
+`(Someone Remix)` and a bare `(Remix)` must stay separate rows; no fuzzy
+ratio is used.
 
 **Dead code removed:** `merge_nearby_tracks` + its six helpers
 (`_create_track_group`, `_should_add_to_group`, `_add_to_group`,
-`_get_best_track`, `_is_unique_track`, `_add_to_merged_list`). These had
-zero production callers — the backlog's original framing of the dedup bug
-described *these*, not the shipping `get_unique_tracks`, which is why the
-proposed levers (fuzzy `is_similar_to`, raise `time_threshold`) would not
-have fixed anything. `add_track` no longer dedups; it confidence-gates and
-appends.
-
-**Known limitation (narrowed, not fully fixed):** the matching rule is now
-canonicalize-then-normalize (not exact-after-normalize): `_strip_title_variant`
-drops non-distinguishing version/live tags (`(Mixed)`, `(Club Mix)`,
-`(Extended Mix)`, `(Original Mix)`, `(Radio Edit)`, `(Radio Mix)`,
-`(Extended)`, `(Original)`, `Live At …`, in both `(...)` and `[...]`) and
-canonicalizes `feat.`/`ft.`/`featuring` markers to `feat` while keeping the
-credited artist. The **specific** `"Berghain"` vs `"Berghain (Remix)"` case
-this note cites **still will not merge**: `remix` is on the keep-list, and
-the default is keep (anything unrecognized stays too). What *did* open up is
-the allowlisted set — e.g. `Outside World` vs `Outside World (Club Mix)` now
-merges. No fuzzy ratio is used; the keep-list beats a drop-list because
-`(Someone Remix)` and a bare `(Remix)` must stay separate rows.
-
-**Known over-merge (accepted, awaits more data):** two *named-different* live
-recordings collapse because `Live At …` is a drop-prefix.
-`Song (Live At Wembley 95)` and `Song (Live At Madison Square Garden 98)` by
-the same artist both drop to `Song` and merge into one row (verified
-end-to-end). The spec's `Live At …` case was bare-title-vs-live
-(`Stereo Murder [Live At Tomorrowland]` vs `Stereo Murder`); it did not
-consider live-vs-live with different venues. In a DJ-mix context two live
-recordings 50s apart by the same artist are usually the same track Shazam
-spelled differently, not two genuinely different plays — but two *named*
-venues/years is a real over-merge class that can only be sized against real
-output over time.
-
-**By design (not a limitation):** the drop-exact version tags
-(`(Original Mix)`, `(Radio Edit)`, `(Extended)`, `(Extended Mix)`, etc.) are
-*deliberately* treated as non-distinguishing — the spec's premise is that
-these are "usually the same recording under different Shazam spellings." So
-`(Original Mix)` vs `(Radio Edit)`, or a bare title vs `(Original Mix)`,
-merge by design. They are *sometimes* different masters; that is the accepted
-cost of the allowlist, not an undocumented over-merge. Likewise the accepted
-trade-off of treating `feat.` credits as distinguishing: a `feat. X` credit
-and a `(Mixed)` tag of the *same* audio now separate (a visible duplicate —
-the recoverable direction).
+`_get_best_track`, `_is_unique_track`, `_add_to_merged_list`). These had zero
+production callers — the original backlog framing of the dedup bug described
+_these_, not the shipping `get_unique_tracks`, which is why the proposed
+levers (fuzzy `is_similar_to`, raise `time_threshold`) would not have fixed
+anything. `add_track` no longer dedups; it confidence-gates and appends.
 
 ### 2026-07 cache + output work (`feat/wire-cache-identification`, PR #65)
 
-| Fix | Where | Test |
-|---|---|---|
-| Identification cache never called by production code | `utils/identification.py::IdentificationManager` | `tests/test_cache_wiring.py` |
-| Downloaded audio re-fetched every run | `cache/download.py`, `core/base.py::process_input` | `tests/test_download_cache*.py` |
+| Fix                                                                                  | Where                                                 | Test                                                            |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------- | --------------------------------------------------------------- |
+| Identification cache never called by production code                                 | `utils/identification.py::IdentificationManager`      | `tests/test_cache_wiring.py`                                    |
+| Downloaded audio re-fetched every run                                                | `cache/download.py`, `core/base.py::process_input`    | `tests/test_download_cache*.py`                                 |
 | Output was a flat dir; M3U emitted comments only (no playable URI, EXTINF always -1) | `exporters/tracklist.py`, `core/base.py::save_output` | `tests/test_output_subfolders.py`, `tests/test_m3u_playable.py` |
-| Mixcloud stored no metadata (`get_last_metadata()` returned None) | fixed via download-cache sidecar | `tests/test_download_cache_wiring.py` |
-| Folder names said "Unknown Artist" (uploader never wired into output) | `core/base.py::save_output` → `mix_info["artist"]` | `tests/test_output_subfolders.py` |
+| Mixcloud stored no metadata (`get_last_metadata()` returned None)                    | fixed via download-cache sidecar                      | `tests/test_download_cache_wiring.py`                           |
+| Folder names said "Unknown Artist" (uploader never wired into output)                | `core/base.py::save_output` → `mix_info["artist"]`    | `tests/test_output_subfolders.py`                               |
 
 ### Fixed in the 2026-07 audit (do not re-fix; locked by tests)
 
-| Fix | Where | Test |
-|---|---|---|
-| Config validation rules were never executed | `config/base.py::_validate` | I1 |
-| `overlap >= segment` → infinite segmentation loop | config cross-check + `split_audio` guard | I2 |
-| ACRCloud unconstructible (missing ctor args) + wrong `identify_track` signature | `providers/factory.py`, `providers/acrcloud.py` | I3, I4 |
-| `--no-fallback` / `fallback_*` config were no-ops | `IdentificationManager` provider chain | I5 |
-| Circuit breaker never received outcomes | `RateLimiter.record_result` + identify loop | I6 |
-| Cache TTL disabled by stored `None` | `cache/base.py::set` | I7 |
-| Cache index never saved on set/delete (cross-process data loss + orphan deletion of valid entries) | `cache/storage.py` | I8 |
-| Cache index rename without fsync | `cache/index.py::save` | — |
-| ffmpeg absence surfaced as cryptic per-segment errors | `cli.py` fail-fast + `split_audio` log | CLI tests |
-| `TracklistOutput` mkdir without `parents=True` | `exporters/tracklist.py` | — |
-| Spotify 429 lost structured `retry_after` | `providers/spotify.py` | — |
-| `cz bump` broken (`version_provider = "poetry"` post-uv-migration) | `pyproject.toml` | — |
-| `scripts/generate_config_docs.py` called a nonexistent method | fixed to use `ConfigDocGenerator` | — |
-| Dead + broken module-level `identify_tracks(audio_path)` (iterated a string as segments) | removed from `utils/identification.py` | — |
+| Fix                                                                                                | Where                                           | Test      |
+| -------------------------------------------------------------------------------------------------- | ----------------------------------------------- | --------- |
+| Config validation rules were never executed                                                        | `config/base.py::_validate`                     | I1        |
+| `overlap >= segment` → infinite segmentation loop                                                  | config cross-check + `split_audio` guard        | I2        |
+| ACRCloud unconstructible (missing ctor args) + wrong `identify_track` signature                    | `providers/factory.py`, `providers/acrcloud.py` | I3, I4    |
+| `--no-fallback` / `fallback_*` config were no-ops                                                  | `IdentificationManager` provider chain          | I5        |
+| Circuit breaker never received outcomes                                                            | `RateLimiter.record_result` + identify loop     | I6        |
+| Cache TTL disabled by stored `None`                                                                | `cache/base.py::set`                            | I7        |
+| Cache index never saved on set/delete (cross-process data loss + orphan deletion of valid entries) | `cache/storage.py`                              | I8        |
+| Cache index rename without fsync                                                                   | `cache/index.py::save`                          | —         |
+| ffmpeg absence surfaced as cryptic per-segment errors                                              | `cli.py` fail-fast + `split_audio` log          | CLI tests |
+| `TracklistOutput` mkdir without `parents=True`                                                     | `exporters/tracklist.py`                        | —         |
+| Spotify 429 lost structured `retry_after`                                                          | `providers/spotify.py`                          | —         |
+| `cz bump` broken (`version_provider = "poetry"` post-uv-migration)                                 | `pyproject.toml`                                | —         |
+| `scripts/generate_config_docs.py` called a nonexistent method                                      | fixed to use `ConfigDocGenerator`               | —         |
+| Dead + broken module-level `identify_tracks(audio_path)` (iterated a string as segments)           | removed from `utils/identification.py`          | —         |
