@@ -9,6 +9,8 @@ Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-04
+
 ### Added
 
 - **MusicBrainz link enrichment (keyless, free).** A second link source runs
@@ -49,8 +51,6 @@ Release dates are in YYYY-MM-DD format.
   no link omits `links` entirely. The MusicBrainz enrichment source may also
   add canonical `links.deezer` / `links.tidal` / `links.apple` / `links.beatport`
   keys (distinct from the Shazam-supplied `links.deezer_search`).
-
-## [0.9.1] - 2026-08-03
 
 ## [0.9.1] - 2026-08-03
 
