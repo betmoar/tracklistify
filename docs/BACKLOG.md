@@ -9,9 +9,11 @@ nobody re-audits them from scratch.
 ## Open unknowns
 
 The items below are blocked on something other than effort. Without this
-register the distinction is invisible — it is buried in prose inside the P2/P3
-entries, so "MusicBrainz enrichment" and "Spotify enrichment" look like the
-same size of job when only one of them is actually unblocked.
+register the distinction is invisible — the blocker kind (measurement /
+decision / external) determines whether a P3 item is one evening's work or
+blocked indefinitely on someone outside the project saying yes. U1–U5
+(the enrichment unknowns) are resolved in v0.10.0 and retained as
+recorded measurements; U6–U10 remain open.
 
 Three kinds of blocker: **measurement** (nobody has the number yet),
 **decision** (nobody has chosen yet), **external** (someone outside the project
@@ -19,107 +21,25 @@ has to say yes).
 
 | ID  | Question                                                                                                                              | Kind        | Blocks                                                | How it gets resolved                                                                                                                                                                                                         |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| U1  | What is the overall ISRC presence rate in Shazam responses?                                                                           | measurement | Sizes both enrichment items                           | The per-run isrc/search/none counter shipped by the Spotify spec. Current evidence is n=1 set: 7 of the 8 link-less tracks in a 20-track run carried an ISRC — that is a rate among _link-less_ tracks, not the overall rate |
-| U2  | What fraction of ISRCs resolve to a Spotify track?                                                                                    | measurement | P2 Spotify payoff estimate (the 12/20 → ~19/20 claim) | Same counter                                                                                                                                                                                                                 |
-| U3  | How often does title/artist search return the _wrong_ track for underground techno?                                                   | measurement | Trusting the P2 Spotify fallback path                 | Not resolvable up front. The Spotify spec records `spotify_match: "isrc"\|"search"` per track, so fuzzy hits are auditable in real output instead of silently presented as fact                                              |
-| U4  | Flat per-platform keys or a nested `links` object in `Track.metadata`?                                                                | decision    | P3 schema item                                        | **Decided 2026-08-02 — nested `metadata.links`** (flat keys removed, `links.spotify` canonical-only, search URLs keep `*_search` keys). Detail in the P3 schema item below                                                                                                           |
-| U5  | How well does MusicBrainz cover underground-electronic ISRCs?                                                                         | measurement | P3 MusicBrainz — if coverage is low this buys little  | Offline probe over a real `tracklist.json` once U1/U2 have produced ISRCs to probe with. Cheap, keyless, and worth doing before writing any MusicBrainz code                                                                 |
+| U1  | What is the overall ISRC presence rate in Shazam responses?                                                                           | measurement | ~~Sizes both enrichment items~~                       | **Resolved 2026-08-04 (v0.10.0).** Measured ~94% on a commercial set (31/33) and ~70% on underground (26/36, 29/30) via the shipped per-run isrc/search/none counter + MusicBrainz enrichment |
+| U2  | What fraction of ISRCs resolve to a Spotify track?                                                                                    | measurement | ~~P2 Spotify payoff estimate~~                        | **Resolved 2026-08-04 (v0.10.0).** MusicBrainz resolves ~23-25% of ISRCs to a Spotify URL (underground/EDM) and ~33% on commercial material. The Spotify-source estimate (~95%) is not separately measurable until a Premium-backed dev app exists |
+| U3  | How often does title/artist search return the _wrong_ track for underground techno?                                                   | measurement | ~~Trusting the P2 Spotify fallback path~~             | **Resolved (instrumented) 2026-08-04 (v0.10.0).** `spotify_match: "isrc"\|"search"\|"musicbrainz"` is recorded per track, so fuzzy hits are auditable in real output instead of silently presented as fact. The wrong-match rate is now derivable from any real run |
+| U4  | Flat per-platform keys or a nested `links` object in `Track.metadata`?                                                                | decision    | ~~P3 schema item~~                                    | **Decided 2026-08-02, shipped 2026-08-04 (v0.10.0) — nested `metadata.links`** (flat keys removed, `links.spotify` canonical-only, search URLs keep `*_search` keys) |
+| U5  | How well does MusicBrainz cover underground-electronic ISRCs?                                                                         | measurement | ~~P3 MusicBrainz~~                                    | **Resolved 2026-08-04 (v0.10.0).** Measured by live probe over 117 real ISRCs: ~26% resolve, ~23-25% yield a Spotify URL. Thin for underground (the spec's caveat held), higher on commercial — additive, not exclusive |
 | U6  | Is the non-distinguishing title-suffix allowlist complete?                                                                            | measurement | P2 dedup                                              | Not resolvable up front, and deliberately so: the dedup spec defaults to _keep_, so an incomplete allowlist costs a visible duplicate row, never a silent deletion. Widen it from observed output over time                  |
 | U7  | RapidAPI Shazam: PCM conversion cost, metadata parity with shazamio, per-request price at ~216 segments/run, bot-defender reliability | external    | P3 RapidAPI                                           | Needs a paid key to answer any of it                                                                                                                                                                                         |
 | U8  | Will Beatport grant partner access?                                                                                                   | external    | P3 Beatport                                           | Commercial-use review through the Partner Portal. No code path exists without it, and the known public-client-ID workaround is not shippable                                                                                 |
 | U9  | What is the real scope of the Spotify authorization-code + PKCE flow?                                                                 | decision    | Playlist export (`exporters/spotify.py`)              | Unscoped. Client-credentials tokens can never reach `/me/playlists`, so this is a feature project, not a wiring task                                                                                                         |
 | U10 | Should a `download_quality` / `download_format` change invalidate the download cache?                                                 | decision    | P4 cache debt                                         | Unowned behavior decision. Today those fields are not wired through the factory and are absent from the cache key, so a re-run at a different quality serves the old file                                                    |
 
-**Unblocked right now:** the two P2 items. Both have design specs (local-only,
-`docs/dev/` — not in the released repo; the decision summaries are inlined
-below). Everything else in this table is waiting on a measurement that those
-specs produce, or on someone outside the project.
+**Unblocked right now:** the MusicBrainz item shipped in v0.10.0 (keyless, no
+external gate). The Spotify client-credentials source also shipped but is
+blocked behind a Premium-backed developer app for *live* use (Spotify's
+late-2024 Web API policy) — the code is correct and degrades cleanly to a
+no-op without it. Everything else in this table is waiting on a measurement,
+an external decision, or someone outside the project.
 
 ---
-
-## P2 — Spotify enrichment is built but unreachable
-
-**Spec:** `docs/dev/2026-08-02-spotify-link-enrichment-spec.md` (local-only,
-not in the released repo; also decides the P3 link-schema item below —
-unknown U4). The decision summary is inlined in this entry.
-
-`SpotifyProvider` (search/enrich, client-credentials auth) works but no
-pipeline stage calls `enrich_metadata`. The natural hook: after
-`TrackMatcher.get_unique_tracks()` in `identify_tracks`, enrich each track's
-`metadata` dict when Spotify creds are configured. Keep it strictly optional
-(no creds → skip silently).
-
-`exporters/spotify.py` (playlist export) is a different story: it calls
-`/me/playlists`, which client-credentials tokens can NEVER access. Wiring it
-requires implementing the authorization-code flow (user consent, token
-refresh). Don't attempt as a drive-by; it's a feature project.
-
-**Scope note (from the 2026-07 exploration):** ~~the hook alone is invisible.
-No exporter serializes `Track.metadata`~~ — **resolved 2026-08-01** (PR #57,
-folded into `fix/p2-dedup-confidence-downloader`): `_save_json` now emits
-`metadata` per track and `_extra_metadata` threads provider extras into
-`Track.metadata`, so an enrichment hook is now visible without further
-exporter work. Markdown and M3U still build their own strings and ignore
-`metadata` — extend them only if a user asks. Also:
-`enrich_metadata` takes a plain dict keyed on `title`/`artist` (a `Track`
-uses `song_name`), mutates in place, and deliberately re-raises
-`RateLimitError`/`AuthenticationError` — the caller must catch those two.
-Keep Spotify **out** of `KNOWN_PROVIDERS` (it has no `identify_track`, so
-`-p spotify` would crash); use a separate `Optional[SpotifyProvider]`
-accessor that returns `None` when creds are absent.
-
-**Concrete goal, now that links are the driver:** a canonical Spotify
-track URL per track. Shazam already gives us a _search_ URL for free
-(`spotify_search_url`, shipped 2026-08-01) — this item is what upgrades it
-to a real `https://open.spotify.com/track/<id>`. `search_track` already
-returns `spotify_id`, so the URL is string construction, not another API
-call. Note `search_track` does **not** return `external_urls` even though
-`get_track_details` does (`spotify.py:227`) — add the field there rather
-than making a second request per track.
-
-**Measured payoff (fresh-cache run, 2026-08-01, 20-track Tomorrowland
-set):** Shazam supplied a Spotify search URL for only **12/20** tracks —
-`hub.providers` is simply absent from ~40% of responses, and it varies
-between calls for the same audio (one track had no link on the first run
-and one on the next). But **7 of the 8 tracks missing a link do carry an
-ISRC**. An ISRC-first lookup would take link coverage from 12/20 to
-roughly 19/20, which is the concrete argument for doing this.
-
-**Hook after `get_unique_tracks()`, not per segment.** Dedup runs first,
-so a 3h mix enriches ~22 unique tracks instead of ~216 raw detections —
-a 10x cut in API calls, and it keeps the rate limiter out of the
-identification hot path. Also decide match confidence: Spotify's search
-returns a best-effort top hit, and for underground techno it will
-sometimes confidently return the wrong track. Prefer ISRC lookup
-(`search?q=isrc:<isrc>`) when Shazam gave us one — exact, not fuzzy —
-and fall back to title/artist search only when it didn't.
-
-No wiring path exists yet: `KNOWN_PROVIDERS` is `("shazam", "acrcloud")`
-and the factory has no Spotify branch. Rate-limiter fields _are_ already
-present (`spotify_max_rpm`, `spotify_max_concurrent` in `config/base.py`),
-but credentials are not — add them env-only
-(`TRACKLISTIFY_SPOTIFY_CLIENT_ID`/`_SECRET`, read in
-`providers/factory.py`), never as config-dataclass fields, following the
-ACRCloud pattern.
-
-## P3 — MusicBrainz link enrichment via ISRC (no auth, no key)
-
-The cheapest breadth we can get, and the only option needing no
-commercial relationship. We already extract `isrc` from Shazam; the
-MusicBrainz `isrc/<isrc>?inc=url-rels` lookup is free, keyless, and
-returns cross-platform URL relations — frequently including purchase and
-streaming links across services we will never integrate directly.
-
-Fits the same post-dedup hook as the Spotify item above, so build them
-together if both are wanted. Rate limit is ~1 req/s with a required
-descriptive `User-Agent` (they block generic agents), which is fine
-against ~22 unique tracks but would not be against ~216 raw detections.
-
-Coverage caveat worth measuring before committing: ISRC presence in
-Shazam responses is good for label releases and patchy for the
-white-label/promo end of a techno set, and MusicBrainz's own coverage of
-underground electronic is thinner than its rock/pop catalog. Sample a
-real tracklist's ISRC hit rate first — if it is low, this buys little.
 
 ## P3 — evaluate RapidAPI Shazam as a `shazamio` alternative/fallback
 
@@ -183,36 +103,6 @@ terms; not something to build a user-facing feature on.
 Revisit only if partner access is granted. If it is, the token refresh
 and PKCE flow make it closer in shape to the Spotify _playlist export_
 problem than to the simple client-credentials enrichment above.
-
-## P3 — decide the `metadata` link schema before more platforms land
-
-**Decided 2026-08-02 (unknown U4): nested `metadata.links`.** Specified
-(local-only, `docs/dev/` — not in the released repo) in the Spotify
-enrichment spec unit E, which lands it alongside the Spotify enrichment as
-this entry recommends. The flat keys are removed rather than aliased, and
-`links.spotify` is canonical-only — the Shazam-supplied search URLs keep
-distinct `spotify_search` / `deezer_search`
-keys so a consumer can tell a resolved track link from a search. The rest of
-this entry is retained as the rationale.
-
-`Track.metadata` currently carries flat, per-platform keys: `shazam_url`,
-`apple_music_id`, `spotify_search_url`, `deezer_search_url`. That is fine
-at four and gets ugly at eight, and every consumer of the JSON has to
-know each key by name.
-
-Proposed, if a third link source is ever added:
-
-```json
-"metadata": {
-  "isrc": "USABC1234567",
-  "links": {"shazam": "...", "spotify": "...", "apple": "..."}
-}
-```
-
-Cheap now, a consumer-visible migration later — `_save_json`'s output is
-the public surface. Decide when the Spotify enrichment item lands, since
-that is the change that would make it worth doing. Not worth churning the
-schema for its own sake.
 
 ## P3 — delete or rescue `downloaders/spotify.py`
 
@@ -283,6 +173,35 @@ field description. Low value — consider generating from
 ---
 
 ## Fixed
+
+### 2026-08 P2/P3 Spotify + MusicBrainz link enrichment (`feat/spotify-link-enrichment` #72, `feat/musicbrainz-enrichment` #73, v0.10.0)
+
+Two post-dedup link sources for canonical streaming URLs, plus the nested
+`metadata.links` schema (resolves unknowns U1–U5). Both additive, opt-in,
+best-effort (never fail a run).
+
+| Fix                                                                                                   | Where                                                                                                        | Test                                                                              |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `SpotifyProvider` search/enrich existed but no pipeline stage called it                               | `utils/identification.py::_enrich_spotify` hook after `get_unique_tracks()` (ISRC-first, search fallback)   | `tests/test_spotify_enrichment.py`                                               |
+| `search_track` lacked `external_urls`/`isrc`; no exact ISRC lookup                                    | `providers/spotify.py` (+`search_by_isrc`)                                                                   | `tests/test_providers_spotify.py`                                                |
+| No keyless link source reachable without a Premium-backed Spotify app                                 | `providers/musicbrainz.py::MusicBrainzProvider.lookup_isrc` (free, keyless, `isrc/<isrc>?inc=url-rels`)      | `tests/test_providers_musicbrainz.py`                                            |
+| MusicBrainz bursts a full token bucket and 503-storms → ~3% yield                                     | `utils/identification.py::_enrich_musicbrainz` explicit 1.1s pacing + bounded 503 retry (provider)          | `tests/test_musicbrainz_enrichment.py` + live (3 runs: 25/23/23%, was 3%)        |
+| Flat per-platform `*_url` metadata keys don't scale past four                                         | `utils/identification.py::_extra_metadata` nests under `links.{shazam,spotify_search,deezer_search}` (U4)   | `tests/test_identification_utils.py`                                             |
+| `enrichment_enabled` / `musicbrainz_enabled` + rate-limit config                                       | `config/base.py`, `utils/rate_limiter.py` (musicbrainz branch), `scripts/generate_env_example.py`           | `tests/test_config.py`, `tests/test_rate_limiter.py`                             |
+
+**Design:** two independent sources run in sequence (Spotify client-credentials
+first, then MusicBrainz keyless), first-writer-wins per `links` key. The
+Spotify source needs a Premium-backed developer app (Spotify's late-2024 Web
+API policy) for live use and degrades to a clean no-op without it; the
+MusicBrainz source needs no external account and works today. Each matched
+track records `spotify_match` (`"isrc"` | `"search"` | `"musicbrainz"`) so the
+underground-techno wrong-match rate is auditable from real output (U3).
+Measured coverage (U5): ~23–25% Spotify links on underground/EDM ISRCs, ~33%
+on commercial material. The explicit MB pacing is load-bearing — the rate
+limiter's full-token-bucket seed permits a burst; removing the 1.1s sleep
+regresses yield ~8× (3% → 25%), and unit tests mocking HTTP cannot catch it.
+Specs: `docs/dev/2026-08-02-spotify-link-enrichment-spec.md`,
+`docs/dev/2026-08-04-musicbrainz-enrichment-spec.md` (local-only).
 
 ### 2026-08 changelog + tag reconstruction (`docs/changelog-tag-reconstruction`)
 
