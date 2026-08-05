@@ -10,19 +10,6 @@ from tracklistify.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Fields that should be masked in logs and error messages
-SENSITIVE_FIELDS = {
-    "access_key",
-    "access_secret",
-    "secret",
-    "password",
-    "token",
-    "api_key",
-    "client_secret",
-    "private_key",
-    "auth_token",
-}
-
 # Sensitive field patterns for environment variables
 SENSITIVE_PATTERNS = [
     "password",
@@ -86,7 +73,12 @@ def mask_sensitive_value(key: str, value: str) -> str:
     if not is_sensitive_key(key):
         return value
 
-    if not value or len(value) < 8:
+    if not value or len(value) < 12:
+        # Short secrets are fully masked — at the old threshold of 8, an
+        # 8-char secret leaked 6/8 characters (first 3 + last 3). Raise to 12
+        # so secrets up to 11 chars are fully hidden; longer secrets still
+        # partial-mask (the leak is proportionally small, and the partial mask
+        # aids debugging).
         return "***"
 
     # Show first 3 and last 3 characters
@@ -94,8 +86,13 @@ def mask_sensitive_value(key: str, value: str) -> str:
 
 
 def is_sensitive_field(field_name: str) -> bool:
-    """Check if a field name corresponds to sensitive data."""
-    return any(sensitive in field_name.lower() for sensitive in SENSITIVE_FIELDS)
+    """Check if a field name corresponds to sensitive data.
+
+    Delegates to the same ``SENSITIVE_PATTERNS`` list as ``is_sensitive_key``
+    so the two predicates cannot silently diverge (the backlog flagged the
+    previously-separate ``SENSITIVE_FIELDS`` list as fragile on divergence).
+    """
+    return is_sensitive_key(field_name)
 
 
 def detect_sensitive_fields(data: Dict[str, Any], parent_key: str = "") -> Set[str]:

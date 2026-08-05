@@ -154,14 +154,17 @@ class TestSecretMasking:
         )
 
         assert (
-            mask_sensitive_value("TRACKLISTIFY_CLIENT_SECRET", "abcdefghijk")
-            == "abc*****ijk"
+            mask_sensitive_value("TRACKLISTIFY_CLIENT_SECRET", "abcdefghijklm")
+            == "abc*****klm"
         )
 
-        # Short values
+        # Short values (< 12 chars) are fully masked
         assert mask_sensitive_value("TRACKLISTIFY_API_KEY", "short") == "***"
 
         assert mask_sensitive_value("TRACKLISTIFY_API_KEY", "1234567") == "***"
+
+        # An 11-char secret is now fully masked (was partial at the old 8 threshold)
+        assert mask_sensitive_value("TRACKLISTIFY_API_KEY", "abcdefghijk") == "***"
 
         # Non-sensitive values should not be masked
         assert mask_sensitive_value("TRACKLISTIFY_DEBUG", "true") == "true"

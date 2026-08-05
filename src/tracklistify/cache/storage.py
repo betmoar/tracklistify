@@ -56,6 +56,23 @@ class JSONStorage(CacheStorage[T]):
             self._locks[key] = asyncio.Lock()
         return self._locks[key]
 
+    def _safe_cache_path(self, filename: str) -> Optional[str]:
+        """Build a cache path from an index-sourced filename, or None.
+
+        The on-disk index is trusted JSON; a tampered entry could set
+        ``filename = "../../etc/passwd"`` and point read/delete at an
+        arbitrary path outside ``_cache_dir``. Reject any filename that is
+        not a bare basename (contains a path separator). Returns the joined
+        path on success, ``None`` on violation (caller treats as a miss /
+        no-op). Cache I/O is best-effort — never raise on a bad entry.
+        """
+        if os.path.basename(filename) != filename or os.path.dirname(filename):
+            logger.warning(
+                f"Refusing cache path with directory component: {filename!r}"
+            )
+            return None
+        return os.path.join(self._cache_dir, filename)
+
     async def _ensure_index_loaded(self) -> None:
         """Ensure the index is loaded."""
         if not self._index_loaded:
@@ -72,7 +89,11 @@ class JSONStorage(CacheStorage[T]):
             if filename is None:
                 return None
 
-            file_path = os.path.join(self._cache_dir, filename)
+            file_path = self._safe_cache_path(filename)
+            if file_path is None:
+                # Tampered index entry with a directory component — drop it.
+                await self._index.remove_entry(key)
+                return None
             if not os.path.exists(file_path):
                 # File missing but in index - remove from index
                 await self._index.remove_entry(key)
@@ -162,7 +183,12 @@ class JSONStorage(CacheStorage[T]):
             if filename is None:
                 return  # Key not in index
 
-            file_path = os.path.join(self._cache_dir, filename)
+            file_path = self._safe_cache_path(filename)
+            if file_path is None:
+                # Tampered index entry with a directory component — already
+                # removed from the index above; nothing to unlink.
+                await self._index.save()
+                return
             async with self._get_lock(key):
                 if os.path.exists(file_path):
                     os.unlink(file_path)
