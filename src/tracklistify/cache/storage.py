@@ -104,8 +104,11 @@ class JSONStorage(CacheStorage[T]):
                 await self._index.save()
                 return None
             if not os.path.exists(file_path):
-                # File missing but in index - remove from index
+                # File missing but in index - remove from index and persist,
+                # so the stale entry doesn't survive on disk and get
+                # re-checked (and re-removed) every run.
                 await self._index.remove_entry(key)
+                await self._index.save()
                 return None
 
             async with self._get_lock(key):
