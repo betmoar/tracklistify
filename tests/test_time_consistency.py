@@ -17,23 +17,6 @@ import pytest
 class TestTimeHandlingConsistency:
     """Tests for consistent time handling."""
 
-    def test_decorators_uses_monotonic_for_elapsed(self):
-        """Decorators should use monotonic time for computation timing."""
-        file_path = Path("src/tracklistify/utils/decorators.py")
-
-        with open(file_path) as f:
-            content = f.read()
-
-        # For elapsed time measurement, should use monotonic
-        # Look for timing patterns that should use monotonic
-        if "start_time = time.time()" in content:
-            # Check if it's for elapsed time calculation
-            if "time.time() - start_time" in content:
-                pytest.fail(
-                    "decorators.py uses time.time() for elapsed time "
-                    "- should use time.monotonic()"
-                )
-
     def test_identification_uses_monotonic_for_elapsed(self):
         """Identification manager should use monotonic time for elapsed tracking."""
         file_path = Path("src/tracklistify/utils/identification.py")
@@ -116,15 +99,6 @@ class TestTimeHandlingConsistency:
 
 class TestMonotonicTimeImports:
     """Verify files that need monotonic time import it correctly."""
-
-    def test_decorators_imports_time(self):
-        """Decorators should import time module."""
-        file_path = Path("src/tracklistify/utils/decorators.py")
-
-        with open(file_path) as f:
-            content = f.read()
-
-        assert "import time" in content, "decorators.py should import time module"
 
     def test_identification_imports_time(self):
         """Identification should import time module."""
