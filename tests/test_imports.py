@@ -30,4 +30,4 @@ def test_provider_imports():
 
 
 def test_downloader_imports():
-    import tracklistify.downloaders.spotify  # noqa: F401
+    import tracklistify.downloaders.ytdlp  # noqa: F401
