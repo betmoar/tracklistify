@@ -115,7 +115,11 @@ class DevCommand(ABC):
             if e.stderr:
                 click.secho(e.stderr, fg="red", err=True)
             raise ToolExecutionError(
-                command=cmd,
+                command=(
+                    " ".join(shlex.quote(str(c)) for c in cmd_list)
+                    if isinstance(cmd_list, list)
+                    else str(cmd)
+                ),
                 exit_code=e.returncode,
                 error_output=e.stderr or e.stdout or str(e),
             ) from e

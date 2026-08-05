@@ -60,13 +60,19 @@ class JSONStorage(CacheStorage[T]):
         """Build a cache path from an index-sourced filename, or None.
 
         The on-disk index is trusted JSON; a tampered entry could set
-        ``filename = "../../etc/passwd"`` and point read/delete at an
-        arbitrary path outside ``_cache_dir``. Reject any filename that is
-        not a bare basename (contains a path separator). Returns the joined
-        path on success, ``None`` on violation (caller treats as a miss /
-        no-op). Cache I/O is best-effort — never raise on a bad entry.
+        ``filename = "../../etc/passwd"`` (or a bare ``".."``) and point
+        read/delete at an arbitrary path outside ``_cache_dir``. Reject any
+        filename that is not a bare basename (no separator AND not ``"."`` /
+        ``".."``). Returns the joined path on success, ``None`` on violation
+        (caller treats as a miss / no-op). Cache I/O is best-effort — never
+        raise on a bad entry.
+
+        Note: a bare ``".."`` passes the ``os.path.basename`` check (its
+        basename is itself and it has no dirname), so it must be rejected
+        explicitly; otherwise ``os.path.join(_cache_dir, "..")`` resolves to
+        the cache directory's parent.
         """
-        if os.path.basename(filename) != filename or os.path.dirname(filename):
+        if filename in (".", "..") or os.path.dirname(filename):
             logger.warning(
                 f"Refusing cache path with directory component: {filename!r}"
             )
@@ -91,8 +97,11 @@ class JSONStorage(CacheStorage[T]):
 
             file_path = self._safe_cache_path(filename)
             if file_path is None:
-                # Tampered index entry with a directory component — drop it.
+                # Tampered index entry with a directory component — drop it
+                # and persist the removal, mirroring delete(); otherwise the
+                # bad entry survives on disk and is re-rejected every run.
                 await self._index.remove_entry(key)
+                await self._index.save()
                 return None
             if not os.path.exists(file_path):
                 # File missing but in index - remove from index

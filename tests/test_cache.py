@@ -537,6 +537,10 @@ async def test_storage_rejects_traversal_filename(temp_cache_dir: Path):
     # Unit: the helper rejects directory components outright.
     assert storage._safe_cache_path("../../etc/passwd") is None
     assert storage._safe_cache_path("subdir/file.cache") is None
+    # A bare ".." / "." has no separator but still escapes / redirects —
+    # basename("..") == "..", so a naive basename-only guard misses it.
+    assert storage._safe_cache_path("..") is None
+    assert storage._safe_cache_path(".") is None
     # A bare basename is accepted.
     assert storage._safe_cache_path("abc.cache") == str(temp_cache_dir / "abc.cache")
 
