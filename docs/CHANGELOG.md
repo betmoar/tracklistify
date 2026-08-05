@@ -9,23 +9,35 @@ Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-08-05
+
 ### Fixed
 
 - **Security: secret masking + cache path traversal.** `mask_sensitive_value`
   now fully masks secrets under 12 characters (was 8 — an 8-char secret leaked
   6/8 chars). `is_sensitive_field` delegates to the same pattern list as
   `is_sensitive_key` so the two predicates can't diverge. The on-disk cache
-  index filename is now basename-validated, so a tampered index entry can't
-  point read/delete at a path outside the cache directory.
+  index filename is now basename-validated (including a bare `..` that passed
+  the original check), so a tampered index entry can't point read/delete at a
+  path outside the cache directory.
+- **Cache index persistence.** `set()`/`delete()`/`get()` now persist index
+  changes immediately, so a normally-exited process no longer leaves entries
+  invisible to the next (stale index → reported misses → orphan-deleted on the
+  next cleanup). Previously the index was saved only from `cleanup()`/`clear()`.
+- **Enrichment UX.** A "please wait" INFO line now precedes the ~1 req/s
+  MusicBrainz enrichment pass, so the 30–60s of apparent silence between
+  "Identified N unique tracks" and the resolution summary no longer reads as a
+  stalled process.
 
 ### Changed
 
 - **dev_cli: arg mangling + config fallback.** `dev run` no longer mangles
   arguments containing spaces or quotes (it threaded a list through a
-  string→shlex round-trip; now list end-to-end). A missing `tools.json` falls
-  back to defaults instead of crashing at import (the fallback was unreachable;
-  the redundant post-init `load_default_config` that clobbered a loaded config
-  is gone).
+  string→shlex round-trip; now list end-to-end, config default args use
+  `shlex.split` too; the duplicate stdout echo is gone). A missing `tools.json`
+  falls back to defaults instead of crashing at import (the fallback was
+  unreachable; the redundant post-init `load_default_config` that clobbered a
+  loaded config is gone).
 
 ### Removed
 
@@ -33,8 +45,10 @@ Release dates are in YYYY-MM-DD format.
   `utils/decorators.memoize` (unused), the `core/types.Downloader` Protocol
   (incompatible with the real ABC), `dev_cli/execution/executor.py` (no
   callers), the unused `ACRCLOUD_SUCCESS_CODE` constant (which was actually
-  ACRCloud's auth-error code), and the never-populated `core/run._cleanup_tasks`
-  registry. No production callers; no end-user behavior change.
+  ACRCloud's auth-error code), the never-populated `core/run._cleanup_tasks`
+  registry, the dead `DownloaderFactory._downloaders` field, and an unreachable
+  duplicate block in `ytdlp.py::_strip_youtube_playlist_params`. No production
+  callers; no end-user behavior change.
 
 ## [0.10.0] - 2026-08-04
 
