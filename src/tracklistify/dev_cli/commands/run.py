@@ -105,11 +105,13 @@ class RunCommand(DevCommand):
                 tool_name=tool_name,
             )
 
-        # Build command with arguments
+        # Build command as a list and pass it list-form end-to-end. The
+        # earlier code joined the list into a string and let run_shell_command
+        # re-split it with shlex — so an arg containing spaces or quotes
+        # (e.g. ``dev run pylint "msg with spaces"``) was mangled on the
+        # round-trip. Threading the list avoids the string conversion.
         cmd_args = tool_config.get("args", "").split() + list(args)
-        # Use list-form / shell=False to avoid shell metacharacter injection
-        # from user-supplied args (e.g. ``dev run pylint "; rm -rf ~"``).
-        full_cmd = " ".join([command, *cmd_args])
+        full_cmd = [command, *cmd_args]
         env = self._prepare_environment(tool_config.get("env", {}))
 
         self.logger.info(

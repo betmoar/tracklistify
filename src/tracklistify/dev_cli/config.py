@@ -55,10 +55,6 @@ class ToolsConfiguration:
         """
         try:
             config_path = Path(self.config_path)
-            if not config_path.exists():
-                raise ConfigurationError(
-                    f"Configuration file not found: {self.config_path}"
-                )
 
             with open(config_path, "r", encoding="utf-8") as f:
                 self._config = json.load(f)
@@ -170,6 +166,8 @@ class ToolsConfiguration:
         return True
 
 
-# Global configuration instance
+# Global configuration instance. __init__ calls _load_config, which loads
+# tools.json when present and falls back to load_default_config() otherwise —
+# so no redundant explicit load_default_config() here (it previously ran after
+# construction and clobbered a successfully-loaded tools.json with defaults).
 tools_config = ToolsConfiguration()
-tools_config.load_default_config()
