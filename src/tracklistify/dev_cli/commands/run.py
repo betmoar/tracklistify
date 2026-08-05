@@ -3,6 +3,7 @@ Run command implementation for executing development tools.
 """
 
 import os
+import shlex
 from typing import List, Dict, Any
 
 import click
@@ -105,11 +106,16 @@ class RunCommand(DevCommand):
                 tool_name=tool_name,
             )
 
-        # Build command with arguments
-        cmd_args = tool_config.get("args", "").split() + list(args)
-        # Use list-form / shell=False to avoid shell metacharacter injection
-        # from user-supplied args (e.g. ``dev run pylint "; rm -rf ~"``).
-        full_cmd = " ".join([command, *cmd_args])
+        # Build command as a list and pass it list-form end-to-end. The
+        # earlier code joined the list into a string and let run_shell_command
+        # re-split it with shlex — so an arg containing spaces or quotes
+        # (e.g. ``dev run pylint "msg with spaces"``) was mangled on the
+        # round-trip. Threading the list avoids the string conversion.
+        # Config-supplied default args are shlex-split so a tools.json entry
+        # can carry quoted args consistently with the user-arg path.
+        config_args = shlex.split(tool_config.get("args", ""))
+        cmd_args = config_args + list(args)
+        full_cmd = [command, *cmd_args]
         env = self._prepare_environment(tool_config.get("env", {}))
 
         self.logger.info(
@@ -119,9 +125,9 @@ class RunCommand(DevCommand):
         )
 
         try:
-            result = self.run_shell_command(cmd=full_cmd, env=env, check=True)
-            if result.stdout:
-                click.echo(result.stdout)
+            # run_shell_command already echoes stdout on success; don't
+            # duplicate it here.
+            self.run_shell_command(cmd=full_cmd, env=env, check=True)
             return True
         except ToolExecutionError as e:
             e.tool_name = tool_name

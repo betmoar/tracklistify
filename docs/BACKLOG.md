@@ -104,26 +104,6 @@ Revisit only if partner access is granted. If it is, the token refresh
 and PKCE flow make it closer in shape to the Spotify _playlist export_
 problem than to the simple client-credentials enrichment above.
 
-## P3 — delete or rescue `downloaders/spotify.py`
-
-Dead (no factory route) and internally broken: `asyncio.run()` inside a
-running loop (`_set_metadata`), enum-vs-string filename bug, and
-`_get_stream_url` is called with a track id where a file id is expected.
-Deleting ~400 lines + adjusting `test_imports.py`/`test_type_hints.py` is
-the cheap option; rescuing it means rewriting its download flow against a
-Spotify CDN API that may not be stable. Recommendation: delete.
-
-## P3 — dev_cli cleanup
-
-- `dev_cli/execution/executor.py` is unused (commands use `subprocess.run`
-  directly); its timeout parameter is also never enforced. Delete.
-- `dev_cli/config.py`: missing `tools.json` crashes at import (the
-  `FileNotFoundError` fallback can never fire because a manual
-  `ConfigurationError` is raised first); `load_default_config()` is called
-  redundantly after construction.
-- `RunCommand._run_tool` joins args into a string then re-splits with
-  shlex — args containing spaces/quotes get mangled.
-
 ## P3 — config/docs.py accuracy
 
 The doc generator works now (`scripts/generate_config_docs.py` was calling
@@ -134,27 +114,8 @@ required; `field.__doc__` is the `dataclasses.Field` class docstring, not a
 field description. Low value — consider generating from
 `_setup_validation` rules directly instead of parsing prose.
 
-## P3 — security polish
-
-- `mask_sensitive_value` reveals first/last 3 chars of secrets ≥ 8 chars;
-  an 8-char secret leaks 6/8 characters. Raise the full-mask threshold to
-  ~12.
-- Two divergent sensitivity predicates (`is_sensitive_key` vs
-  `is_sensitive_field`) — currently consistent, fragile on divergence.
-  Collapse to one.
-- `cache/storage.py` trusts `filename` from the on-disk index without a
-  basename check; a tampered index could point delete/read at arbitrary
-  paths. Add `os.path.basename(filename) == filename` validation on load.
-
 ## P4 — misc
 
-- `utils/decorators.py::memoize` has an unused `ttl` param and unbounded
-  growth, and no callers. Delete or finish.
-- `core/types.py` declares a `Downloader` Protocol incompatible with the
-  real `downloaders/base.py` ABC (different signature/return). Delete the
-  Protocol.
-- `core/run.py` cleanup-task registry is never populated; `ACRCLOUD_SUCCESS_CODE = 2000`
-  in constants is actually ACRCloud's _auth error_ code and is unused.
 - `tests/test_cli_arguments.py` uses an unregistered `integration` pytest
   mark (warning noise); register it in pyproject or drop it.
 - `pytest-asyncio` will eventually require `asyncio_default_fixture_loop_scope`;
@@ -173,6 +134,32 @@ field description. Low value — consider generating from
 ---
 
 ## Fixed
+
+### 2026-08 cheap batch: dead code + dev_cli + security polish (`chore/cheap-batch-*`)
+
+Closed the cheapest unblocked backlog items in one pass. No end-user behavior
+change for the main `tracklistify` CLI.
+
+| Fix                                                                                                   | Where                                                                                                  | Test / verify                                                                  |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| Dead `downloaders/spotify.py` (405 lines, no factory route, internally broken)                        | deleted; `test_imports` pins ytdlp, `test_type_hints` drops the path                                   | 590 passed                                                                     |
+| `utils/decorators.py::memoize` — unused `ttl`, unbounded, no production callers                        | deleted + its 2 test files + `utils/__init__` re-export + 3 stale static-inspection test methods       | suite                                                                          |
+| `core/types.Downloader` Protocol — incompatible with the real ABC; orphaned TypedDicts + TypeVar       | deleted Protocol, `DownloaderT`, `DownloadResult`/`DownloadProgress` (no consumers); typing imports trimmed | suite                                                                          |
+| `ACRCLOUD_SUCCESS_CODE = 2000` — unused, and actually ACRCloud's auth-error code                       | deleted from constants                                                                                  | vulture                                                                        |
+| `core/run._cleanup_tasks` — registry never populated                                                  | removed; `cleanup()` is now an explicit no-op                                                           | suite                                                                          |
+| `dev_cli/execution/executor.py` — zero callers, timeout never enforced                                | deleted; `execution/__init__` re-exports removed                                                        | suite + import probe                                                           |
+| `RunCommand` join-then-shlex-split mangled spaced/quoted args                                          | `run.py` threads list-form end-to-end; `run_shell_command` accepts `Union[str, List[str]]`             | manual: `'arg with spaces'` survives as one argv element                       |
+| `dev_cli/config.py` — missing `tools.json` crashed (FileNotFoundError fallback unreachable)            | early `ConfigurationError` removed so the fallback fires; redundant module-level `load_default_config` dropped | manual: missing tools.json → defaults                                          |
+| `mask_sensitive_value` threshold 8 → 12 (8-char secret leaked 6/8 chars)                              | `config/security.py`; two tests updated to ≥12-char partial-mask values                                 | `test_config_security.py`, `test_config.py`                                    |
+| Two divergent sensitive predicates (`is_sensitive_key` / `is_sensitive_field`)                         | collapsed to one `SENSITIVE_PATTERNS` source; `SENSITIVE_FIELDS` removed (additive only — no field un-masks) | existing assertions hold                                                      |
+| `cache/storage.py` — on-disk index `filename` trusted without basename check (path traversal)         | `_safe_cache_path` rejects directory components; get()→miss+drop, delete()→no-op                        | `test_storage_rejects_traversal_filename`                                      |
+
+**Design:** dev_cli has no test coverage (excluded from the suite via
+`exclude_dirs`), so the `run.py` arg-fix and `config.py` fallback are verified
+manually (logged above), not by a unit test. The `metadata.links` schema and
+enrichment work are untouched. **Out of scope, noted by vulture:** pre-existing
+`downloaders/factory._downloaders` and `ytdlp` unreachable-code findings — not
+introduced here.
 
 ### 2026-08 P2/P3 Spotify + MusicBrainz link enrichment (`feat/spotify-link-enrichment` #72, `feat/musicbrainz-enrichment` #73, v0.10.0)
 

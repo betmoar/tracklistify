@@ -9,6 +9,33 @@ Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Security: secret masking + cache path traversal.** `mask_sensitive_value`
+  now fully masks secrets under 12 characters (was 8 — an 8-char secret leaked
+  6/8 chars). `is_sensitive_field` delegates to the same pattern list as
+  `is_sensitive_key` so the two predicates can't diverge. The on-disk cache
+  index filename is now basename-validated, so a tampered index entry can't
+  point read/delete at a path outside the cache directory.
+
+### Changed
+
+- **dev_cli: arg mangling + config fallback.** `dev run` no longer mangles
+  arguments containing spaces or quotes (it threaded a list through a
+  string→shlex round-trip; now list end-to-end). A missing `tools.json` falls
+  back to defaults instead of crashing at import (the fallback was unreachable;
+  the redundant post-init `load_default_config` that clobbered a loaded config
+  is gone).
+
+### Removed
+
+- **Dead code.** `downloaders/spotify.py` (405 lines, no factory route),
+  `utils/decorators.memoize` (unused), the `core/types.Downloader` Protocol
+  (incompatible with the real ABC), `dev_cli/execution/executor.py` (no
+  callers), the unused `ACRCLOUD_SUCCESS_CODE` constant (which was actually
+  ACRCloud's auth-error code), and the never-populated `core/run._cleanup_tasks`
+  registry. No production callers; no end-user behavior change.
+
 ## [0.10.0] - 2026-08-04
 
 ### Added

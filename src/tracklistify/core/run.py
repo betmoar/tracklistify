@@ -6,9 +6,6 @@ import sys
 
 from tracklistify.config import get_root
 
-# Global variables for cleanup
-_cleanup_tasks = set()
-
 
 def setup_environment():
     """Setup the Python path and environment variables."""
@@ -77,15 +74,12 @@ def handle_interrupt(signum, frame):
 
 
 async def cleanup():
-    """Clean up resources before shutdown."""
-    # Cancel all tracked tasks
-    for task in _cleanup_tasks:
-        if not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+    """Clean up resources before shutdown.
+
+    Currently a no-op: the cleanup-task registry was removed (it was never
+    populated). Resource teardown lives in ``AsyncApp.cleanup()``.
+    """
+    return
 
 
 async def amain():

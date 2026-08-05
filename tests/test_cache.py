@@ -520,3 +520,37 @@ async def test_storage_performance_improvement(tmp_path):
     # Verify all keys are present
     for i in range(num_entries):
         assert f"perf_test_{i}" in keys
+
+
+@pytest.mark.asyncio
+async def test_storage_rejects_traversal_filename(temp_cache_dir: Path):
+    """A tampered index entry with a directory component in its filename
+    must not escape _cache_dir on read or delete (path-traversal guard).
+
+    The index is trusted on-disk JSON; without the basename check a
+    ``filename = "../../etc/passwd"`` entry could point read/delete at an
+    arbitrary path. _safe_cache_path rejects it; get() returns None and
+    removes the entry; delete() no-ops the unlink.
+    """
+    storage = JSONStorage(temp_cache_dir)
+
+    # Unit: the helper rejects directory components outright.
+    assert storage._safe_cache_path("../../etc/passwd") is None
+    assert storage._safe_cache_path("subdir/file.cache") is None
+    # A bare ".." / "." has no separator but still escapes / redirects —
+    # basename("..") == "..", so a naive basename-only guard misses it.
+    assert storage._safe_cache_path("..") is None
+    assert storage._safe_cache_path(".") is None
+    # A bare basename is accepted.
+    assert storage._safe_cache_path("abc.cache") == str(temp_cache_dir / "abc.cache")
+
+    # End-to-end: poison the index, confirm get() does not escape.
+    evil_filename = "../../../etc/passwd"
+    await storage._ensure_index_loaded()
+    # Directly inject a malicious entry into the index.
+    await storage._index.add_entry("evil_key", evil_filename, {"created": time.time()})
+    await storage._index.save()
+
+    # get() must return None (not read the traversed path) and drop the entry.
+    result = await storage.get("evil_key")
+    assert result is None

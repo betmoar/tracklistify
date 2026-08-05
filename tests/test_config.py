@@ -246,9 +246,10 @@ def test_sensitive_field_detection():
 
 def test_sensitive_value_masking():
     """Test sensitive value masking (updated for new API)."""
-    # Updated to use new two-argument API
-    assert mask_sensitive_value("password", "password123") == "pas*****123"
-    assert mask_sensitive_value("key", "secret_key") == "sec*****key"
+    # Updated to use new two-argument API. Values >= 12 chars partial-mask;
+    # shorter values fully mask (threshold raised from 8 to 12).
+    assert mask_sensitive_value("password", "password12345") == "pas*****345"
+    assert mask_sensitive_value("key", "secret_key123") == "sec*****123"
     assert mask_sensitive_value("key", "key") == "***"
     assert mask_sensitive_value("password", "") == "***"
 

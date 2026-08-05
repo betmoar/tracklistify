@@ -362,6 +362,16 @@ class IdentificationManager:
 
         await self._enrich_spotify(unique_tracks)
         if getattr(self.config, "musicbrainz_enabled", True):
+            # MusicBrainz is paced at ~1 req/s (its etiquette asks for it, and
+            # a burst trips its 503 protection). On a 35-track set that's ~30s+
+            # of apparent silence between "Identified N unique tracks" and the
+            # resolution summary — log the intent so a user doesn't Ctrl-C the
+            # run thinking it stalled.
+            with_isrc = sum(1 for t in unique_tracks if t.metadata.get("isrc"))
+            logger.info(
+                f"Enriching {with_isrc} tracks with canonical links via "
+                f"MusicBrainz (paced ~1 req/s; this can take a minute)..."
+            )
             await self._enrich_musicbrainz(unique_tracks)
 
     async def _enrich_spotify(self, unique_tracks: List[Track]) -> None:

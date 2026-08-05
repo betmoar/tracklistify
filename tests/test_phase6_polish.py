@@ -76,20 +76,6 @@ class TestConstantsUsage:
             "time_formatter should use SECONDS_PER_MINUTE constant"
         )
 
-    def test_decorators_uses_constants(self):
-        """decorators.py should use hash and time constants."""
-        file_path = Path("src/tracklistify/utils/decorators.py")
-
-        with open(file_path) as f:
-            content = f.read()
-
-        assert "STABLE_HASH_LENGTH" in content, (
-            "decorators should use STABLE_HASH_LENGTH constant"
-        )
-        assert "MILLISECONDS_PER_SECOND" in content, (
-            "decorators should use MILLISECONDS_PER_SECOND constant"
-        )
-
 
 class TestNoCommentedCode:
     """Tests for removal of commented-out code."""

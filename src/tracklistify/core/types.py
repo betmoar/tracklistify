@@ -11,11 +11,9 @@ This module defines all type definitions used throughout the application, includ
 from dataclasses import dataclass
 from pathlib import Path
 from typing import (
-    AsyncIterator,
     Dict,
     Generic,
     List,
-    Literal,
     Optional,
     Protocol,
     TypedDict,
@@ -25,7 +23,6 @@ from typing import (
 # Generic type variables
 T = TypeVar("T")
 ProviderT = TypeVar("ProviderT", bound="TrackIdentificationProvider")
-DownloaderT = TypeVar("DownloaderT", bound="Downloader")
 
 
 # Configuration types
@@ -105,29 +102,6 @@ class ProviderResponse(TypedDict):
     error: Optional[str]
     metadata: Optional[TrackMetadata]
     raw_response: Dict
-
-
-# Downloader types
-class DownloadResult(TypedDict):
-    """Download result type."""
-
-    success: bool
-    file_path: Optional[str]
-    error: Optional[str]
-    duration: Optional[float]
-    format: str
-    size: int
-
-
-class DownloadProgress(TypedDict):
-    """Download progress type."""
-
-    status: Literal["downloading", "converting", "complete", "error"]
-    progress: float  # 0-100
-    speed: Optional[str]  # e.g., "1.2MB/s"
-    eta: Optional[str]  # e.g., "00:01:23"
-    size: Optional[str]  # e.g., "12.3MB"
-    error: Optional[str]
 
 
 # Cache types
@@ -242,30 +216,6 @@ class TrackIdentificationProvider(Protocol):
 
         Returns:
             True if credentials are valid, False otherwise
-        """
-        ...
-
-
-class Downloader(Protocol):
-    """Protocol defining the interface for audio downloaders."""
-
-    async def download(self, url: str, output_path: Path) -> DownloadResult:
-        """Download audio from a URL.
-
-        Args:
-            url: URL to download from
-            output_path: Path to save the downloaded file
-
-        Returns:
-            DownloadResult containing download status and metadata
-        """
-        ...
-
-    async def get_progress(self) -> AsyncIterator[DownloadProgress]:
-        """Get download progress updates.
-
-        Yields:
-            DownloadProgress updates
         """
         ...
 

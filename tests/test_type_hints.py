@@ -63,7 +63,6 @@ class TestReturnTypeAnnotations:
             "src/tracklistify/providers/shazam.py",
             "src/tracklistify/providers/factory.py",
             "src/tracklistify/core/base.py",
-            "src/tracklistify/downloaders/spotify.py",
         ]
 
         for file_path in files_to_check:

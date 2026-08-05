@@ -3,7 +3,7 @@ Factory for creating appropriate downloader instances.
 """
 
 # Standard library imports
-from typing import Dict, Optional
+from typing import Optional
 
 # Local/package imports
 from tracklistify.config import TrackIdentificationConfig, get_config
@@ -31,7 +31,6 @@ class DownloaderFactory:
             config: Optional configuration object
         """
         self._config = config or get_config()
-        self._downloaders: Dict[str, Downloader] = {}
 
     @staticmethod
     def create_downloader(url: str, **kwargs) -> Downloader:

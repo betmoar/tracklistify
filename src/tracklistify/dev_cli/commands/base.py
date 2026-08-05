@@ -7,7 +7,7 @@ import traceback
 import shlex
 import shutil
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, Tuple, List, Union
 
 import click
 
@@ -65,20 +65,21 @@ class DevCommand(ABC):
 
     def run_shell_command(
         self,
-        cmd: str,
+        cmd: Union[str, List[str]],
         env: Optional[Dict[str, str]] = None,
         cwd: Optional[str] = None,
         check: bool = True,
     ) -> subprocess.CompletedProcess:
         """Run a command via subprocess.
 
-        Always invokes with ``shell=False`` — the ``cmd`` string is
-        ``shlex.split`` into a list. Callers that need an interpolated
-        shell command must build the list themselves and call
-        ``subprocess.run`` directly with appropriate auditing.
+        Always invokes with ``shell=False``. ``cmd`` may be a pre-split list
+        (preferred — args containing spaces/quotes survive intact) or a
+        shell-style string (split with ``shlex``). Callers passing a list they
+        built themselves avoid the string round-trip that mangled spaced args.
 
         Args:
-            cmd: Command to run (shell-style string; split with shlex).
+            cmd: Command to run — a list (used verbatim) or a string (split
+                with shlex).
             env: Environment variables for the command.
             cwd: Working directory for the command.
             check: Whether to raise on non-zero return code.
@@ -89,9 +90,10 @@ class DevCommand(ABC):
         Raises:
             ToolExecutionError: If command execution fails.
         """
+        cmd_list = cmd if isinstance(cmd, list) else shlex.split(cmd)
         try:
             result = subprocess.run(
-                shlex.split(cmd),
+                cmd_list,
                 env=env,
                 cwd=cwd,
                 shell=False,
@@ -113,7 +115,11 @@ class DevCommand(ABC):
             if e.stderr:
                 click.secho(e.stderr, fg="red", err=True)
             raise ToolExecutionError(
-                command=cmd,
+                command=(
+                    " ".join(shlex.quote(str(c)) for c in cmd_list)
+                    if isinstance(cmd_list, list)
+                    else str(cmd)
+                ),
                 exit_code=e.returncode,
                 error_output=e.stderr or e.stdout or str(e),
             ) from e

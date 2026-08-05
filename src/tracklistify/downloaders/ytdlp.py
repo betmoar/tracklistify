@@ -130,10 +130,6 @@ def _strip_youtube_playlist_params(url: str) -> str:
         video_id = match.group(1) or match.group(2)
         return f"https://www.youtube.com/watch?v={video_id}"
     return url
-    match = _YT_VIDEO_ID.search(url)
-    if match:
-        return f"https://www.youtube.com/watch?v={match.group(1)}"
-    return url
 
 
 class YtDlpDownloader(Downloader):
