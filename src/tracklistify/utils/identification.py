@@ -703,6 +703,14 @@ class IdentificationManager:
                     if result:
                         match_kind = "isrc"
                 if not result:
+                    if isrc:
+                        # Second request for the same track (ISRC missed, now
+                        # searching). The limiter acquires per TRACK, not per
+                        # request, so without this the fallback path fires two
+                        # calls back-to-back and the pass runs at double the
+                        # intended request rate. The pacing constant is the
+                        # real rate control here — the token bucket seeds full.
+                        await asyncio.sleep(_BEATPORT_REQUEST_INTERVAL)
                     candidates = await provider.search_tracks(
                         title=track.song_name, artist=track.artist
                     )

@@ -338,3 +338,34 @@ async def test_a_raising_provider_never_fails_the_run(monkeypatch):
 
     assert track.metadata == {}
     assert limiter.results == [("beatport", False)]
+
+
+@pytest.mark.asyncio
+async def test_isrc_miss_paces_before_the_search_fallback(monkeypatch):
+    """Two requests for one track (ISRC miss -> search) must still be spaced.
+
+    Without this the fallback path fires both calls back-to-back and the
+    pass runs at double the intended request rate — the pacing constant is
+    the real rate control here, not the token bucket (which seeds full).
+    """
+    sleeps = []
+
+    async def _record_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(
+        "tracklistify.utils.identification.asyncio.sleep", _record_sleep
+    )
+    provider = _FakeBeatportProvider(isrc_result={}, search_results=[_candidate()])
+    limiter = _CountingLimiter()
+    mgr = _mgr(provider, limiter, monkeypatch)
+    monkeypatch.setattr(
+        "tracklistify.utils.identification._BEATPORT_REQUEST_INTERVAL", 0.5
+    )
+    track = _track(metadata={"isrc": "GBABC1234567"})
+
+    await mgr._enrich_tracks([track])
+
+    assert provider.isrc_calls == 1 and provider.search_calls == 1
+    # One inter-request sleep between the two calls, one after the track.
+    assert sleeps == [0.5, 0.5]
