@@ -266,9 +266,24 @@ as ACRCloud.
 > limiter branch, `providers/beatport.py` (auth, token cache, catalog
 > lookup/search/extraction), the env-only factory accessor, and the
 > `_enrich_beatport` pass with its acceptance gate. 46 offline tests.
-> **Not yet verified live** — U11/U12/U13 stay open until a run with real
-> credentials answers them (plan task 6). Until then the pacing constant and
-> the ISRC-filter behavior are assumptions, not measurements.
+>
+> **Verified live 2026-08-06** (Meduza, Tomorrowland WE1 set, real creds via
+> the password flow + cached token): 14/19 tracks enriched (**74%**), each
+> gaining BPM/key/label + the canonical `www.beatport.com` link alongside
+> the Shazam/Spotify/Deezer links. Resolves the open unknowns:
+> - **U11** — `/v4/catalog/tracks/?isrc=` does filter; the ISRC-mismatch
+>   guard and the ISRC-miss → search fallback both fired correctly.
+> - **U13** — access tokens live **600 s**; no refresh flow is wired, so
+>   expiry falls back to full username/password re-login (the cached token
+>   makes a normal run a single login). Refresh-token use remains a gap.
+> - **U12** — the mechanism is proven, but the 74% rate is a mainstream-house
+>   set; underground-techno recall is still unmeasured.
+> Also landed same day: an error-posture hardening pass
+> (`fix(providers): harden Beatport enrichment error posture`) — OAuth
+> misconfig now disables the pass instead of re-running login per track,
+> transient 5xx stays per-track, auth 429s carry Retry-After, the
+> zero-match summary logs unconditionally, and the metadata-write +
+> cache-corruption paths can no longer abort a run.
 >
 > The original entry is kept below verbatim as the record of why the
 > unqualified workaround was rejected — that reasoning still stands.
