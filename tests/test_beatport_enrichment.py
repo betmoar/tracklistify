@@ -247,6 +247,89 @@ async def test_mix_name_variant_still_matches(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_gate_accepts_across_dj_show_id_and_mix_spelling(monkeypatch):
+    """A track whose DJ-set title carries a show-ID bracket Beatport never has
+    (e.g. '(Tritonia 404)') plus a mix tag must still match the same track on
+    Beatport under a different mix spelling. Regression for a live miss:
+    'Adelphi '88 (Tritonia 404) [Leonard a Remix]' was rejected against
+    Beatport's 'Adelphi '88 (Leonard A Extended Remix)' — the dedup-tuned
+    _comparison_title kept every bracket, so the enrichment gate lost recall.
+    The artist match is what makes the looser stem comparison safe."""
+    provider = _FakeBeatportProvider(
+        search_results=[
+            _candidate(
+                title="Adelphi '88",
+                mix_name="Leonard A Extended Remix",
+                artists=["Tritonal"],
+            )
+        ]
+    )
+    limiter = _CountingLimiter()
+    mgr = _mgr(provider, limiter, monkeypatch)
+    track = _track(
+        artist="Tritonal",
+        song_name="Adelphi '88 (Tritonia 404) [Leonard a Remix]",
+    )
+
+    await mgr._enrich_tracks([track])
+
+    assert track.metadata["beatport_match"] == "search"
+
+
+@pytest.mark.asyncio
+async def test_gate_accepts_when_feat_credit_is_on_one_side_only(monkeypatch):
+    """A track titled 'X (feat. Y)' must match a Beatport candidate 'X (Extended
+    Mix)' when Y is also a credited artist on the candidate — the feat credit is
+    a title suffix on one side and a separate artist credit on the other.
+    Regression for a live miss: MEDUZA's 'Don't Wanna Go Home (feat. Henry
+    Camamile)' was rejected against Beatport's 'Don't Wanna Go Home' credited to
+    'Meduza, Henry Camamile'."""
+    provider = _FakeBeatportProvider(
+        search_results=[
+            _candidate(
+                title="Don't Wanna Go Home",
+                mix_name="Extended Mix",
+                artists=["Meduza", "Henry Camamile"],
+            )
+        ]
+    )
+    limiter = _CountingLimiter()
+    mgr = _mgr(provider, limiter, monkeypatch)
+    track = _track(
+        artist="MEDUZA",
+        song_name="Don't Wanna Go Home (feat. Henry Camamile)",
+    )
+
+    await mgr._enrich_tracks([track])
+
+    assert track.metadata["beatport_match"] == "search"
+
+
+@pytest.mark.asyncio
+async def test_gate_still_rejects_a_same_named_track_by_a_different_artist(monkeypatch):
+    """The looser stem match must NOT accept a different artist's same-named
+    track. 'Blackout Disco' by Spark of Darkness must not match Beatport's
+    'Blackout Disco' by Louis Metric — the artist gate (not the title gate)
+    is what holds this line once title comparison is loosened for recall."""
+    provider = _FakeBeatportProvider(
+        search_results=[
+            _candidate(
+                title="BLACKOUT DISCO",
+                mix_name="Original Mix",
+                artists=["Louis Metric"],
+            )
+        ]
+    )
+    limiter = _CountingLimiter()
+    mgr = _mgr(provider, limiter, monkeypatch)
+    track = _track(artist="Spark of Darkness", song_name="Blackout Disco")
+
+    await mgr._enrich_tracks([track])
+
+    assert track.metadata == {}  # rejected
+
+
+@pytest.mark.asyncio
 async def test_existing_beatport_link_is_not_overwritten(monkeypatch):
     """First-writer-wins per link key: a MusicBrainz-resolved URL survives,
     but the DJ metadata is still written (no other source supplies it)."""

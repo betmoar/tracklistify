@@ -18,7 +18,7 @@ from tracklistify.core.track import (
     Track,
     TrackMatcher,
     _artists_match,
-    _comparison_title,
+    _enrichment_title_match,
 )
 from tracklistify.providers.base import AuthenticationError, RateLimitError
 from tracklistify.providers.factory import create_provider_factory
@@ -164,6 +164,12 @@ def _beatport_candidate_matches(track: Track, candidate: Dict[str, Any]) -> bool
     the comparison title is rebuilt in the bracketed form our own titles use —
     except for "Original Mix", which is Beatport's default for "no mix name"
     and carries no information.
+
+    Uses the looser ``_enrichment_title_match`` rather than strict title
+    equality: a track on Beatport under a different mix spelling, or one whose
+    DJ-set title carries a show ID like ``(Tritonia 404)`` Beatport never has,
+    is still the same recording and its BPM/key/label are worth attaching.
+    Recall is safe because this gate also requires a confirmed artist match.
     """
     title = candidate.get("title")
     if not title:
@@ -172,11 +178,12 @@ def _beatport_candidate_matches(track: Track, candidate: Dict[str, Any]) -> bool
     if mix_name and mix_name != "Original Mix":
         title = f"{title} ({mix_name})"
 
-    if _comparison_title(title) != _comparison_title(track.song_name):
-        return False
-
     artists = candidate.get("artists") or []
-    return _artists_match(", ".join(artists), track.artist)
+    # Artist match is checked first: it is the cheap, high-precision gate, and
+    # the title stem fallback is only safe behind it.
+    if not _artists_match(", ".join(artists), track.artist):
+        return False
+    return _enrichment_title_match(track.song_name, title)
 
 
 class ProgressDisplay:
