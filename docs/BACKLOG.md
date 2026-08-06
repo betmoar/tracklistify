@@ -36,7 +36,7 @@ as **Q1–Q9** below — those are not blocked on anything, only on effort.
 | U10 | Should a `download_quality` / `download_format` change invalidate the download cache?                                                 | decision    | P4 cache debt                                         | Unowned behavior decision. Today those fields are not wired through the factory and are absent from the cache key, so a re-run at a different quality serves the old file                                                    |
 | U11 | Does `GET /v4/catalog/tracks/?isrc=` actually filter by ISRC?                                                                          | measurement | Beatport ISRC path (not the feature)                  | One live call with real credentials. Beatport track objects carry an `isrc` field, but nothing public says the list endpoint *filters* on it. `lookup_isrc` ships a returned-ISRC mismatch guard, so a "no" costs that path only — every match then arrives via gated search, with no code change |
 | U12 | What is the Beatport match rate on underground techno, split isrc/search/none?                                                        | measurement | Sizing Beatport against MusicBrainz as a link source  | Read `beatport_match` counts out of one real run's `tracklist.json`. Compare against the measured ~23–25% MusicBrainz rate (U5)                                                                                              |
-| U13 | Real Beatport token lifetime, and does the refresh-token grant work with the swagger-ui client ID?                                     | measurement | Whether the pasted-token path is one-off or a chore   | Read `expires_at` from `cache_dir/beatport_token.json` after a run. The refresh grant is deliberately **not implemented** until this is answered (spec §5.2 amendment) — an unverifiable fallback path is speculation         |
+| U13 | Real Beatport token lifetime, and does the refresh-token grant work with the swagger-ui client ID?                                     | measurement | Whether the pasted-token path is one-off or a chore   | **Resolved 2026-08-06 (live).** Access tokens live ~10 h; the docs client (`app:docs`, scraped) supports the refresh-token grant and rotates it. Auth mints+refreshes headlessly from username/password — no pasted token, no babysitting. Storefront `app:prostore` id 401s on `/catalog/` and its refresh returns `invalid_client`; only the docs client works. See the verified block in the P3 entry below.         |
 | U14 | How do we verify live-only behavior at all — recorded cassettes, an opt-in `integration` suite, or permanently-manual probes?          | decision    | Q8 below, and every future provider                   | Unowned. The `integration` pytest marker is registered but nothing uses it. Every provider so far was verified by an ad-hoc manual run whose result survives only in this file                                                |
 
 **Unblocked right now:** the MusicBrainz item shipped in v0.10.0 (keyless, no
@@ -267,32 +267,47 @@ as ACRCloud.
 > lookup/search/extraction), the env-only factory accessor, and the
 > `_enrich_beatport` pass with its acceptance gate. 46 offline tests.
 >
-> **Verified live 2026-08-06** (two Tomorrowland sets, real creds via the
-> password flow + cached token), each track gaining BPM/key/label + the
-> canonical `www.beatport.com` link alongside the Shazam/Spotify/Deezer links.
-> Match breakdown (isrc / search / none):
-> - **Meduza WE1** (mainstream house): 14/19 = **74%** (12 isrc / 2 search /
->   5 none).
-> - **Dyen b2b Maddix WE2** (hard techno): 16/20 = **80%** (11 isrc / 5
->   search / 4 none).
+> **Verified live 2026-08-06** (four Tomorrowland sets, real creds via the
+> password flow + cached/refreshed token), each track gaining BPM/key/label +
+> the canonical `www.beatport.com` link alongside the Shazam/Spotify/Deezer
+> links. Match breakdown (isrc / search / none):
+> - **Meduza WE1** (mainstream house): 14/19 = **74%** (12 / 2 / 5).
+> - **Dyen b2b Maddix WE2** (hard techno): 16/20 = **80%** (11 / 5 / 4).
+> - **Sara Landry WE2** (techno): 7/10 = **70%** (7 / 0 / 3).
+> - **Hi-LO b2b Layton Giordani WE2** (techno/tech-house): 23/33 = **70%**
+>   (12 / 11 / 10).
 > Resolves all three open unknowns:
-> - **U11** — `/v4/catalog/tracks/?isrc=` does filter (23 ISRC hits across the
->   two sets, no spurious mismatch-guard rejects); the ISRC-miss → search
->   fallback fired correctly (7 search hits).
-> - **U12** — techno recall holds, not just house: **80%** on the Dyen/Maddix
->   hard-techno set vs 74% on Meduza house. Both ~3× the ~23–25% MusicBrainz
->   Spotify-link baseline. The search path carried a third of the techno
->   matches (5/16), so the acceptance gate earns its keep on the noisier
->   catalog.
-> - **U13** — access tokens live **600 s**; no refresh flow is wired, so
->   expiry falls back to full username/password re-login (the cached token
->   makes a normal run a single login). Refresh-token use remains a gap.
-> Also landed same day: an error-posture hardening pass
-> (`fix(providers): harden Beatport enrichment error posture`) — OAuth
-> misconfig now disables the pass instead of re-running login per track,
-> transient 5xx stays per-track, auth 429s carry Retry-After, the
-> zero-match summary logs unconditionally, and the metadata-write +
-> cache-corruption paths can no longer abort a run.
+> - **U11** — `/v4/catalog/tracks/?isrc=` does filter (42 ISRC hits across the
+>   four sets, no spurious mismatch-guard rejects); the ISRC-miss → search
+>   fallback fired correctly (18 search hits).
+> - **U12** — techno recall holds, not just house: 70–80% across the three
+>   techno/hard-techno sets vs 74% on Meduza house. All ~3× the ~23–25%
+>   MusicBrainz Spotify-link baseline. The search path carried ~40% of the
+>   Hi-LO matches (11/23), so the acceptance gate earns its keep on the
+>   noisier catalog. The gate was also loosened for recall (a new
+>   `_enrichment_title_match` accepts on a bare title stem behind a confirmed
+>   artist match, without touching the precision-tuned dedup gate) after a
+>   probe found two live misses on exact same-track matches under different
+>   mix/show-ID spellings.
+> - **U13** — **resolved, refresh works.** The auth uses Beatport's OAuth
+>   docs client (the `app:docs` `API_CLIENT_ID` scraped from the `/v4/docs/`
+>   JS bundle, not the storefront `app:prostore` id which 401s on `/catalog/`;
+>   it rotates, so it is scraped at runtime like `beets-beatport4` rather than
+>   hardcoded). Username/password authorize+exchange mints an access token
+>   (~10 h life) plus a refresh_token; the docs client supports the
+>   refresh-token grant (the storefront client does not — `invalid_client`),
+>   and Beatport rotates the refresh_token on each refresh. Tokens cache to
+>   `beatport_token.json`, so a normal run reuses the cached token and, once
+>   expired, refreshes silently — no re-login, no token babysitting. (Two
+>   dead ends ruled out to save a future reader the chase: the next-auth web
+>   session cookie mints the wrong scope, and a hardcoded client_id rots —
+>   scrape it. The token-exchange POST also enforces a CSRF Referer check
+>   requiring `Referer: /auth/o/authorize/`.)
+> Also landed 2026-08-06: an error-posture hardening pass — OAuth misconfig now
+> disables the pass instead of re-running login per track, transient 5xx stays
+> per-track, auth 429s carry Retry-After, the zero-match summary logs
+> unconditionally, and the metadata-write + cache-corruption paths can no
+> longer abort a run.
 >
 > The original entry is kept below verbatim as the record of why the
 > unqualified workaround was rejected — that reasoning still stands.
