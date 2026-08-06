@@ -88,6 +88,8 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
             "acrcloud_max_concurrent",
             "spotify_max_rpm",
             "spotify_max_concurrent",
+            "beatport_max_rpm",
+            "beatport_max_concurrent",
         ],
     ),
     (
@@ -122,6 +124,7 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
             "musicbrainz_enabled",
             "musicbrainz_max_rpm",
             "musicbrainz_max_concurrent",
+            "beatport_enabled",
         ],
     ),
 ]
@@ -150,6 +153,9 @@ INLINE_COMMENTS: dict[str, str] = {
     "musicbrainz_enabled": "keyless ISRC link source (no-op w/o ISRC)",
     "musicbrainz_max_rpm": "requests/min (paced; MB 503s under burst)",
     "musicbrainz_max_concurrent": "concurrent MB requests (1 = serialize)",
+    "beatport_enabled": "Beatport links + BPM/key (opt-in; needs own creds)",
+    "beatport_max_rpm": "requests/min (no official Beatport limit; be polite)",
+    "beatport_max_concurrent": "concurrent Beatport requests (1 = serialize)",
 }
 
 # Fields rendered as commented-out (optional / not always set).
@@ -181,6 +187,22 @@ CREDENTIALS_BLOCK = """\
 # MusicBrainz is keyless and free, but asks for a descriptive User-Agent
 # (it blocks generic agents). Optional — a generic UA is used if unset.
 # TRACKLISTIFY_MUSICBRAINZ_CONTACT=your-email@example.com
+#
+# Beatport (opt-in, off by default — set TRACKLISTIFY_BEATPORT_ENABLED=true).
+# Resolves a canonical Beatport track link plus BPM, musical key, label,
+# genre and remixers per identified track. Beatport has no self-serve API
+# tier: partner access is a commercial-review waitlist, so this project ships
+# NO client ID and does not scrape one. Supply your own — the client ID used
+# by Beatport's own API docs frontend is visible in devtools on
+# https://api.beatport.com/v4/docs/, and the beets-beatport4 project
+# documents the same approach. Requests are made as YOUR Beatport account,
+# under your own relationship with Beatport.
+# Provide the client ID plus EITHER username+password OR a pasted access
+# token (devtools -> Network -> the /v4/auth/o/token/ response).
+# TRACKLISTIFY_BEATPORT_CLIENT_ID=
+# TRACKLISTIFY_BEATPORT_USERNAME=
+# TRACKLISTIFY_BEATPORT_PASSWORD=
+# TRACKLISTIFY_BEATPORT_TOKEN=
 """
 
 

@@ -137,6 +137,13 @@ class RateLimiter:
                 concurrent = max_concurrent_requests or getattr(
                     self._config, "musicbrainz_max_concurrent", 1
                 )
+            elif provider_str == "beatport":
+                rpm = max_requests_per_minute or getattr(
+                    self._config, "beatport_max_rpm", 60
+                )
+                concurrent = max_concurrent_requests or getattr(
+                    self._config, "beatport_max_concurrent", 1
+                )
             else:
                 # Fall back to global config or defaults
                 rpm = max_requests_per_minute or getattr(

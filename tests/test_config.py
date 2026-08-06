@@ -619,3 +619,44 @@ def test_musicbrainz_config_defaults_and_override(monkeypatch):
     cfg = get_config()
     assert cfg.musicbrainz_enabled is False
     assert cfg.musicbrainz_max_rpm == 15
+
+
+def test_beatport_config_defaults_and_override(monkeypatch):
+    """beatport_enabled defaults OFF (opt-in: needs a personal account and a
+    user-supplied client ID) and the rate-limit fields override from env."""
+    for key in [k for k in os.environ if k.startswith("TRACKLISTIFY_")]:
+        monkeypatch.delenv(key, raising=False)
+
+    clear_config()
+    cfg = get_config()
+    assert cfg.beatport_enabled is False
+    assert cfg.beatport_max_rpm == 60
+    assert cfg.beatport_max_concurrent == 1
+
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_ENABLED", "true")
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_MAX_RPM", "20")
+    clear_config()
+    cfg = get_config()
+    assert cfg.beatport_enabled is True
+    assert cfg.beatport_max_rpm == 20
+
+
+def test_beatport_secrets_are_not_config_fields(monkeypatch):
+    """Beatport credentials are env-only (R9) — they must never become
+    dataclass fields, or they leak through repr() and validation messages."""
+    for key in [k for k in os.environ if k.startswith("TRACKLISTIFY_")]:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_CLIENT_ID", "super-secret-id")
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_PASSWORD", "hunter2")
+    clear_config()
+    cfg = get_config()
+
+    for name in (
+        "beatport_client_id",
+        "beatport_username",
+        "beatport_password",
+        "beatport_token",
+    ):
+        assert not hasattr(cfg, name)
+    assert "super-secret-id" not in repr(cfg)
+    assert "hunter2" not in repr(cfg)

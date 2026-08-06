@@ -250,6 +250,22 @@ class TrackIdentificationConfig(BaseConfig):
     musicbrainz_max_rpm: int = field(default=30)
     musicbrainz_max_concurrent: int = field(default=1)
 
+    # Beatport link + DJ-metadata enrichment (opt-in, default OFF). Unlike
+    # MusicBrainz this needs a Beatport account AND a client ID the user
+    # supplies themselves — the repo ships neither — so it stays off until
+    # somebody turns it on. A no-op without credentials either way.
+    # Credentials are env-only (TRACKLISTIFY_BEATPORT_CLIENT_ID / _USERNAME /
+    # _PASSWORD / _TOKEN), deliberately NOT fields here: dataclass fields leak
+    # through repr() and validation error messages.
+    beatport_enabled: bool = field(default=False)
+    # Beatport publishes no official rate limit; community guidance is ~500ms
+    # between requests. Serialize (concurrent=1) and pace at 60rpm, with the
+    # explicit inter-request sleep in the enrichment hook doing the real work
+    # (the token bucket seeds full and would otherwise permit a burst — the
+    # MusicBrainz 3%-vs-25% lesson).
+    beatport_max_rpm: int = field(default=60)
+    beatport_max_concurrent: int = field(default=1)
+
     # Output formats
     output_format: str = field(default="json")
 
