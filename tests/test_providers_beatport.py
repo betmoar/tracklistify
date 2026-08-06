@@ -627,3 +627,43 @@ async def test_resolve_client_id_scrapes_from_docs_js(tmp_path):
 
     assert resolved == "SCRAPED-CID"
     assert any(u.endswith("/docs/") for u in provider._session.calls)
+
+
+# ---- _json_or_none: clean miss vs transport failure ----------------------
+
+
+@pytest.mark.asyncio
+async def test_json_or_none_returns_none_on_parse_failure(tmp_path):
+    """A body that isn't JSON (HTML error page with a 200) is a clean miss."""
+
+    class _NotJson:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def json(self):
+            raise json.JSONDecodeError("no", "doc", 0)
+
+    assert await BeatportProvider._json_or_none(_NotJson()) is None
+
+
+@pytest.mark.asyncio
+async def test_json_or_none_raises_provider_error_on_transport_failure(tmp_path):
+    """A transport failure (connection reset, truncated body) is NOT a clean
+    miss — it must surface as ProviderError, not silently return None and be
+    misreported downstream as a credentials rejection."""
+
+    class _TransportError:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def json(self):
+            raise ConnectionResetError("pipe broken")
+
+    with pytest.raises(ProviderError):
+        await BeatportProvider._json_or_none(_TransportError())

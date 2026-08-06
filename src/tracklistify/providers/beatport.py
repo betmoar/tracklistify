@@ -463,15 +463,32 @@ class BeatportProvider:
 
     @staticmethod
     async def _json_or_none(response) -> Optional[Any]:
-        """Decode a JSON body, or None.
+        """Decode a JSON body, or None on a clean non-JSON response.
 
-        Third-party responses are not guaranteed to be JSON even when the
-        status says success.
+        A content-type/parse mismatch (Beatport sometimes returns HTML for an
+        error page with a 200) is a legitimate "no data" — return None. Any
+        OTHER failure (connection reset mid-body, truncated payload, decode
+        error) is a real transport problem and must NOT be silently
+        indistinguishable from "empty response": it is logged and re-raised as
+        ``ProviderError`` so the caller's status-based classification decides
+        whether this is auth-fatal or a per-track miss. Without this, a
+        truncated login body would collapse to None and be misreported as
+        "wrong credentials" (AuthenticationError disables the whole pass on a
+        transient network blip).
         """
         try:
             return await response.json()
-        except Exception:
+        except (json.JSONDecodeError, ValueError) as e:
+            # aiohttp raises ContentTypeError (a ValueError subclass) when the
+            # body isn't JSON; json raises JSONDecodeError on malformed JSON.
+            # Both are the expected "not JSON" case.
+            logger.debug(f"Beatport response body not valid JSON: {e}")
             return None
+        except Exception as e:
+            # Anything else (ClientPayloadError, connection reset, etc.) is a
+            # transport failure, not a clean miss — surface it.
+            logger.debug(f"Beatport response body unreadable: {e}")
+            raise ProviderError(f"Beatport response body unreadable: {e}") from e
 
     # ---- catalog -------------------------------------------------------
 

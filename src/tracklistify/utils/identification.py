@@ -20,7 +20,11 @@ from tracklistify.core.track import (
     _artists_match,
     _enrichment_title_match,
 )
-from tracklistify.providers.base import AuthenticationError, RateLimitError
+from tracklistify.providers.base import (
+    AuthenticationError,
+    ProviderError,
+    RateLimitError,
+)
 from tracklistify.providers.factory import create_provider_factory
 from .constants import DEFAULT_PROGRESS_BAR_WIDTH, TERMINAL_LINE_WIDTH
 from .logger import get_logger
@@ -742,6 +746,15 @@ class IdentificationManager:
                     "Beatport enrichment stopped: rate limit hit; tracks "
                     "enriched so far are kept"
                 )
+                limiter.record_result("beatport", success=False)
+                return "disabled"
+            except ProviderError as e:
+                # A structural/config failure (client_id scrape broken, docs
+                # page down, bundle shape changed, unreadable response body)
+                # is NOT per-track transient — it will fail identically on
+                # every remaining track, re-running the doomed scrape each
+                # time. Halt the pass once instead of hammering per track.
+                logger.warning(f"Beatport enrichment stopped: {e}")
                 limiter.record_result("beatport", success=False)
                 return "disabled"
             except asyncio.CancelledError:

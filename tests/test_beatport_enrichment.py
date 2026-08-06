@@ -7,7 +7,11 @@ with a fake Beatport provider and a counting limiter. No network.
 import pytest
 
 from tracklistify.core.track import Track
-from tracklistify.providers.base import AuthenticationError, RateLimitError
+from tracklistify.providers.base import (
+    AuthenticationError,
+    ProviderError,
+    RateLimitError,
+)
 from tracklistify.utils.identification import IdentificationManager
 
 
@@ -407,6 +411,23 @@ async def test_rate_limit_error_stops_but_keeps_earlier_work(monkeypatch):
 
     assert first.metadata["bpm"] == 150
     assert second.metadata == {}
+
+
+@pytest.mark.asyncio
+async def test_provider_error_disables_the_pass_not_retried_per_track(monkeypatch):
+    """A ProviderError (client_id scrape broken, docs page down, unreadable
+    response body) is structural, not per-track transient — it would fail
+    identically on every remaining track, re-running the doomed scrape each
+    time. Halt the pass once instead of hammering per track."""
+    provider = _FakeBeatportProvider(search_results=[_candidate()])
+    provider.exc = ProviderError("Could not scrape the client_id")
+    limiter = _CountingLimiter()
+    mgr = _mgr(provider, limiter, monkeypatch)
+
+    await mgr._enrich_tracks([_track(), _track(song_name="B"), _track(song_name="C")])
+
+    assert provider.search_calls == 1  # halted after the first failure, not 3
+    assert limiter.acquires == limiter.releases == 1
 
 
 @pytest.mark.asyncio
