@@ -28,7 +28,7 @@ has to say yes).
 | U5  | How well does MusicBrainz cover underground-electronic ISRCs?                                                                         | measurement | ~~P3 MusicBrainz~~                                    | **Resolved 2026-08-04 (v0.10.0).** Measured by live probe over 117 real ISRCs: ~26% resolve, ~23-25% yield a Spotify URL. Thin for underground (the spec's caveat held), higher on commercial — additive, not exclusive |
 | U6  | Is the non-distinguishing title-suffix allowlist complete?                                                                            | measurement | P2 dedup                                              | Not resolvable up front, and deliberately so: the dedup spec defaults to _keep_, so an incomplete allowlist costs a visible duplicate row, never a silent deletion. Widen it from observed output over time                  |
 | U7  | RapidAPI Shazam: PCM conversion cost, metadata parity with shazamio, per-request price at ~216 segments/run, bot-defender reliability | external    | P3 RapidAPI                                           | Needs a paid key to answer any of it                                                                                                                                                                                         |
-| U8  | Will Beatport grant partner access?                                                                                                   | external    | P3 Beatport                                           | Commercial-use review through the Partner Portal. No code path exists without it, and the known public-client-ID workaround is not shippable                                                                                 |
+| U8  | Will Beatport grant partner access?                                                                                                   | external    | ~~P3 Beatport~~ (unblocked 2026-08-05)                | Still open — commercial-use review through the Partner Portal, a long waitlist. **No longer blocking:** the 2026-08-05 decision ships no client ID and no scraper; the user supplies their own credentials, opt-in and off by default (see the P3 Beatport section). If access is granted later, only the credential source changes |
 | U9  | What is the real scope of the Spotify authorization-code + PKCE flow?                                                                 | decision    | Playlist export (`exporters/spotify.py`)              | Unscoped. Client-credentials tokens can never reach `/me/playlists`, so this is a feature project, not a wiring task                                                                                                         |
 | U10 | Should a `download_quality` / `download_format` change invalidate the download cache?                                                 | decision    | P4 cache debt                                         | Unowned behavior decision. Today those fields are not wired through the factory and are absent from the cache key, so a re-run at a different quality serves the old file                                                    |
 
@@ -81,7 +81,23 @@ naming the env var when the key is missing. Key is env-only
 (`TRACKLISTIFY_RAPIDAPI_KEY`), never a config-dataclass field — same rule
 as ACRCloud.
 
-## P3 — Beatport links: blocked on partner approval, not on code
+## P3 — Beatport links + DJ metadata — specced 2026-08-05 (U8 stance changed)
+
+> **Update 2026-08-05.** No longer blocked. Partner access is still a long
+> waitlist (U8 unresolved), so the decision taken is narrower than the
+> workaround this entry originally rejected: **ship no client ID and no
+> scraper** — `TRACKLISTIFY_BEATPORT_CLIENT_ID` is env-only with no default,
+> the feature is opt-in and off by default, and the user supplies their own
+> Beatport account. Development uses the `beets-beatport4` public client ID
+> the same way a user would: in a local `.env`, never committed. Spec:
+> `docs/dev/2026-08-05-beatport-enrichment-spec.md`. New unknowns U11 (does
+> `/v4/catalog/tracks/?isrc=` actually filter?), U12 (match rate on
+> underground techno), U13 (token lifetime / refresh viability).
+>
+> The original entry is kept below verbatim as the record of why the
+> unqualified workaround was rejected — that reasoning still stands.
+
+### Original entry (2026-07): blocked on partner approval, not on code
 
 <https://api.beatport.com/v4/docs/>. The best metadata source for this
 project's actual genre — Beatport's label, remixer, BPM and musical-key
