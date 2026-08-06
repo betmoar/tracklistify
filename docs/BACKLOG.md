@@ -38,6 +38,7 @@ as **Q1–Q9** below — those are not blocked on anything, only on effort.
 | U12 | What is the Beatport match rate on underground techno, split isrc/search/none?                                                        | measurement | Sizing Beatport against MusicBrainz as a link source  | Read `beatport_match` counts out of one real run's `tracklist.json`. Compare against the measured ~23–25% MusicBrainz rate (U5)                                                                                              |
 | U13 | Real Beatport token lifetime, and does the refresh-token grant work with the swagger-ui client ID?                                     | measurement | Whether the pasted-token path is one-off or a chore   | **Resolved 2026-08-06 (live).** Access tokens live ~10 h; the docs client (`app:docs`, scraped) supports the refresh-token grant and rotates it. Auth mints+refreshes headlessly from username/password — no pasted token, no babysitting. Storefront `app:prostore` id 401s on `/catalog/` and its refresh returns `invalid_client`; only the docs client works. See the verified block in the P3 entry below.         |
 | U14 | How do we verify live-only behavior at all — recorded cassettes, an opt-in `integration` suite, or permanently-manual probes?          | decision    | Q8 below, and every future provider                   | Unowned. The `integration` pytest marker is registered but nothing uses it. Every provider so far was verified by an ad-hoc manual run whose result survives only in this file                                                |
+| U15 | Beatport enrichment gate matches the wrong remix's metadata — how to fix?                                                              | fix         | Beatport enrichment correctness (`_enrichment_title_match`/`_title_stem`)             | **Measured 2026-08-07 (live, 4 sets): 9/18 search-matches landed on a different mix.** BPM is often coincidentally right (techno tempo is release-robust) but key/label/catalog# — the fields Beatport exists to add — are wrong for 4+ of them. Root cause: `_title_stem` strips the remix marker, so distinct remixes (separate Beatport catalog entries) collapse to one stem; the artist gate can't save it (remixes share the credited artist). The real distinguishing signal is the **remixer name**, not the word "remix": `Adam Sellouk Remix` vs `Original Mix` = wrong; `Adam Sellouk Remix` vs `Adam Sellouk Extended Remix` = same remix, Extended variant (acceptable). Fix direction: redesign the gate on remixer-name identity (keep named-remixer groups distinguishing; generic mix types like Club/Extended/Edit compare on type). Acceptance: re-run the measure probe (scratchpad `measure_remix_live.py`) → 0 wrong-remix matches, the 2 recall bugs (Adelphi show-ID, MEDUZA feat) still pass, wrong-artist still rejected. Parked from the 2026-08-07 review. |
 
 **Unblocked right now:** the MusicBrainz item shipped in v0.10.0 (keyless, no
 external gate). The Spotify client-credentials source also shipped but is
@@ -284,11 +285,15 @@ as ACRCloud.
 >   techno/hard-techno sets vs 74% on Meduza house. All ~3× the ~23–25%
 >   MusicBrainz Spotify-link baseline. The search path carried ~40% of the
 >   Hi-LO matches (11/23), so the acceptance gate earns its keep on the
->   noisier catalog. The gate was also loosened for recall (a new
->   `_enrichment_title_match` accepts on a bare title stem behind a confirmed
->   artist match, without touching the precision-tuned dedup gate) after a
->   probe found two live misses on exact same-track matches under different
->   mix/show-ID spellings.
+>   noisier catalog. **Caveat (U15, open):** the gate was loosened for recall
+>   via `_enrichment_title_match` (accepts on a bare title stem behind a
+>   confirmed artist match, without touching the precision-tuned dedup gate),
+>   but that over-loosened — stripping the remix marker lets distinct remixes
+>   collapse to one stem, so 9/18 measured search-matches landed on a
+>   different mix's metadata (key/label/catalog# wrong; BPM coincidentally
+>   often right). See U15 for the redesign (remixer-name identity). Until U15
+>   lands, ISRC-path matches (the majority) are unaffected; only the
+>   search-fallback path carries the risk.
 > - **U13** — **resolved, refresh works.** The auth uses Beatport's OAuth
 >   docs client (the `app:docs` `API_CLIENT_ID` scraped from the `/v4/docs/`
 >   JS bundle, not the storefront `app:prostore` id which 401s on `/catalog/`;
