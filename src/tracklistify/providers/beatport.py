@@ -6,9 +6,13 @@ identified track. Used by the post-dedup enrichment hook as a third source,
 after Spotify and MusicBrainz.
 
 Beatport has no self-serve API tier — partner access is a commercial-review
-waitlist — so this module ships **no** client ID and does not scrape one.
-Every credential is supplied by the user through the environment; without
-them the factory returns ``None`` and the pass is a silent no-op.
+waitlist — so this module ships **no** credentials. Every secret (username,
+password, or a pasted token) is supplied by the user through the environment;
+without them the factory returns ``None`` and the pass is a silent no-op. The
+one thing resolved for the user is the OAuth ``client_id``: Beatport rotates
+the public docs client, so it is read from the docs JS bundle at first auth
+(see ``_resolve_client_id``), overridable via
+``TRACKLISTIFY_BEATPORT_CLIENT_ID``.
 """
 
 # Standard library imports

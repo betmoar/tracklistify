@@ -33,7 +33,7 @@ import sys
 import aiohttp
 
 API = "https://api.beatport.com/v4"
-# Defaults to the project's run cache; override by setting OUTPUT_DIR.
+# Defaults to the project's run cache; override with TRACKLISTIFY_OUTPUT_DIR.
 OUTPUT_GLOB = os.environ.get(
     "TRACKLISTIFY_OUTPUT_DIR",
     ".tracklistify/output",
