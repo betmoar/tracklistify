@@ -161,6 +161,30 @@ async def test_corrupt_token_cache_is_a_miss_not_a_crash(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_non_numeric_expires_at_is_a_miss_not_a_crash(tmp_path):
+    """A cache file whose expires_at isn't a number (hand-edited, partially
+    corrupt) must be a miss, not a ValueError on every track. _load_cached_token
+    documents 'never raises' — the type check enforces it at the source."""
+    path = tmp_path / "beatport_token.json"
+    path.write_text(
+        json.dumps(
+            {"access_token": "CACHED", "refresh_token": "R", "expires_at": "soon"}
+        )
+    )
+    session = _FakeSession(
+        posts=[
+            _FakeResponse(200, {"username": "dj", "email": "e@x.com"}),
+            _FakeResponse(
+                200, {"access_token": "FRESH", "refresh_token": "R", "expires_in": 3600}
+            ),
+        ],
+        gets=[_FakeResponse(302, headers={"Location": "?code=C"})],
+    )
+    provider = _provider(tmp_path, session, username="dj", password="pw")
+    assert await provider._authenticate() == "FRESH"
+
+
+@pytest.mark.asyncio
 async def test_expired_cached_token_is_not_used(tmp_path):
     """Expiry uses a safety buffer: a token expiring inside it is expired."""
     path = tmp_path / "beatport_token.json"
@@ -208,10 +232,27 @@ async def test_no_credentials_at_all_raises_authentication_error(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_authorize_without_code_raises_provider_error(tmp_path):
+async def test_authorize_without_code_raises_authentication_error(tmp_path):
+    """A redirect with no auth code means the client_id/redirect_uri was
+    rejected — a config problem, not a transient blip. It must surface as
+    AuthenticationError so the enrichment hook disables the whole pass instead
+    of re-running the full OAuth dance once per track."""
     session = _FakeSession(
         posts=[_FakeResponse(200, {"username": "dj", "email": "e@x.com"})],
         gets=[_FakeResponse(302, headers={"Location": "/post-message/"})],
+    )
+    provider = _provider(tmp_path, session, username="dj", password="pw")
+    with pytest.raises(AuthenticationError):
+        await provider._authenticate()
+
+
+@pytest.mark.asyncio
+async def test_authorize_5xx_is_a_provider_error(tmp_path):
+    """A transient server failure during authorize must NOT disable the whole
+    pass — only AuthenticationError does that. Mirror of the login-5xx rule."""
+    session = _FakeSession(
+        posts=[_FakeResponse(200, {"username": "dj", "email": "e@x.com"})],
+        gets=[_FakeResponse(503)],
     )
     provider = _provider(tmp_path, session, username="dj", password="pw")
     with pytest.raises(ProviderError):
@@ -264,10 +305,28 @@ async def test_close_is_reentrant(tmp_path):
 
 @pytest.mark.asyncio
 async def test_rate_limit_during_login_raises_rate_limit_error(tmp_path):
-    session = _FakeSession(posts=[_FakeResponse(429)])
+    """A 429 during login carries the Retry-After header into the error so the
+    caller can honor it (not just the flat 60s default)."""
+    session = _FakeSession(posts=[_FakeResponse(429, headers={"Retry-After": "17"})])
     provider = _provider(tmp_path, session, username="dj", password="pw")
-    with pytest.raises(RateLimitError):
+    with pytest.raises(RateLimitError) as excinfo:
         await provider._authenticate()
+    assert excinfo.value.retry_after == 17
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_during_token_exchange_carries_retry_after(tmp_path):
+    session = _FakeSession(
+        posts=[
+            _FakeResponse(200, {"username": "dj", "email": "e@x.com"}),
+            _FakeResponse(429, headers={"Retry-After": "23"}),
+        ],
+        gets=[_FakeResponse(302, headers={"Location": "?code=C"})],
+    )
+    provider = _provider(tmp_path, session, username="dj", password="pw")
+    with pytest.raises(RateLimitError) as excinfo:
+        await provider._authenticate()
+    assert excinfo.value.retry_after == 23
 
 
 def _track_json(**overrides):
@@ -301,7 +360,7 @@ def test_extract_maps_every_field():
     assert out["title"] == "Hard Dance"
     assert out["mix_name"] == "Original Mix"
     assert out["artists"] == ["DJ One", "DJ Two"]
-    assert out["url"] == "https://beatport.com/track/hard-dance/12345"
+    assert out["url"] == "https://www.beatport.com/track/hard-dance/12345"
     assert out["bpm"] == 150
     assert out["key"] == "A Minor"
     assert out["label"] == "Hard Label"

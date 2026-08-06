@@ -27,7 +27,7 @@ def _candidate(**overrides):
         "title": "Hard Dance",
         "mix_name": "Original Mix",
         "artists": ["DJ One"],
-        "url": "https://beatport.com/track/hard-dance/12345",
+        "url": "https://www.beatport.com/track/hard-dance/12345",
         "bpm": 150,
         "key": "A Minor",
         "label": "Hard Label",
@@ -157,7 +157,7 @@ async def test_isrc_path_writes_links_and_dj_metadata(monkeypatch):
     await mgr._enrich_tracks([track])
 
     md = track.metadata
-    assert md["links"]["beatport"] == "https://beatport.com/track/hard-dance/12345"
+    assert md["links"]["beatport"] == "https://www.beatport.com/track/hard-dance/12345"
     assert md["beatport_id"] == "12345"
     assert md["bpm"] == 150
     assert md["key"] == "A Minor"
@@ -369,3 +369,56 @@ async def test_isrc_miss_paces_before_the_search_fallback(monkeypatch):
     assert provider.isrc_calls == 1 and provider.search_calls == 1
     # One inter-request sleep between the two calls, one after the track.
     assert sleeps == [0.5, 0.5]
+
+
+@pytest.mark.asyncio
+async def test_a_fully_broken_pass_logs_at_info_without_debug(monkeypatch, caplog):
+    """A misconfigured account (AuthenticationError on every track) must still
+    surface an INFO line, not vanish below DEBUG. Without the unconditional
+    zero-match log, a broken pass is indistinguishable from 'found nothing'
+    unless the user runs --debug."""
+    import logging
+
+    provider = _FakeBeatportProvider(search_results=[_candidate()])
+    provider.exc = AuthenticationError("bad client_id")
+    limiter = _CountingLimiter()
+    mgr = _mgr(provider, limiter, monkeypatch)
+
+    with caplog.at_level(logging.INFO):
+        await mgr._enrich_tracks(
+            [_track(), _track(song_name="B"), _track(song_name="C")]
+        )
+
+    # The per-track failure warns (disable), and the summary still logs at INFO.
+    assert any(
+        "Beatport enrichment" in rec.message and rec.levelno == logging.INFO
+        for rec in caplog.records
+    )
+    assert provider.search_calls == 1  # disabled after the first track
+
+
+@pytest.mark.asyncio
+async def test_a_metadata_write_failure_does_not_break_the_run(monkeypatch):
+    """_apply_beatport_metadata runs after the lookup try/except, so an
+    exception there would escape the per-track boundary and abort enrichment
+    for every remaining track. The write is guarded: a failure degrades to a
+    miss for that track — never a run-ending error."""
+    provider = _FakeBeatportProvider(isrc_result=_candidate())
+    limiter = _CountingLimiter()
+    mgr = _mgr(provider, limiter, monkeypatch)
+
+    def _boom(track, result, match_kind):
+        raise RuntimeError("write failed")
+
+    monkeypatch.setattr(mgr, "_apply_beatport_metadata", _boom)
+    first, second = (
+        _track(metadata={"isrc": "GBABC1234567"}),
+        _track(song_name="B", metadata={"isrc": "GBABC1234568"}),
+    )
+
+    await mgr._enrich_tracks([first, second])  # must not raise
+
+    # Both tracks were attempted (the first's write failure didn't abort the loop).
+    assert provider.isrc_calls == 2
+    assert first.metadata == {"isrc": "GBABC1234567"}  # write never landed
+    assert limiter.results == [("beatport", True), ("beatport", True)]

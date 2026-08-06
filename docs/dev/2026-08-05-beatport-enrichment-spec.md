@@ -234,7 +234,7 @@ From the v4 track object (shapes verified against `beets-beatport4`'s
 
 | Our key | Beatport field | Note |
 | --- | --- | --- |
-| `links.beatport` | `https://beatport.com/track/{slug}/{id}` | first-writer-wins (R6) |
+| `links.beatport` | `https://www.beatport.com/track/{slug}/{id}` | first-writer-wins (R6) |
 | `beatport_id` | `id` | as `str` |
 | `bpm` | `bpm` | `int` |
 | `key` | `key.name` | Beatport's own spelling, verbatim — no Camelot conversion (non-goal) |

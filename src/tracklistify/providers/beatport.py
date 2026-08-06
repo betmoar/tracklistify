@@ -33,7 +33,7 @@ from tracklistify.utils.logger import get_logger
 logger = get_logger(__name__)
 
 API_BASE = "https://api.beatport.com/v4"
-SITE_BASE = "https://beatport.com"
+SITE_BASE = "https://www.beatport.com"
 # Beatport's own swagger-ui redirect target; the authorization code comes back
 # on this URL as a ?code= query parameter in the 302 Location header.
 REDIRECT_URI = f"{API_BASE}/auth/o/post-message/"
@@ -120,6 +120,13 @@ class BeatportProvider:
             return None
         if not isinstance(data, dict) or not data.get("access_token"):
             logger.debug("Beatport token cache malformed; miss")
+            return None
+        # expires_at must be a usable float; a hand-edited or partially-corrupt
+        # file (e.g. a string) would otherwise raise out of the call site's
+        # float() on every track. Treat it as a miss, consistent with the
+        # "never raises" contract above.
+        if not isinstance(data.get("expires_at"), (int, float)):
+            logger.debug("Beatport token cache has no usable expires_at; miss")
             return None
         return data
 
@@ -208,7 +215,11 @@ class BeatportProvider:
             json={"username": self.username, "password": self.password},
         ) as response:
             if response.status == 429:
-                raise RateLimitError("Beatport rate limit hit during login")
+                raise RateLimitError(
+                    "Beatport rate limit hit during login",
+                    provider="beatport",
+                    retry_after=self._retry_after_seconds(response),
+                )
             # A server-side failure is not a credentials problem. Reporting it
             # as one is both misleading and wrong in effect: the hook treats
             # AuthenticationError as fatal and disables the pass for the whole
@@ -237,14 +248,26 @@ class BeatportProvider:
             allow_redirects=False,
         ) as response:
             location = response.headers.get("Location")
-            if not location:
+            if response.status >= 500:
+                # Transient server failure, not misconfig — must not disable the
+                # pass for the whole run (only AuthenticationError does).
                 raise ProviderError(
+                    f"Beatport authorize failed server-side (status {response.status})."
+                )
+            if not location:
+                # A 2xx/3xx with no Location means the client_id/redirect_uri was
+                # rejected: a config problem, same class as a bad password, and it
+                # will fail identically on every track. Promote it so the
+                # enrichment hook disables the pass instead of re-running the full
+                # OAuth dance once per track (identification.py _enrich_one_beatport).
+                raise AuthenticationError(
                     "Beatport OAuth redirect carried no Location header "
-                    f"(status {response.status}); the client ID may be wrong."
+                    f"(status {response.status}); the client ID or redirect URI "
+                    "may be wrong. Check TRACKLISTIFY_BEATPORT_CLIENT_ID."
                 )
             codes = parse_qs(urlparse(location).query).get("code")
             if not codes:
-                raise ProviderError(
+                raise AuthenticationError(
                     "Beatport OAuth redirect carried no authorization code."
                 )
             auth_code = codes[0]
@@ -259,10 +282,21 @@ class BeatportProvider:
             },
         ) as response:
             if response.status == 429:
-                raise RateLimitError("Beatport rate limit hit during token exchange")
+                raise RateLimitError(
+                    "Beatport rate limit hit during token exchange",
+                    provider="beatport",
+                    retry_after=self._retry_after_seconds(response),
+                )
+            if response.status >= 500:
+                # Transient server failure during exchange — must not disable the
+                # pass (unlike an unrecoverable config problem).
+                raise ProviderError(
+                    "Beatport token exchange failed server-side "
+                    f"(status {response.status})."
+                )
             data = await self._json_or_none(response)
             if not isinstance(data, dict) or "access_token" not in data:
-                raise ProviderError(
+                raise AuthenticationError(
                     f"Beatport token exchange failed (status {response.status})."
                 )
             logger.debug("Beatport: obtained access token")

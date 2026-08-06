@@ -670,12 +670,15 @@ class IdentificationManager:
                 await asyncio.sleep(_BEATPORT_REQUEST_INTERVAL)
 
         matched = counts["isrc"] + counts["search"]
-        if matched:
-            logger.info(
-                f"Beatport enrichment: {matched} tracks matched "
-                f"(isrc={counts['isrc']}, search={counts['search']}, "
-                f"none={counts['none']})"
-            )
+        # Log unconditionally: a fully-broken pass (every lookup errored) looks
+        # identical to "Beatport found nothing" otherwise, and the per-track
+        # detail is only at DEBUG. Surfacing a zero-match line at INFO means a
+        # misconfigured account is debuggable without --debug.
+        logger.info(
+            f"Beatport enrichment: {matched} tracks matched "
+            f"(isrc={counts['isrc']}, search={counts['search']}, "
+            f"none={counts['none']})"
+        )
 
     async def _enrich_one_beatport(self, provider, limiter, track: Track) -> str:
         """Enrich one track via Beatport; return the match kind or sentinel.
@@ -745,7 +748,16 @@ class IdentificationManager:
             if not result:
                 return "none"
 
-            self._apply_beatport_metadata(track, result, match_kind)
+            # The metadata write is outside the lookup try/except above, so a
+            # failure here would otherwise escape the per-track boundary and
+            # break the _enrich_beatport loop for every remaining track. The
+            # lookup succeeded (already recorded), but a write that can't land
+            # degrades to a miss for this track — never a run-ending error.
+            try:
+                self._apply_beatport_metadata(track, result, match_kind)
+            except Exception as e:
+                logger.debug(f"Beatport metadata write failed for one track: {e}")
+                return "none"
             return match_kind
         finally:
             if acquired:
