@@ -13,6 +13,7 @@ them the factory returns ``None`` and the pass is a silent no-op.
 
 # Standard library imports
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -42,12 +43,26 @@ REDIRECT_URI = f"{API_BASE}/auth/o/post-message/"
 # long pass can't have its token die mid-run.
 TOKEN_EXPIRY_BUFFER_SECONDS = 30
 TOKEN_FILENAME = "beatport_token.json"
-# The next-auth session endpoint and the web app are gated by Cloudflare; a
-# browser-like User-Agent is required or the request is challenged/blocked.
-_BROWSER_UA = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-)
+# The login endpoint enforces a CSRF Referer check and the whole host sits
+# behind Cloudflare; a browser-like User-Agent + Origin/Referer are required
+# or the request is rejected (CSRF Failed: Referer checking failed).
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Origin": WEB_BASE,
+    "Referer": f"{API_BASE}/auth/login/",
+}
+# The OAuth client_id is the one Beatport's own API-docs frontend uses. It is
+# NOT the storefront client_id (app:prostore) — only the docs client
+# (app:docs) is accepted by /auth/o/authorize/ and authorizes /catalog/.
+# Beatport rotates it, so it is scraped from the docs JS bundle at runtime
+# rather than hardcoded (mirrors beets-beatport4). A user may override it via
+# the client_id arg as an escape hatch.
+_DOCS_PATH = "/docs/"
+_SCRIPT_SRC_RE = re.compile(r"src=.(.*?js)")
+_CLIENT_ID_RE = re.compile(r"API_CLIENT_ID: '([^']*)'")
 
 
 class BeatportProvider:
@@ -55,38 +70,33 @@ class BeatportProvider:
 
     def __init__(
         self,
-        client_id: str,
+        client_id: Optional[str] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
         token: Optional[str] = None,
         token_path: Optional[Path] = None,
-        session_token: Optional[str] = None,
-        cf_clearance: Optional[str] = None,
     ):
         """Initialize.
 
         Args:
-            client_id: OAuth client ID. Supplied by the user; never shipped.
-            username: Beatport account username (with ``password``).
+            client_id: OAuth client ID override. When None (default) it is
+                scraped from Beatport's docs JS bundle at first auth — the
+                docs client (app:docs) is the only id /auth/o/authorize/
+                accepts and that authorizes /catalog/. Supply your own only as
+                an escape hatch; a stale/wrong id yields ``invalid_client``.
+            username: Beatport account username (with ``password``). The
+                password authorize+exchange flow mints a token + refresh_token
+                that is cached, so a normal run re-authenticates via refresh.
             password: Beatport account password (with ``username``).
             token: A pre-obtained access token, used as-is. Skips login.
             token_path: Where to cache the obtained token. ``None`` disables
                 caching (tests, and any caller without a cache dir).
-            session_token: The ``__Secure-next-auth.session-token`` cookie from
-                a logged-in browser session. The session endpoint mints a fresh
-                short-lived access token from it, so this is the path that runs
-                unattended (no 10-minute token babysitting). Requires
-                ``cf_clearance`` alongside it (Cloudflare).
-            cf_clearance: The ``cf_clearance`` Cloudflare cookie, paired with
-                ``session_token``.
         """
         self.client_id = client_id
         self.username = username
         self.password = password
         self._pasted_token = token
         self._token_path = token_path
-        self._session_token = session_token
-        self._cf_clearance = cf_clearance
         self._access_token: Optional[str] = None
         self._refresh_token: Optional[str] = None
         self._expires_at: float = 0.0
@@ -96,26 +106,15 @@ class BeatportProvider:
         """Ensure aiohttp session exists.
 
         A cookie jar is required for the login step: ``/auth/login/`` sets the
-        session + CSRF cookies that ``/auth/o/authorize/`` then needs, and the
-        session-cookie auth path must send its ``__Secure-next-auth.session-
-        token`` + ``cf_clearance`` cookies. When the latter is configured the
-        session is created with a browser-like User-Agent (the web app and its
-        next-auth endpoint are Cloudflare-gated and reject bare clients).
+        session + CSRF cookies that ``/auth/o/authorize/`` then needs. The
+        login endpoint enforces a Referer check, so the session carries the
+        browser-like headers from the start.
         """
         if self._session is None:
-            headers = {"User-Agent": _BROWSER_UA} if self._session_token else {}
             jar = aiohttp.CookieJar(unsafe=True)
-            self._session = aiohttp.ClientSession(cookie_jar=jar, headers=headers)
-            if self._session_token:
-                cookies = {
-                    "__Secure-next-auth.session-token": self._session_token,
-                }
-                if self._cf_clearance:
-                    cookies["cf_clearance"] = self._cf_clearance
-                for host in (WEB_BASE + "/", API_BASE + "/"):
-                    self._session.cookie_jar.update_cookies(
-                        cookies, aiohttp.client.URL(host)
-                    )
+            self._session = aiohttp.ClientSession(
+                cookie_jar=jar, headers=_BROWSER_HEADERS
+            )
 
     async def close(self) -> None:
         """Close the aiohttp session.
@@ -202,10 +201,12 @@ class BeatportProvider:
         1. a token already held in memory and not expired;
         2. ``TRACKLISTIFY_BEATPORT_TOKEN`` pasted by the user (used verbatim);
         3. a non-expired token from the on-disk cache;
-        4. the browser session: the ``__Secure-next-auth.session-token`` cookie
-           mints a fresh access token via the next-auth session endpoint (the
-           path that runs unattended — no 10-minute token lifetime to babysit);
-        5. the username/password authorization-code flow.
+        4. the refresh-token grant — a cached token that has expired is
+           renewed from its refresh_token without re-logging in (the docs
+           client supports refresh; the access token lives ~10 hours, the
+           refresh token longer, so a normal run refreshes silently);
+        5. the username/password authorization-code flow, which mints a fresh
+           access token + refresh_token and caches them.
 
         Raises:
             AuthenticationError: no usable credential, or login rejected.
@@ -222,98 +223,108 @@ class BeatportProvider:
             return self._access_token
 
         cached = self._load_cached_token()
-        if cached and not self._is_expired(float(cached.get("expires_at") or 0)):
+        if cached:
             self._access_token = str(cached["access_token"])
             self._refresh_token = cached.get("refresh_token") or None
             self._expires_at = float(cached.get("expires_at") or 0)
-            logger.debug("Beatport: using cached access token")
-            return self._access_token
-
-        if self._session_token:
-            try:
-                return await self._session_flow()
-            except AuthenticationError:
-                # A dead/expired session cookie is not fatal if another path
-                # can still work — fall through to password. If neither works
-                # the password flow's own error message names the options.
-                logger.debug("Beatport: session-cookie path failed; trying password")
+            if not self._is_expired(self._expires_at):
+                logger.debug("Beatport: using cached access token")
+                return self._access_token
+            # Expired but we hold a refresh_token — try to renew before
+            # falling back to a full re-login. Refresh is the common path on
+            # every run after the first.
+            if self._refresh_token:
+                try:
+                    return await self._refresh_flow()
+                except AuthenticationError:
+                    logger.debug(
+                        "Beatport: refresh failed; falling back to password login"
+                    )
 
         if not (self.username and self.password):
             raise AuthenticationError(
-                "Beatport needs TRACKLISTIFY_BEATPORT_SESSION_TOKEN (+ "
-                "_CF_CLEARANCE) from a logged-in browser, or a "
-                "TRACKLISTIFY_BEATPORT_TOKEN pasted from the browser. The "
-                "username/password flow does not work for headless use."
+                "Beatport needs TRACKLISTIFY_BEATPORT_USERNAME + "
+                "TRACKLISTIFY_BEATPORT_PASSWORD (the password flow mints a "
+                "token and caches it for later refresh), or a "
+                "TRACKLISTIFY_BEATPORT_TOKEN pasted from the browser."
             )
         return await self._password_flow()
 
-    async def _session_flow(self) -> str:
-        """Mint an access token from a logged-in browser session.
+    async def _resolve_client_id(self) -> str:
+        """The OAuth client_id: user override, else scraped from the docs JS.
 
-        Beatport's web app is a next-auth client: ``GET /api/auth/session``
-        with the ``__Secure-next-auth.session-token`` cookie returns the live
-        ``accessToken`` (a 600 s JWT) plus its ``accessTokenExpires`` epoch.
-        This is the only auth path that works headlessly — the OAuth password
-        flow and the refresh-token grant are both gated behind a confidential
-        client / Cloudflare state this client cannot reproduce. The session
-        cookie is long-lived, so a normal run mints a fresh token per run
-        instead of babysitting a 10-minute pasted one.
+        Beatport rotates the docs client_id, so it is scraped at runtime from
+        the /docs/ page's JS bundle (``API_CLIENT_ID``), matching
+        beets-beatport4. Only this docs client is accepted by
+        /auth/o/authorize/ and authorizes /catalog/ — the storefront client
+        (app:prostore) does neither. A user-supplied override short-circuits
+        the scrape as an escape hatch.
+        """
+        if self.client_id:
+            return self.client_id
+        await self._ensure_session()
+        async with self._session.get(f"{API_BASE}{_DOCS_PATH}") as response:
+            if response.status != 200:
+                raise ProviderError(
+                    f"Could not fetch Beatport docs page (status {response.status}) "
+                    "to scrape the client_id."
+                )
+            html = await response.text()
+        for script_path in _SCRIPT_SRC_RE.findall(html):
+            async with self._session.get(
+                f"https://api.beatport.com{script_path}"
+            ) as script_response:
+                if script_response.status != 200:
+                    continue
+                js = await script_response.text()
+                match = _CLIENT_ID_RE.search(js)
+                if match:
+                    self.client_id = match.group(1)
+                    logger.debug("Beatport: scraped client_id from docs JS")
+                    return self.client_id
+        raise ProviderError(
+            "Could not scrape the Beatport client_id from the docs JS bundle. "
+            "Set TRACKLISTIFY_BEATPORT_CLIENT_ID manually as an override."
+        )
 
-        Raises ``AuthenticationError`` when the session cookie is absent,
-        expired, or the endpoint returns no token — the caller may fall back
-        to the password flow.
+    async def _refresh_flow(self) -> str:
+        """Renew the access token from the cached refresh_token.
+
+        The docs client supports the refresh-token grant (the storefront client
+        does not — ``invalid_client``). Beatport rotates the refresh_token on
+        each refresh, so the new one is adopted and re-cached. Raises
+        ``AuthenticationError`` when the refresh_token is dead (expired or
+        revoked), letting the caller fall back to the password flow.
         """
         await self._ensure_session()
-        async with self._session.get(f"{WEB_BASE}/api/auth/session") as response:
+        client_id = await self._resolve_client_id()
+        async with self._session.post(
+            f"{API_BASE}/auth/o/token/",
+            params={
+                "grant_type": "refresh_token",
+                "refresh_token": self._refresh_token,
+                "client_id": client_id,
+            },
+        ) as response:
             if response.status == 429:
                 raise RateLimitError(
-                    "Beatport rate limit hit fetching the session",
+                    "Beatport rate limit hit during refresh",
                     provider="beatport",
                     retry_after=self._retry_after_seconds(response),
                 )
             if response.status >= 500:
                 raise ProviderError(
-                    "Beatport session endpoint failed server-side "
+                    "Beatport token refresh failed server-side "
                     f"(status {response.status})."
                 )
-            if response.status != 200:
-                raise AuthenticationError(
-                    f"Beatport session endpoint returned {response.status}; the "
-                    "session cookie may be expired or missing."
-                )
             data = await self._json_or_none(response)
-        token_block = data.get("token") if isinstance(data, dict) else None
-        access_token = (
-            token_block.get("accessToken") if isinstance(token_block, dict) else None
-        )
-        if not access_token:
+        if not isinstance(data, dict) or not data.get("access_token"):
+            # 400 invalid_grant (refresh token expired/revoked) lands here.
             raise AuthenticationError(
-                "Beatport session carried no access token; the session cookie "
-                "may be expired. Refresh it in the browser."
+                "Beatport refresh token rejected; re-login required."
             )
-        self._access_token = str(access_token)
-        self._refresh_token = (
-            token_block.get("refreshToken") if isinstance(token_block, dict) else None
-        )
-        # Prefer the absolute expiry epoch next-auth returns; fall back to the
-        # relative expiresIn. next-auth's accessTokenExpires is in MILLISECONDS
-        # (a 13-digit epoch); the rest of this module works in seconds, so
-        # divide — otherwise the cached token reads as far-future and never
-        # expires, masking real expiry and serving a dead token every run.
-        expires_at = (
-            token_block.get("accessTokenExpires")
-            if isinstance(token_block, dict)
-            else None
-        )
-        if expires_at:
-            self._expires_at = float(expires_at) / 1000.0
-        elif token_block.get("expiresIn"):
-            self._expires_at = time.time() + float(token_block["expiresIn"])
-        else:
-            self._expires_at = float("inf")
-        self._save_cached_token()
-        logger.debug("Beatport: minted access token from browser session")
-        return self._access_token
+        logger.debug("Beatport: refreshed access token")
+        return self._store_token_response(data)
 
     async def _password_flow(self) -> str:
         """login -> authorize -> exchange code for a token.
@@ -321,8 +332,12 @@ class BeatportProvider:
         Beatport's swagger-ui frontend flow: POST the credentials to get
         session cookies, GET the authorize endpoint WITHOUT following the
         redirect (the code only exists in the Location header), then exchange.
+        Uses the docs client_id (scraped) — only it is accepted by authorize
+        and authorizes /catalog/. The response carries a refresh_token, cached
+        for later renewal.
         """
         await self._ensure_session()
+        client_id = await self._resolve_client_id()
         logger.debug("Beatport: authorizing with username and password")
 
         async with self._session.post(
@@ -357,7 +372,7 @@ class BeatportProvider:
             f"{API_BASE}/auth/o/authorize/",
             params={
                 "response_type": "code",
-                "client_id": self.client_id,
+                "client_id": client_id,
                 "redirect_uri": REDIRECT_URI,
             },
             allow_redirects=False,
@@ -393,8 +408,13 @@ class BeatportProvider:
                 "code": auth_code,
                 "grant_type": "authorization_code",
                 "redirect_uri": REDIRECT_URI,
-                "client_id": self.client_id,
+                "client_id": client_id,
             },
+            # The token-exchange POST enforces a CSRF Referer check: it must
+            # read as the authorize endpoint (the page the browser is "on"
+            # after the authorize redirect), NOT the login page the session
+            # defaults to. A login Referer here is rejected with 401.
+            headers={"Referer": f"{API_BASE}/auth/o/authorize/"},
         ) as response:
             if response.status == 429:
                 raise RateLimitError(

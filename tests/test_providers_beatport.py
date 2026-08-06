@@ -527,105 +527,103 @@ async def test_token_exchange_5xx_is_a_provider_error(tmp_path):
         await provider._authenticate()
 
 
-# ---- session-cookie auth path ---------------------------------------------
-# The only auth path that works headlessly: GET /api/auth/session with the
-# __Secure-next-auth.session-token cookie returns the live accessToken. These
-# tests mock that endpoint's response shape (verified against the live API).
-
-
-def _session_response(access_token="SESSION-MINTED-TOKEN", expires_in=600, **extra):
-    token_block = {
-        "accessToken": access_token,
-        "refreshToken": "RT",
-        "expiresIn": expires_in,
-        "tokenType": "Bearer",
-    }
-    token_block.update(extra)
-    return _FakeResponse(
-        200, {"user": {}, "expires": "2099-01-01", "token": token_block}
-    )
+# ---- refresh-token grant -------------------------------------------------
+# The docs client supports refresh (the storefront client does not). A cached
+# token that has expired is renewed from its refresh_token without re-login.
 
 
 @pytest.mark.asyncio
-async def test_session_flow_mints_access_token(tmp_path):
-    """A logged-in session cookie mints a fresh access token — the unattended
-    path. No login, no 10-minute token to babysit."""
-    session = _FakeSession(gets=[_session_response()])
-    provider = _provider(tmp_path, session, session_token="sess", cf_clearance="cf")
+async def test_refresh_flow_renews_an_expired_cached_token(tmp_path):
+    """An expired cache entry with a refresh_token is renewed via the
+    refresh grant — the common path on every run after the first."""
+    path = tmp_path / "beatport_token.json"
+    path.write_text(
+        json.dumps(
+            {
+                "access_token": "OLD",
+                "refresh_token": "RT",
+                "expires_at": time.time() - 60,  # already expired
+            }
+        )
+    )
+    session = _FakeSession(
+        posts=[
+            _FakeResponse(
+                200, {"access_token": "NEW", "refresh_token": "RT2", "expires_in": 3600}
+            )
+        ],
+    )
+    provider = _provider(tmp_path, session)
 
     token = await provider._authenticate()
 
-    assert token == "SESSION-MINTED-TOKEN"
-    # Hit the session endpoint, nothing else.
-    assert "api/auth/session" in session.get_calls[0][0]
-    assert session.post_calls == []
+    assert token == "NEW"
+    # Refresh hit the token endpoint with grant_type=refresh_token.
+    assert session.post_calls[0][0].endswith("/auth/o/token/")
+    assert session.post_calls[0][1]["params"]["grant_type"] == "refresh_token"
+    assert session.post_calls[0][1]["params"]["refresh_token"] == "RT"
+    # The rotated refresh_token is adopted and re-cached.
+    assert provider._refresh_token == "RT2"
+    cached = json.loads(path.read_text())
+    assert cached["access_token"] == "NEW"
+    assert cached["refresh_token"] == "RT2"
 
 
 @pytest.mark.asyncio
-async def test_session_flow_caches_the_token(tmp_path):
-    """The minted token is cached so a subsequent run can reuse it without
-    re-hitting the session endpoint (and without the user present)."""
-    session = _FakeSession(gets=[_session_response()])
-    provider = _provider(tmp_path, session, session_token="sess", cf_clearance="cf")
-    await provider._authenticate()
-
-    cached = json.loads((tmp_path / "beatport_token.json").read_text())
-    assert cached["access_token"] == "SESSION-MINTED-TOKEN"
-    assert cached["expires_at"] > time.time()
-
-
-@pytest.mark.asyncio
-async def test_session_flow_expires_at_is_seconds_not_milliseconds(tmp_path):
-    """next-auth's accessTokenExpires is a millisecond epoch; this module works
-    in seconds. Without the /1000 the cached token reads as far-future and never
-    expires, so a dead token is served every run until a 401."""
-    ms_expires = (time.time() + 600) * 1000  # 13-digit ms epoch, ~10 min out
-    session = _FakeSession(gets=[_session_response(accessTokenExpires=ms_expires)])
-    provider = _provider(tmp_path, session, session_token="sess", cf_clearance="cf")
-    await provider._authenticate()
-
-    cached = json.loads((tmp_path / "beatport_token.json").read_text())
-    # Seconds-scale: ~now+600, NOT ~now+600000 (year 2045).
-    assert abs(cached["expires_at"] - (time.time() + 600)) < 5
-    assert cached["expires_at"] < time.time() + 700
-
-
-@pytest.mark.asyncio
-async def test_session_flow_expired_cookie_falls_back_to_password(tmp_path):
-    """A dead session cookie is not fatal — it falls through to the password
-    flow rather than disabling the whole pass."""
-    # First GET: session endpoint 401 (expired cookie). Then password flow.
+async def test_refresh_failure_falls_back_to_password(tmp_path):
+    """A dead refresh_token (invalid_grant) falls through to a full re-login
+    rather than disabling the pass."""
+    path = tmp_path / "beatport_token.json"
+    path.write_text(
+        json.dumps(
+            {
+                "access_token": "OLD",
+                "refresh_token": "DEAD-RT",
+                "expires_at": time.time() - 60,
+            }
+        )
+    )
     session = _FakeSession(
-        gets=[
-            _FakeResponse(401),  # session cookie rejected
-            _FakeResponse(302, headers={"Location": "?code=C"}),  # authorize
-        ],
         posts=[
-            _FakeResponse(200, {"username": "dj", "email": "e@x.com"}),
+            _FakeResponse(400, {"error": "invalid_grant"}),  # refresh rejected
+            _FakeResponse(200, {"username": "dj", "email": "e@x.com"}),  # login
             _FakeResponse(
                 200,
-                {"access_token": "PW-TOKEN", "refresh_token": "R", "expires_in": 3600},
+                {"access_token": "FRESH", "refresh_token": "RT", "expires_in": 3600},
             ),
         ],
+        gets=[_FakeResponse(302, headers={"Location": "?code=C"})],
     )
-    provider = _provider(
-        tmp_path,
-        session,
-        session_token="sess",
-        cf_clearance="cf",
-        username="dj",
-        password="pw",
-    )
+    provider = _provider(tmp_path, session, username="dj", password="pw")
 
-    assert await provider._authenticate() == "PW-TOKEN"
+    assert await provider._authenticate() == "FRESH"
 
 
 @pytest.mark.asyncio
-async def test_session_flow_no_token_in_response_raises(tmp_path):
-    """A 200 that carries no accessToken is treated as an auth failure."""
-    session = _FakeSession(
-        gets=[_FakeResponse(200, {"user": {}, "token": {"accessToken": None}})]
-    )
-    provider = _provider(tmp_path, session, session_token="sess", cf_clearance="cf")
-    with pytest.raises(AuthenticationError):
-        await provider._authenticate()
+async def test_resolve_client_id_scrapes_from_docs_js(tmp_path):
+    """With no client_id supplied, the provider scrapes API_CLIENT_ID from the
+    docs page's JS bundle (it rotates, so scraping beats hardcoding)."""
+    docs_html = '<script src="/static/btprt/abc.js"></script>'
+    js_bundle = "var x = 1; API_CLIENT_ID: 'SCRAPED-CID'; var y = 2;"
+
+    class _ScrapeSession:
+        """GET returns a _FakeResponse context manager (like _FakeSession)."""
+
+        def __init__(self):
+            self.calls = []
+
+        def get(self, url, **kwargs):
+            self.calls.append(url)
+            if url.endswith("/docs/"):
+                return _FakeResponse(200, body=docs_html)
+            if url.endswith("abc.js"):
+                return _FakeResponse(200, body=js_bundle)
+            return _FakeResponse(404)
+
+    provider = BeatportProvider(client_id=None, token_path=tmp_path / "t.json")
+    provider._session = _ScrapeSession()
+
+    resolved = await provider._resolve_client_id()
+
+    assert resolved == "SCRAPED-CID"
+    assert any(u.endswith("/docs/") for u in provider._session.calls)

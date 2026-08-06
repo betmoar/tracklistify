@@ -191,26 +191,22 @@ CREDENTIALS_BLOCK = """\
 # Beatport (opt-in, off by default — set TRACKLISTIFY_BEATPORT_ENABLED=true).
 # Resolves a canonical Beatport track link plus BPM, musical key, label,
 # genre and remixers per identified track. Beatport has no self-serve API
-# tier: partner access is a commercial-review waitlist, so this project ships
-# NO client ID and does not scrape one. Supply your own — the client ID used
-# by Beatport's own API docs frontend is visible in devtools on
-# https://api.beatport.com/v4/docs/, and the beets-beatport4 project
-# documents the same approach. Requests are made as YOUR Beatport account,
+# tier: partner access is a commercial-review waitlist. Auth uses the OAuth
+# client_id from Beatport's own API-docs frontend (rotated, so it is scraped
+# from the docs JS bundle at runtime by default — the beets-beatport4 project
+# documents the same approach). Requests are made as YOUR Beatport account,
 # under your own relationship with Beatport.
-# Provide the client ID plus an auth path. RECOMMENDED: a browser session
-# (mints a fresh token per run, no 10-min expiry to babysit). Grab both from
-# devtools -> Application -> Cookies on beatport.com while logged in.
-#   TRACKLISTIFY_BEATPORT_SESSION_TOKEN = __Secure-next-auth.session-token
-#   TRACKLISTIFY_BEATPORT_CF_CLEARANCE   = cf_clearance (Cloudflare)
-# Alternatives: a pasted access token (devtools -> Network -> the
-# /v4/auth/o/token/ response; expires in 10 min), or username+password (the
-# OAuth password flow does NOT work for headless use — kept as a last resort).
-# TRACKLISTIFY_BEATPORT_CLIENT_ID=
-# TRACKLISTIFY_BEATPORT_SESSION_TOKEN=
-# TRACKLISTIFY_BEATPORT_CF_CLEARANCE=
-# TRACKLISTIFY_BEATPORT_TOKEN=
+# RECOMMENDED: username + password. The password authorize+exchange flow mints
+# a token plus a refresh_token; both are cached, so after the first run every
+# later run renews silently via refresh (no re-login, no token babysitting).
+# Alternative: a pasted access token (devtools -> Network -> the
+# /v4/auth/o/token/ response) — but it is short-lived and not refreshed.
+# The client_id is OPTIONAL: leave it unset to scrape it, or set
+# TRACKLISTIFY_BEATPORT_CLIENT_ID as an override (escape hatch).
 # TRACKLISTIFY_BEATPORT_USERNAME=
 # TRACKLISTIFY_BEATPORT_PASSWORD=
+# TRACKLISTIFY_BEATPORT_TOKEN=
+# TRACKLISTIFY_BEATPORT_CLIENT_ID=
 """
 
 
