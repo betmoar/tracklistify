@@ -105,6 +105,8 @@ def _clear_beatport_env(monkeypatch):
         "TRACKLISTIFY_BEATPORT_USERNAME",
         "TRACKLISTIFY_BEATPORT_PASSWORD",
         "TRACKLISTIFY_BEATPORT_TOKEN",
+        "TRACKLISTIFY_BEATPORT_SESSION_TOKEN",
+        "TRACKLISTIFY_BEATPORT_CF_CLEARANCE",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -151,6 +153,32 @@ def test_get_beatport_provider_accepts_a_pasted_token(monkeypatch, factory):
     provider = factory.get_beatport_provider()
     assert provider is not None
     assert provider._pasted_token == "PASTED"
+
+
+def test_get_beatport_provider_accepts_a_browser_session(monkeypatch, factory):
+    """The session cookie (+ cf_clearance) is a valid auth path on its own —
+    the unattended route that mints a fresh token per run."""
+    _clear_beatport_env(monkeypatch)
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_CLIENT_ID", "cid")
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_SESSION_TOKEN", "sess")
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_CF_CLEARANCE", "cf")
+
+    provider = factory.get_beatport_provider()
+    assert provider is not None
+    assert provider._session_token == "sess"
+    assert provider._cf_clearance == "cf"
+
+
+def test_get_beatport_provider_session_without_cf_clearance_is_none(
+    monkeypatch, factory
+):
+    """A session cookie alone is not enough — Cloudflare needs cf_clearance too,
+    so without both the session path is treated as unconfigured."""
+    _clear_beatport_env(monkeypatch)
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_CLIENT_ID", "cid")
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_SESSION_TOKEN", "sess")
+
+    assert factory.get_beatport_provider() is None
 
 
 def test_get_beatport_provider_sets_a_token_cache_path(monkeypatch, factory):

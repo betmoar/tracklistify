@@ -33,7 +33,8 @@ from tracklistify.utils.logger import get_logger
 logger = get_logger(__name__)
 
 API_BASE = "https://api.beatport.com/v4"
-SITE_BASE = "https://www.beatport.com"
+WEB_BASE = "https://www.beatport.com"
+SITE_BASE = WEB_BASE
 # Beatport's own swagger-ui redirect target; the authorization code comes back
 # on this URL as a ?code= query parameter in the 302 Location header.
 REDIRECT_URI = f"{API_BASE}/auth/o/post-message/"
@@ -41,6 +42,12 @@ REDIRECT_URI = f"{API_BASE}/auth/o/post-message/"
 # long pass can't have its token die mid-run.
 TOKEN_EXPIRY_BUFFER_SECONDS = 30
 TOKEN_FILENAME = "beatport_token.json"
+# The next-auth session endpoint and the web app are gated by Cloudflare; a
+# browser-like User-Agent is required or the request is challenged/blocked.
+_BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
 
 
 class BeatportProvider:
@@ -53,6 +60,8 @@ class BeatportProvider:
         password: Optional[str] = None,
         token: Optional[str] = None,
         token_path: Optional[Path] = None,
+        session_token: Optional[str] = None,
+        cf_clearance: Optional[str] = None,
     ):
         """Initialize.
 
@@ -63,12 +72,21 @@ class BeatportProvider:
             token: A pre-obtained access token, used as-is. Skips login.
             token_path: Where to cache the obtained token. ``None`` disables
                 caching (tests, and any caller without a cache dir).
+            session_token: The ``__Secure-next-auth.session-token`` cookie from
+                a logged-in browser session. The session endpoint mints a fresh
+                short-lived access token from it, so this is the path that runs
+                unattended (no 10-minute token babysitting). Requires
+                ``cf_clearance`` alongside it (Cloudflare).
+            cf_clearance: The ``cf_clearance`` Cloudflare cookie, paired with
+                ``session_token``.
         """
         self.client_id = client_id
         self.username = username
         self.password = password
         self._pasted_token = token
         self._token_path = token_path
+        self._session_token = session_token
+        self._cf_clearance = cf_clearance
         self._access_token: Optional[str] = None
         self._refresh_token: Optional[str] = None
         self._expires_at: float = 0.0
@@ -78,10 +96,26 @@ class BeatportProvider:
         """Ensure aiohttp session exists.
 
         A cookie jar is required for the login step: ``/auth/login/`` sets the
-        session + CSRF cookies that ``/auth/o/authorize/`` then needs.
+        session + CSRF cookies that ``/auth/o/authorize/`` then needs, and the
+        session-cookie auth path must send its ``__Secure-next-auth.session-
+        token`` + ``cf_clearance`` cookies. When the latter is configured the
+        session is created with a browser-like User-Agent (the web app and its
+        next-auth endpoint are Cloudflare-gated and reject bare clients).
         """
         if self._session is None:
-            self._session = aiohttp.ClientSession()
+            headers = {"User-Agent": _BROWSER_UA} if self._session_token else {}
+            jar = aiohttp.CookieJar(unsafe=True)
+            self._session = aiohttp.ClientSession(cookie_jar=jar, headers=headers)
+            if self._session_token:
+                cookies = {
+                    "__Secure-next-auth.session-token": self._session_token,
+                }
+                if self._cf_clearance:
+                    cookies["cf_clearance"] = self._cf_clearance
+                for host in (WEB_BASE + "/", API_BASE + "/"):
+                    self._session.cookie_jar.update_cookies(
+                        cookies, aiohttp.client.URL(host)
+                    )
 
     async def close(self) -> None:
         """Close the aiohttp session.
@@ -168,7 +202,10 @@ class BeatportProvider:
         1. a token already held in memory and not expired;
         2. ``TRACKLISTIFY_BEATPORT_TOKEN`` pasted by the user (used verbatim);
         3. a non-expired token from the on-disk cache;
-        4. the username/password authorization-code flow.
+        4. the browser session: the ``__Secure-next-auth.session-token`` cookie
+           mints a fresh access token via the next-auth session endpoint (the
+           path that runs unattended — no 10-minute token lifetime to babysit);
+        5. the username/password authorization-code flow.
 
         Raises:
             AuthenticationError: no usable credential, or login rejected.
@@ -192,13 +229,91 @@ class BeatportProvider:
             logger.debug("Beatport: using cached access token")
             return self._access_token
 
+        if self._session_token:
+            try:
+                return await self._session_flow()
+            except AuthenticationError:
+                # A dead/expired session cookie is not fatal if another path
+                # can still work — fall through to password. If neither works
+                # the password flow's own error message names the options.
+                logger.debug("Beatport: session-cookie path failed; trying password")
+
         if not (self.username and self.password):
             raise AuthenticationError(
-                "Beatport needs TRACKLISTIFY_BEATPORT_USERNAME + "
-                "TRACKLISTIFY_BEATPORT_PASSWORD, or a TRACKLISTIFY_BEATPORT_TOKEN "
-                "pasted from the browser."
+                "Beatport needs TRACKLISTIFY_BEATPORT_SESSION_TOKEN (+ "
+                "_CF_CLEARANCE) from a logged-in browser, or a "
+                "TRACKLISTIFY_BEATPORT_TOKEN pasted from the browser. The "
+                "username/password flow does not work for headless use."
             )
         return await self._password_flow()
+
+    async def _session_flow(self) -> str:
+        """Mint an access token from a logged-in browser session.
+
+        Beatport's web app is a next-auth client: ``GET /api/auth/session``
+        with the ``__Secure-next-auth.session-token`` cookie returns the live
+        ``accessToken`` (a 600 s JWT) plus its ``accessTokenExpires`` epoch.
+        This is the only auth path that works headlessly — the OAuth password
+        flow and the refresh-token grant are both gated behind a confidential
+        client / Cloudflare state this client cannot reproduce. The session
+        cookie is long-lived, so a normal run mints a fresh token per run
+        instead of babysitting a 10-minute pasted one.
+
+        Raises ``AuthenticationError`` when the session cookie is absent,
+        expired, or the endpoint returns no token — the caller may fall back
+        to the password flow.
+        """
+        await self._ensure_session()
+        async with self._session.get(f"{WEB_BASE}/api/auth/session") as response:
+            if response.status == 429:
+                raise RateLimitError(
+                    "Beatport rate limit hit fetching the session",
+                    provider="beatport",
+                    retry_after=self._retry_after_seconds(response),
+                )
+            if response.status >= 500:
+                raise ProviderError(
+                    "Beatport session endpoint failed server-side "
+                    f"(status {response.status})."
+                )
+            if response.status != 200:
+                raise AuthenticationError(
+                    f"Beatport session endpoint returned {response.status}; the "
+                    "session cookie may be expired or missing."
+                )
+            data = await self._json_or_none(response)
+        token_block = data.get("token") if isinstance(data, dict) else None
+        access_token = (
+            token_block.get("accessToken") if isinstance(token_block, dict) else None
+        )
+        if not access_token:
+            raise AuthenticationError(
+                "Beatport session carried no access token; the session cookie "
+                "may be expired. Refresh it in the browser."
+            )
+        self._access_token = str(access_token)
+        self._refresh_token = (
+            token_block.get("refreshToken") if isinstance(token_block, dict) else None
+        )
+        # Prefer the absolute expiry epoch next-auth returns; fall back to the
+        # relative expiresIn. next-auth's accessTokenExpires is in MILLISECONDS
+        # (a 13-digit epoch); the rest of this module works in seconds, so
+        # divide — otherwise the cached token reads as far-future and never
+        # expires, masking real expiry and serving a dead token every run.
+        expires_at = (
+            token_block.get("accessTokenExpires")
+            if isinstance(token_block, dict)
+            else None
+        )
+        if expires_at:
+            self._expires_at = float(expires_at) / 1000.0
+        elif token_block.get("expiresIn"):
+            self._expires_at = time.time() + float(token_block["expiresIn"])
+        else:
+            self._expires_at = float("inf")
+        self._save_cached_token()
+        logger.debug("Beatport: minted access token from browser session")
+        return self._access_token
 
     async def _password_flow(self) -> str:
         """login -> authorize -> exchange code for a token.

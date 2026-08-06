@@ -190,9 +190,12 @@ class ProviderFactory:
         (see .env.example). Missing credentials return ``None`` rather than
         raising: enrichment is optional, identification is not.
 
-        Requires the client ID plus at least one auth path — username +
-        password, or a pasted access token. A client ID on its own cannot
-        obtain a token, so that is treated as unconfigured.
+        Requires the client ID plus at least one auth path: a browser session
+        cookie (``_SESSION_TOKEN`` + ``_CF_CLEARANCE`` — the unattended path,
+        mints a fresh token per run), a pasted access token, or username +
+        password (the password flow does not work headlessly but is kept as a
+        last resort). A client ID on its own cannot obtain a token, so that is
+        treated as unconfigured.
         """
         cached = self.providers.get(self._BEATPORT_ENRICHMENT_KEY)
         if cached is not None:
@@ -202,7 +205,13 @@ class ProviderFactory:
         username = os.getenv("TRACKLISTIFY_BEATPORT_USERNAME")
         password = os.getenv("TRACKLISTIFY_BEATPORT_PASSWORD")
         token = os.getenv("TRACKLISTIFY_BEATPORT_TOKEN")
-        if not client_id or not (token or (username and password)):
+        session_token = os.getenv("TRACKLISTIFY_BEATPORT_SESSION_TOKEN")
+        cf_clearance = os.getenv("TRACKLISTIFY_BEATPORT_CF_CLEARANCE")
+        # A client_id plus any one auth path: a pasted token, a browser session
+        # cookie (+ cf_clearance for Cloudflare), or username+password. A client
+        # ID on its own cannot obtain a token, so that is unconfigured.
+        has_session = session_token and cf_clearance
+        if not client_id or not (token or has_session or (username and password)):
             return None
 
         from tracklistify.config.factory import get_config
@@ -223,6 +232,8 @@ class ProviderFactory:
             password=password,
             token=token,
             token_path=token_path,
+            session_token=session_token,
+            cf_clearance=cf_clearance,
         )
         self.providers[self._BEATPORT_ENRICHMENT_KEY] = provider
         return provider

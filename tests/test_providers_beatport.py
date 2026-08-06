@@ -525,3 +525,107 @@ async def test_token_exchange_5xx_is_a_provider_error(tmp_path):
     provider = _provider(tmp_path, session, username="dj", password="pw")
     with pytest.raises(ProviderError):
         await provider._authenticate()
+
+
+# ---- session-cookie auth path ---------------------------------------------
+# The only auth path that works headlessly: GET /api/auth/session with the
+# __Secure-next-auth.session-token cookie returns the live accessToken. These
+# tests mock that endpoint's response shape (verified against the live API).
+
+
+def _session_response(access_token="SESSION-MINTED-TOKEN", expires_in=600, **extra):
+    token_block = {
+        "accessToken": access_token,
+        "refreshToken": "RT",
+        "expiresIn": expires_in,
+        "tokenType": "Bearer",
+    }
+    token_block.update(extra)
+    return _FakeResponse(
+        200, {"user": {}, "expires": "2099-01-01", "token": token_block}
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_flow_mints_access_token(tmp_path):
+    """A logged-in session cookie mints a fresh access token — the unattended
+    path. No login, no 10-minute token to babysit."""
+    session = _FakeSession(gets=[_session_response()])
+    provider = _provider(tmp_path, session, session_token="sess", cf_clearance="cf")
+
+    token = await provider._authenticate()
+
+    assert token == "SESSION-MINTED-TOKEN"
+    # Hit the session endpoint, nothing else.
+    assert "api/auth/session" in session.get_calls[0][0]
+    assert session.post_calls == []
+
+
+@pytest.mark.asyncio
+async def test_session_flow_caches_the_token(tmp_path):
+    """The minted token is cached so a subsequent run can reuse it without
+    re-hitting the session endpoint (and without the user present)."""
+    session = _FakeSession(gets=[_session_response()])
+    provider = _provider(tmp_path, session, session_token="sess", cf_clearance="cf")
+    await provider._authenticate()
+
+    cached = json.loads((tmp_path / "beatport_token.json").read_text())
+    assert cached["access_token"] == "SESSION-MINTED-TOKEN"
+    assert cached["expires_at"] > time.time()
+
+
+@pytest.mark.asyncio
+async def test_session_flow_expires_at_is_seconds_not_milliseconds(tmp_path):
+    """next-auth's accessTokenExpires is a millisecond epoch; this module works
+    in seconds. Without the /1000 the cached token reads as far-future and never
+    expires, so a dead token is served every run until a 401."""
+    ms_expires = (time.time() + 600) * 1000  # 13-digit ms epoch, ~10 min out
+    session = _FakeSession(gets=[_session_response(accessTokenExpires=ms_expires)])
+    provider = _provider(tmp_path, session, session_token="sess", cf_clearance="cf")
+    await provider._authenticate()
+
+    cached = json.loads((tmp_path / "beatport_token.json").read_text())
+    # Seconds-scale: ~now+600, NOT ~now+600000 (year 2045).
+    assert abs(cached["expires_at"] - (time.time() + 600)) < 5
+    assert cached["expires_at"] < time.time() + 700
+
+
+@pytest.mark.asyncio
+async def test_session_flow_expired_cookie_falls_back_to_password(tmp_path):
+    """A dead session cookie is not fatal — it falls through to the password
+    flow rather than disabling the whole pass."""
+    # First GET: session endpoint 401 (expired cookie). Then password flow.
+    session = _FakeSession(
+        gets=[
+            _FakeResponse(401),  # session cookie rejected
+            _FakeResponse(302, headers={"Location": "?code=C"}),  # authorize
+        ],
+        posts=[
+            _FakeResponse(200, {"username": "dj", "email": "e@x.com"}),
+            _FakeResponse(
+                200,
+                {"access_token": "PW-TOKEN", "refresh_token": "R", "expires_in": 3600},
+            ),
+        ],
+    )
+    provider = _provider(
+        tmp_path,
+        session,
+        session_token="sess",
+        cf_clearance="cf",
+        username="dj",
+        password="pw",
+    )
+
+    assert await provider._authenticate() == "PW-TOKEN"
+
+
+@pytest.mark.asyncio
+async def test_session_flow_no_token_in_response_raises(tmp_path):
+    """A 200 that carries no accessToken is treated as an auth failure."""
+    session = _FakeSession(
+        gets=[_FakeResponse(200, {"user": {}, "token": {"accessToken": None}})]
+    )
+    provider = _provider(tmp_path, session, session_token="sess", cf_clearance="cf")
+    with pytest.raises(AuthenticationError):
+        await provider._authenticate()

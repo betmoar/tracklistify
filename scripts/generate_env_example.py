@@ -197,12 +197,20 @@ CREDENTIALS_BLOCK = """\
 # https://api.beatport.com/v4/docs/, and the beets-beatport4 project
 # documents the same approach. Requests are made as YOUR Beatport account,
 # under your own relationship with Beatport.
-# Provide the client ID plus EITHER username+password OR a pasted access
-# token (devtools -> Network -> the /v4/auth/o/token/ response).
+# Provide the client ID plus an auth path. RECOMMENDED: a browser session
+# (mints a fresh token per run, no 10-min expiry to babysit). Grab both from
+# devtools -> Application -> Cookies on beatport.com while logged in.
+#   TRACKLISTIFY_BEATPORT_SESSION_TOKEN = __Secure-next-auth.session-token
+#   TRACKLISTIFY_BEATPORT_CF_CLEARANCE   = cf_clearance (Cloudflare)
+# Alternatives: a pasted access token (devtools -> Network -> the
+# /v4/auth/o/token/ response; expires in 10 min), or username+password (the
+# OAuth password flow does NOT work for headless use — kept as a last resort).
 # TRACKLISTIFY_BEATPORT_CLIENT_ID=
+# TRACKLISTIFY_BEATPORT_SESSION_TOKEN=
+# TRACKLISTIFY_BEATPORT_CF_CLEARANCE=
+# TRACKLISTIFY_BEATPORT_TOKEN=
 # TRACKLISTIFY_BEATPORT_USERNAME=
 # TRACKLISTIFY_BEATPORT_PASSWORD=
-# TRACKLISTIFY_BEATPORT_TOKEN=
 """
 
 
