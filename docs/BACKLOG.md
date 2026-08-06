@@ -267,17 +267,26 @@ as ACRCloud.
 > lookup/search/extraction), the env-only factory accessor, and the
 > `_enrich_beatport` pass with its acceptance gate. 46 offline tests.
 >
-> **Verified live 2026-08-06** (Meduza, Tomorrowland WE1 set, real creds via
-> the password flow + cached token): 14/19 tracks enriched (**74%**), each
-> gaining BPM/key/label + the canonical `www.beatport.com` link alongside
-> the Shazam/Spotify/Deezer links. Resolves the open unknowns:
-> - **U11** — `/v4/catalog/tracks/?isrc=` does filter; the ISRC-mismatch
->   guard and the ISRC-miss → search fallback both fired correctly.
+> **Verified live 2026-08-06** (two Tomorrowland sets, real creds via the
+> password flow + cached token), each track gaining BPM/key/label + the
+> canonical `www.beatport.com` link alongside the Shazam/Spotify/Deezer links.
+> Match breakdown (isrc / search / none):
+> - **Meduza WE1** (mainstream house): 14/19 = **74%** (12 isrc / 2 search /
+>   5 none).
+> - **Dyen b2b Maddix WE2** (hard techno): 16/20 = **80%** (11 isrc / 5
+>   search / 4 none).
+> Resolves all three open unknowns:
+> - **U11** — `/v4/catalog/tracks/?isrc=` does filter (23 ISRC hits across the
+>   two sets, no spurious mismatch-guard rejects); the ISRC-miss → search
+>   fallback fired correctly (7 search hits).
+> - **U12** — techno recall holds, not just house: **80%** on the Dyen/Maddix
+>   hard-techno set vs 74% on Meduza house. Both ~3× the ~23–25% MusicBrainz
+>   Spotify-link baseline. The search path carried a third of the techno
+>   matches (5/16), so the acceptance gate earns its keep on the noisier
+>   catalog.
 > - **U13** — access tokens live **600 s**; no refresh flow is wired, so
 >   expiry falls back to full username/password re-login (the cached token
 >   makes a normal run a single login). Refresh-token use remains a gap.
-> - **U12** — the mechanism is proven, but the 74% rate is a mainstream-house
->   set; underground-techno recall is still unmeasured.
 > Also landed same day: an error-posture hardening pass
 > (`fix(providers): harden Beatport enrichment error posture`) — OAuth
 > misconfig now disables the pass instead of re-running login per track,
