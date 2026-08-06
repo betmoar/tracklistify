@@ -54,6 +54,40 @@ arrival for its entire life pre-2026-07. The pipeline passes segments.
 
 ---
 
+## Add an enrichment source
+
+Enrichment (Spotify, MusicBrainz, Beatport) is a *separate* path from
+identification — it runs post-dedup in
+`utils/identification.py::_enrich_tracks`, adding canonical links + extra
+metadata to already-identified tracks. Each source has its own
+`_enrich_<name>` pass and a `get_<name>_provider` accessor on
+`ProviderFactory` (cached under a non-colliding `_`-prefixed key so it never
+shadows an identification provider).
+
+- **Credentials env-only** (same rule as identification providers), read in
+  the factory accessor, never on the config dataclass.
+- **Best-effort contract:** enrichment never fails a run. The per-track hook
+  (`_enrich_one_<name>`) wraps the lookup in try/except, reports outcomes via
+  `limiter.record_result`, and degrades a failure to a per-track miss; a
+  `ProviderError` (structural, e.g. auth config broken) disables the whole
+  pass once rather than retrying per track.
+- **Beatport auth specifics** (the load-bearing detail): use the **docs**
+  OAuth client (`app:docs`, scraped from `/v4/docs/` JS at runtime — it
+  rotates), not the storefront `app:prostore` id (401s on `/catalog/`). The
+  login POST enforces a CSRF `Referer` check; the token-exchange POST needs
+  `Referer: /auth/o/authorize/`. The docs client supports the refresh-token
+  grant (the storefront one does not). See `providers/beatport.py` and the
+  P3 entry in `docs/BACKLOG.md`.
+- **The enrichment title gate** (`_enrichment_title_match` in `core/track.py`)
+  is intentionally looser than the dedup gate (recall for matching, precision
+  for dedup) but has a known remix-mismatch limitation on the search-fallback
+  path — see U15 in `docs/BACKLOG.md` and
+  `scripts/measure_beatport_remix_matches.py`.
+
+---
+
+
+
 ## Add a config option
 
 1. Add the field to `TrackIdentificationConfig` (`config/base.py`) with a
