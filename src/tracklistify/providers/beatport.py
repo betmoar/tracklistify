@@ -15,7 +15,7 @@ them the factory returns ``None`` and the pass is a silent no-op.
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 # Third-party imports
@@ -271,3 +271,145 @@ class BeatportProvider:
             return await response.json()
         except Exception:
             return None
+
+    # ---- catalog -------------------------------------------------------
+
+    # How many search candidates to ask for. The enrichment hook gates them
+    # in rank order, so a handful is plenty — the right match is near the top
+    # or not there at all.
+    _SEARCH_PER_PAGE = 5
+
+    async def _api_request(self, endpoint: str, **params) -> Optional[Any]:
+        """GET an authenticated catalog endpoint.
+
+        Returns the decoded body, or ``None`` for a 404 (a clean miss — the
+        caller turns that into an empty result, not an error).
+
+        Raises:
+            AuthenticationError: 401 — the token is dead; it is cleared so a
+                later call re-authenticates.
+            RateLimitError: 429, carrying ``retry_after`` as a structured
+                attribute so callers can honor it.
+            ProviderError: any other non-2xx.
+        """
+        await self._ensure_session()
+        token = await self._authenticate()
+
+        url = f"{API_BASE}/{endpoint.lstrip('/')}"
+        async with self._session.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            params=params,
+        ) as response:
+            if response.status == 404:
+                return None
+            if response.status == 401:
+                self._access_token = None
+                self._expires_at = 0.0
+                raise AuthenticationError("Beatport token rejected (401)")
+            if response.status == 429:
+                retry_after = int(response.headers.get("Retry-After", 60))
+                raise RateLimitError(
+                    f"Beatport rate limit exceeded. Retry after {retry_after}s",
+                    provider="beatport",
+                    retry_after=retry_after,
+                )
+            if not 200 <= response.status < 300:
+                raise ProviderError(f"Beatport API error: {response.status}")
+            return await self._json_or_none(response)
+
+    async def lookup_isrc(self, isrc: str) -> Dict[str, Any]:
+        """Resolve a track by exact ISRC. ``{}`` on a miss.
+
+        Whether ``/catalog/tracks/`` actually filters on ``isrc`` is
+        unverified (backlog U11). The returned-ISRC check below makes the
+        unverified case safe: an endpoint that ignores the filter returns
+        some arbitrary track, whose ISRC will not match, and the caller falls
+        through to gated search instead of attaching wrong metadata.
+        """
+        data = await self._api_request("catalog/tracks/", isrc=isrc, per_page=1)
+        results = self._result_rows(data, "results")
+        if not results:
+            return {}
+        extracted = self._extract(results[0])
+        if extracted.get("isrc") != isrc:
+            logger.debug(
+                "Beatport ISRC lookup returned a different ISRC; treating as a miss"
+            )
+            return {}
+        return extracted
+
+    async def search_tracks(
+        self, title: str, artist: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Search the catalog by title (+ artist). Candidates in rank order.
+
+        Deliberately returns every candidate rather than picking one: the
+        acceptance gate lives in the enrichment hook, where the canonical
+        title/artist comparison helpers live.
+        """
+        query = f"{artist} {title}".strip() if artist else title
+        data = await self._api_request(
+            "catalog/search/",
+            q=query,
+            type="tracks",
+            per_page=self._SEARCH_PER_PAGE,
+        )
+        return [self._extract(row) for row in self._result_rows(data, "tracks")]
+
+    @staticmethod
+    def _result_rows(data: Any, key: str) -> List[dict]:
+        """Pull the row list out of a v4 response body, defensively.
+
+        v4 wraps list endpoints in ``{"results": [...]}`` and search in
+        ``{"tracks": [...]}``, but a bare list is accepted too — a shape
+        change should cost rows, not raise.
+        """
+        if isinstance(data, list):
+            rows = data
+        elif isinstance(data, dict):
+            rows = data.get(key) or data.get("results") or []
+        else:
+            rows = []
+        return [r for r in rows if isinstance(r, dict)]
+
+    @staticmethod
+    def _extract(track: dict) -> Dict[str, Any]:
+        """Normalize a v4 track object into our flat enrichment shape.
+
+        Empty values are dropped rather than stored as ``None`` — the
+        ``_extra_metadata`` convention, so ``Track.metadata`` stays free of
+        null noise. Every read is defensive except ``id``/``name``, which are
+        contract for any track object.
+        """
+        release = track.get("release")
+        release = release if isinstance(release, dict) else {}
+
+        def _name_of(value) -> Optional[str]:
+            return value.get("name") if isinstance(value, dict) else None
+
+        def _names(values) -> List[str]:
+            if not isinstance(values, list):
+                return []
+            return [v["name"] for v in values if isinstance(v, dict) and v.get("name")]
+
+        slug = track.get("slug")
+        track_id = str(track["id"])
+
+        out = {
+            "beatport_id": track_id,
+            "title": str(track["name"]),
+            "mix_name": track.get("mix_name"),
+            "artists": _names(track.get("artists")),
+            "url": f"{SITE_BASE}/track/{slug}/{track_id}" if slug else None,
+            "bpm": int(track["bpm"]) if track.get("bpm") else None,
+            "key": _name_of(track.get("key")),
+            "label": _name_of(release.get("label")),
+            "genre": _name_of(track.get("genre")),
+            "sub_genre": _name_of(track.get("sub_genre")),
+            "remixers": _names(track.get("remixers")) or None,
+            "catalog_number": release.get("catalog_number"),
+            "release_date": release.get("publish_date"),
+            "isrc": track.get("isrc"),
+        }
+        return {k: v for k, v in out.items() if v}
