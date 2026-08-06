@@ -94,3 +94,89 @@ def test_musicbrainz_cache_key_does_not_collide(factory):
     factory.get_musicbrainz_provider()
     for key in factory.providers:
         assert key not in KNOWN_PROVIDERS
+
+
+# --- get_beatport_provider (opt-in, user-supplied credentials) ---
+
+
+def _clear_beatport_env(monkeypatch):
+    for key in (
+        "TRACKLISTIFY_BEATPORT_CLIENT_ID",
+        "TRACKLISTIFY_BEATPORT_USERNAME",
+        "TRACKLISTIFY_BEATPORT_PASSWORD",
+        "TRACKLISTIFY_BEATPORT_TOKEN",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_get_beatport_provider_returns_none_without_client_id(monkeypatch, factory):
+    """Absent credentials are a skip, not an error (unlike ACRCloud, where
+    identification cannot proceed without them)."""
+    _clear_beatport_env(monkeypatch)
+
+    assert factory.get_beatport_provider() is None
+
+
+def test_get_beatport_provider_returns_none_without_any_auth_path(monkeypatch, factory):
+    """A client ID alone cannot obtain a token — no username/password and no
+    pasted token means there is nothing to do."""
+    _clear_beatport_env(monkeypatch)
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_CLIENT_ID", "cid")
+
+    assert factory.get_beatport_provider() is None
+
+
+def test_get_beatport_provider_builds_and_caches(monkeypatch, factory):
+    from tracklistify.providers.beatport import BeatportProvider
+
+    _clear_beatport_env(monkeypatch)
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_CLIENT_ID", "cid")
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_USERNAME", "dj")
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_PASSWORD", "pw")
+
+    provider = factory.get_beatport_provider()
+    assert isinstance(provider, BeatportProvider)
+    assert provider.client_id == "cid"
+    # Memoized, and cached under a key that cannot collide with an
+    # identification provider, so close_all() closes its session.
+    assert factory.get_beatport_provider() is provider
+    assert "_beatport_enrichment" in factory.providers
+
+
+def test_get_beatport_provider_accepts_a_pasted_token(monkeypatch, factory):
+    _clear_beatport_env(monkeypatch)
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_CLIENT_ID", "cid")
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_TOKEN", "PASTED")
+
+    provider = factory.get_beatport_provider()
+    assert provider is not None
+    assert provider._pasted_token == "PASTED"
+
+
+def test_get_beatport_provider_sets_a_token_cache_path(monkeypatch, factory):
+    """The token is cached next to the run cache so a normal run skips the
+    whole login dance."""
+    from tracklistify.providers.beatport import TOKEN_FILENAME
+
+    _clear_beatport_env(monkeypatch)
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_CLIENT_ID", "cid")
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_TOKEN", "PASTED")
+
+    provider = factory.get_beatport_provider()
+    assert provider._token_path is not None
+    assert provider._token_path.name == TOKEN_FILENAME
+
+
+def test_beatport_not_in_known_providers():
+    """Beatport is NOT an identification provider — it has no fingerprint."""
+    assert "beatport" not in KNOWN_PROVIDERS
+
+
+def test_beatport_cache_key_does_not_collide(monkeypatch, factory):
+    _clear_beatport_env(monkeypatch)
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_CLIENT_ID", "cid")
+    monkeypatch.setenv("TRACKLISTIFY_BEATPORT_TOKEN", "PASTED")
+
+    factory.get_beatport_provider()
+    for key in factory.providers:
+        assert key not in KNOWN_PROVIDERS

@@ -8,9 +8,14 @@ from typing import TYPE_CHECKING, Optional
 # Local imports
 from tracklistify.core.exceptions import ConfigError
 
+from tracklistify.utils.logger import get_logger
+
 if TYPE_CHECKING:
+    from tracklistify.providers.beatport import BeatportProvider
     from tracklistify.providers.musicbrainz import MusicBrainzProvider
     from tracklistify.providers.spotify import SpotifyProvider
+
+logger = get_logger(__name__)
 
 _provider_factory = None
 _provider_lock = threading.Lock()
@@ -168,6 +173,58 @@ class ProviderFactory:
 
         provider = MusicBrainzProvider()
         self.providers[self._MUSICBRAINZ_ENRICHMENT_KEY] = provider
+        return provider
+
+    # Cache key for the Beatport enrichment provider. Distinct from any
+    # identification provider name so it cannot collide; the leading
+    # underscore keeps it out of the identification name space.
+    _BEATPORT_ENRICHMENT_KEY = "_beatport_enrichment"
+
+    def get_beatport_provider(self) -> "Optional[BeatportProvider]":
+        """Return a configured Beatport enrichment provider, or None.
+
+        Every credential is env-only, following the ACRCloud rule — secrets on
+        the config dataclass leak through ``repr()`` and validation errors.
+        This project deliberately ships NO client ID and does not scrape one:
+        Beatport has no self-serve API tier, so the user supplies their own
+        (see .env.example). Missing credentials return ``None`` rather than
+        raising: enrichment is optional, identification is not.
+
+        Requires the client ID plus at least one auth path — username +
+        password, or a pasted access token. A client ID on its own cannot
+        obtain a token, so that is treated as unconfigured.
+        """
+        cached = self.providers.get(self._BEATPORT_ENRICHMENT_KEY)
+        if cached is not None:
+            return cached
+
+        client_id = os.getenv("TRACKLISTIFY_BEATPORT_CLIENT_ID")
+        username = os.getenv("TRACKLISTIFY_BEATPORT_USERNAME")
+        password = os.getenv("TRACKLISTIFY_BEATPORT_PASSWORD")
+        token = os.getenv("TRACKLISTIFY_BEATPORT_TOKEN")
+        if not client_id or not (token or (username and password)):
+            return None
+
+        from tracklistify.config.factory import get_config
+        from tracklistify.providers.beatport import TOKEN_FILENAME, BeatportProvider
+
+        # Cache the obtained token next to the run cache so a normal run does
+        # not re-run the whole login dance. Best-effort: the provider treats a
+        # missing or unwritable path as "no cache".
+        token_path = None
+        try:
+            token_path = get_config().cache_dir / TOKEN_FILENAME
+        except Exception as e:  # pragma: no cover - config always resolves
+            logger.debug(f"No cache_dir for the Beatport token cache: {e}")
+
+        provider = BeatportProvider(
+            client_id=client_id,
+            username=username,
+            password=password,
+            token=token,
+            token_path=token_path,
+        )
+        self.providers[self._BEATPORT_ENRICHMENT_KEY] = provider
         return provider
 
     async def close_all(self) -> None:
