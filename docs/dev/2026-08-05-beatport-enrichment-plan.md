@@ -14,8 +14,11 @@ returns `None` when unconfigured; and a third sibling pass in
 **Tech stack:** Python 3.11–3.13, `aiohttp`, `pytest` + `pytest-asyncio`
 (strict), `uv`, `ruff`.
 **Spec:** `docs/dev/2026-08-05-beatport-enrichment-spec.md`
-**Baseline:** _filled at execution start: `uv run python -m pytest -q`,
-pass/fail counts, failing test names._
+**Baseline:** `uv run python -m pytest -q` → **21 failed, 565 passed,
+4 skipped** (2026-08-05). All 21 failures are in `tests/test_ytdlp.py` with
+`FileNotFoundError: FFmpeg not found` (`downloaders/base.py:50`) — ffmpeg is
+absent from the execution container. Environmental and pre-existing; every
+delta below is reported against 21 failed / 565 passed.
 
 ## Global Constraints
 

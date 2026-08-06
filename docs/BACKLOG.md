@@ -94,6 +94,15 @@ as ACRCloud.
 > `/v4/catalog/tracks/?isrc=` actually filter?), U12 (match rate on
 > underground techno), U13 (token lifetime / refresh viability).
 >
+> **Implementation landed 2026-08-05** (plan:
+> `docs/dev/2026-08-05-beatport-enrichment-plan.md`, tasks 1–5): config +
+> limiter branch, `providers/beatport.py` (auth, token cache, catalog
+> lookup/search/extraction), the env-only factory accessor, and the
+> `_enrich_beatport` pass with its acceptance gate. 46 offline tests.
+> **Not yet verified live** — U11/U12/U13 stay open until a run with real
+> credentials answers them (plan task 6). Until then the pacing constant and
+> the ISRC-filter behavior are assumptions, not measurements.
+>
 > The original entry is kept below verbatim as the record of why the
 > unqualified workaround was rejected — that reasoning still stands.
 
