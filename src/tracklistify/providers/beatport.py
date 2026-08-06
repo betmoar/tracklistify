@@ -209,9 +209,17 @@ class BeatportProvider:
         ) as response:
             if response.status == 429:
                 raise RateLimitError("Beatport rate limit hit during login")
+            # A server-side failure is not a credentials problem. Reporting it
+            # as one is both misleading and wrong in effect: the hook treats
+            # AuthenticationError as fatal and disables the pass for the whole
+            # run, which a transient 503 does not warrant.
+            if response.status >= 500:
+                raise ProviderError(
+                    f"Beatport login failed server-side (status {response.status})."
+                )
             data = await self._json_or_none(response)
-            # Beatport answers a bad login with 200 + an error body, so the
-            # status alone is not the signal.
+            # Beatport answers a bad login with 200 + an error body, so a 2xx
+            # status alone is not the signal — the body has to be inspected.
             if not isinstance(data, dict) or "username" not in data:
                 raise AuthenticationError(
                     "Beatport rejected the username/password login. Check "
@@ -259,6 +267,30 @@ class BeatportProvider:
                 )
             logger.debug("Beatport: obtained access token")
             return self._store_token_response(data)
+
+    # Fallback wait when a 429 carries no usable Retry-After.
+    _DEFAULT_RETRY_AFTER_SECONDS = 60
+
+    @classmethod
+    def _retry_after_seconds(cls, response) -> int:
+        """Parse ``Retry-After`` defensively, in seconds.
+
+        RFC 9110 allows either delay-seconds or an HTTP-date, and the header
+        may be absent entirely. Parsing it with a bare ``int()`` raises on a
+        date — which the enrichment hook would swallow as an ordinary
+        per-track miss, so a genuine 429 would stop disabling the pass and we
+        would keep hammering a rate-limited API. Mirrors
+        ``MusicBrainzProvider._retry_after_seconds``.
+        """
+        header = response.headers.get("Retry-After")
+        if header:
+            try:
+                return int(float(header))
+            except (TypeError, ValueError):
+                # An HTTP-date. Not worth parsing: the fallback is the same
+                # order of magnitude and this path is rare.
+                logger.debug(f"Unparseable Retry-After header {header!r}; default")
+        return cls._DEFAULT_RETRY_AFTER_SECONDS
 
     @staticmethod
     async def _json_or_none(response) -> Optional[Any]:
@@ -308,7 +340,7 @@ class BeatportProvider:
                 self._expires_at = 0.0
                 raise AuthenticationError("Beatport token rejected (401)")
             if response.status == 429:
-                retry_after = int(response.headers.get("Retry-After", 60))
+                retry_after = self._retry_after_seconds(response)
                 raise RateLimitError(
                     f"Beatport rate limit exceeded. Retry after {retry_after}s",
                     provider="beatport",

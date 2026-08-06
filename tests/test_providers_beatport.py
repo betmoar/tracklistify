@@ -407,3 +407,62 @@ async def test_404_on_isrc_lookup_is_a_clean_miss(tmp_path):
     session = _FakeSession(gets=[_FakeResponse(404)])
     provider = _provider(tmp_path, session, token="T")
     assert await provider.lookup_isrc("GBABC1234567") == {}
+
+
+@pytest.mark.asyncio
+async def test_non_numeric_retry_after_falls_back_to_a_default(tmp_path):
+    """Retry-After may be an HTTP date, not seconds. int() on that raises,
+    which the hook would swallow as a per-track miss — so a real 429 would
+    stop disabling the pass and we would keep hammering a limited API."""
+    session = _FakeSession(
+        gets=[
+            _FakeResponse(429, headers={"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"})
+        ]
+    )
+    provider = _provider(tmp_path, session, token="T")
+    with pytest.raises(RateLimitError) as excinfo:
+        await provider.search_tracks("x", "y")
+    assert excinfo.value.retry_after == 60
+
+
+@pytest.mark.asyncio
+async def test_missing_retry_after_falls_back_to_a_default(tmp_path):
+    session = _FakeSession(gets=[_FakeResponse(429)])
+    provider = _provider(tmp_path, session, token="T")
+    with pytest.raises(RateLimitError) as excinfo:
+        await provider.search_tracks("x", "y")
+    assert excinfo.value.retry_after == 60
+
+
+@pytest.mark.asyncio
+async def test_login_5xx_is_a_provider_error_not_bad_credentials(tmp_path):
+    """A server-side failure during login must not be reported as (and must
+    not be treated as) rejected credentials: AuthenticationError disables the
+    pass for the whole run, which is wrong for a transient 503."""
+    session = _FakeSession(posts=[_FakeResponse(503)])
+    provider = _provider(tmp_path, session, username="dj", password="pw")
+    with pytest.raises(ProviderError):
+        await provider._authenticate()
+
+
+@pytest.mark.asyncio
+async def test_login_401_is_an_authentication_error(tmp_path):
+    """A 4xx from the login endpoint really is a credentials problem."""
+    session = _FakeSession(posts=[_FakeResponse(401)])
+    provider = _provider(tmp_path, session, username="dj", password="pw")
+    with pytest.raises(AuthenticationError):
+        await provider._authenticate()
+
+
+@pytest.mark.asyncio
+async def test_token_exchange_5xx_is_a_provider_error(tmp_path):
+    session = _FakeSession(
+        posts=[
+            _FakeResponse(200, {"username": "dj", "email": "e@x.com"}),
+            _FakeResponse(503),
+        ],
+        gets=[_FakeResponse(302, headers={"Location": "?code=C"})],
+    )
+    provider = _provider(tmp_path, session, username="dj", password="pw")
+    with pytest.raises(ProviderError):
+        await provider._authenticate()

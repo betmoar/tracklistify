@@ -165,14 +165,27 @@ and the devtools recipe.
 `config.cache_dir / "beatport_token.json"` with mode `0600`, storing
 `{access_token, refresh_token, expires_at}`. On the next run a non-expired
 cached token skips the login entirely; expiry uses a 30 s safety buffer
-(beets-beatport4's `TOKEN_EXPIRY_BUFFER_SECONDS`). If a refresh-token grant
-against `/auth/o/token/` succeeds it is preferred over a full re-login; if it
-fails, fall back to path 1, and if that is unavailable, disable for the run.
-The token file is validated as an ordinary JSON dict — a corrupt or
-unreadable file is a cache miss, never an exception (best-effort, R7).
+(beets-beatport4's `TOKEN_EXPIRY_BUFFER_SECONDS`). The stored
+`refresh_token` is kept but **not yet used**. The token file is validated as
+an ordinary JSON dict — a corrupt or unreadable file is a cache miss, never an
+exception (best-effort, R7).
 
-Token validity is confirmed with `GET /v4/my/account` before the first catalog
-call. Its `username`/`email` are **redacted** in debug output (R9).
+**Amended 2026-08-05, after implementation.** Two behaviors this section
+originally specified were cut during implementation rather than built. Recorded
+here so nobody reads the spec and relies on them:
+
+- *Refresh-token grant preferred over a full re-login* — **not implemented.**
+  Whether the grant works at all with the swagger-ui client ID is exactly
+  unknown U13, and building an unverifiable fallback path ahead of the
+  measurement is speculation. An expired cached token falls straight through
+  to the username/password flow, or (token-only mode) disables the pass with
+  an actionable message. Revisit once U13 has an answer.
+- *`GET /v4/my/account` probe before the first catalog call* — **not
+  implemented.** It costs a request per run to learn what the first catalog
+  call reveals anyway: a dead token returns 401, which clears the cached token
+  and disables the pass. The redaction rule it carried still stands and is
+  tested (`test_secrets_never_appear_in_logs`) — nothing logs an account
+  username or email.
 
 ### 5.3 Matching and the acceptance gate
 
