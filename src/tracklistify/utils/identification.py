@@ -14,7 +14,12 @@ from tracklistify.cache.factory import get_cache
 from tracklistify.config.factory import get_config
 
 # Local/package imports
-from tracklistify.core.track import Track, TrackMatcher
+from tracklistify.core.track import (
+    Track,
+    TrackMatcher,
+    _artists_match,
+    _comparison_title,
+)
 from tracklistify.providers.base import AuthenticationError, RateLimitError
 from tracklistify.providers.factory import create_provider_factory
 from .constants import DEFAULT_PROGRESS_BAR_WIDTH, TERMINAL_LINE_WIDTH
@@ -33,6 +38,11 @@ _MIN_SEGMENTS_FOR_MISS_RATE_WARNING = 10
 # inter-request spacing in the MB enrichment pass keeps us polite (the
 # token-bucket limiter alone permits a burst). See _enrich_musicbrainz.
 _MUSICBRAINZ_REQUEST_INTERVAL = 1.1
+
+# Beatport publishes no official rate limit; community guidance is ~500ms
+# between requests. Explicit spacing, for the same reason MusicBrainz needs it:
+# the token bucket seeds full, so the limiter alone permits a burst.
+_BEATPORT_REQUEST_INTERVAL = 0.5
 
 
 def format_duration(duration: float) -> str:
@@ -137,6 +147,36 @@ def _extra_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         "links": links or None,
     }
     return {k: v for k, v in extras.items() if v}
+
+
+def _beatport_candidate_matches(track: Track, candidate: Dict[str, Any]) -> bool:
+    """True when a Beatport search candidate is the same track.
+
+    Beatport search is fuzzy text matching, so an ungated hit would attach a
+    confident-looking BPM, key and label from the wrong record — the failure
+    mode unknown U3 exists to make auditable. The gate reuses the dedup
+    identity helpers so "same title" and "same artist" have exactly one
+    definition in this codebase: ``_comparison_title`` already folds away
+    non-distinguishing suffixes like ``(Original Mix)`` and canonicalizes
+    ``feat.`` spellings.
+
+    Beatport splits a title into ``title`` plus a separate ``mix_name``, so
+    the comparison title is rebuilt in the bracketed form our own titles use —
+    except for "Original Mix", which is Beatport's default for "no mix name"
+    and carries no information.
+    """
+    title = candidate.get("title")
+    if not title:
+        return False
+    mix_name = candidate.get("mix_name")
+    if mix_name and mix_name != "Original Mix":
+        title = f"{title} ({mix_name})"
+
+    if _comparison_title(title) != _comparison_title(track.song_name):
+        return False
+
+    artists = candidate.get("artists") or []
+    return _artists_match(", ".join(artists), track.artist)
 
 
 class ProgressDisplay:
@@ -374,6 +414,9 @@ class IdentificationManager:
             )
             await self._enrich_musicbrainz(unique_tracks)
 
+        if getattr(self.config, "beatport_enabled", False):
+            await self._enrich_beatport(unique_tracks)
+
     async def _enrich_spotify(self, unique_tracks: List[Track]) -> None:
         """Spotify client-credentials enrichment pass (spec unit D)."""
         # ``getattr`` fallback: a factory that doesn't supply a Spotify
@@ -593,6 +636,145 @@ class IdentificationManager:
         finally:
             if acquired:
                 limiter.release("musicbrainz")
+
+    async def _enrich_beatport(self, unique_tracks: List[Track]) -> None:
+        """Beatport enrichment pass — links plus DJ metadata.
+
+        Runs last of the three sources. Unlike the other two it is opt-in
+        (``beatport_enabled``, default false): Beatport has no self-serve API
+        tier, so it needs a personal account and a client ID the user supplies
+        themselves.
+
+        A track that already carries ``links.beatport`` (MusicBrainz resolved
+        it) is still queried — the API call is what supplies BPM, key and
+        label; the URL is the cheap part.
+        """
+        get_bp = getattr(self.provider_factory, "get_beatport_provider", None)
+        provider = get_bp() if get_bp is not None else None
+        if provider is None:
+            # No credentials — a skip, not an error. Never touch the limiter.
+            logger.debug("Beatport enrichment skipped: no credentials configured")
+            return
+
+        limiter = get_global_rate_limiter()
+        counts = {"isrc": 0, "search": 0, "none": 0}
+
+        async with provider:
+            for track in unique_tracks:
+                match = await self._enrich_one_beatport(provider, limiter, track)
+                if match == "disabled":
+                    break
+                if match in counts:
+                    counts[match] += 1
+                # Polite inter-request spacing (Beatport documents no limit).
+                await asyncio.sleep(_BEATPORT_REQUEST_INTERVAL)
+
+        matched = counts["isrc"] + counts["search"]
+        if matched:
+            logger.info(
+                f"Beatport enrichment: {matched} tracks matched "
+                f"(isrc={counts['isrc']}, search={counts['search']}, "
+                f"none={counts['none']})"
+            )
+
+    async def _enrich_one_beatport(self, provider, limiter, track: Track) -> str:
+        """Enrich one track via Beatport; return the match kind or sentinel.
+
+        Returns ``"isrc"`` / ``"search"`` / ``"none"``, or ``"disabled"`` when
+        an AuthenticationError or RateLimitError has halted the pass for the
+        rest of the run (the caller breaks its loop on that sentinel).
+
+        Acquire/release pairing and outcome reporting are verbatim from the
+        Spotify and MusicBrainz passes (invariant I6).
+        """
+        acquired = False
+        try:
+            acquired = await limiter.acquire("beatport")
+            if not acquired:
+                logger.debug("Beatport enrichment: rate limiter rejected request")
+                return "none"
+
+            isrc = track.metadata.get("isrc")
+            try:
+                result = {}
+                match_kind = "none"
+                if isrc:
+                    result = await provider.lookup_isrc(isrc)
+                    if result:
+                        match_kind = "isrc"
+                if not result:
+                    candidates = await provider.search_tracks(
+                        title=track.song_name, artist=track.artist
+                    )
+                    for candidate in candidates:
+                        if _beatport_candidate_matches(track, candidate):
+                            result = candidate
+                            match_kind = "search"
+                            break
+            except AuthenticationError:
+                logger.warning(
+                    "Beatport enrichment disabled for this run: authentication "
+                    "failed. Check TRACKLISTIFY_BEATPORT_CLIENT_ID and either "
+                    "_USERNAME/_PASSWORD or a fresh _TOKEN."
+                )
+                limiter.record_result("beatport", success=False)
+                return "disabled"
+            except RateLimitError:
+                logger.warning(
+                    "Beatport enrichment stopped: rate limit hit; tracks "
+                    "enriched so far are kept"
+                )
+                limiter.record_result("beatport", success=False)
+                return "disabled"
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.debug(f"Beatport enrichment failed for one track: {e}")
+                limiter.record_result("beatport", success=False)
+                return "none"
+
+            limiter.record_result("beatport", success=True)
+            if not result:
+                return "none"
+
+            self._apply_beatport_metadata(track, result, match_kind)
+            return match_kind
+        finally:
+            if acquired:
+                limiter.release("beatport")
+
+    @staticmethod
+    def _apply_beatport_metadata(
+        track: Track, result: Dict[str, Any], match_kind: str
+    ) -> None:
+        """Write a matched Beatport record onto a Track.
+
+        Three write policies, deliberately different:
+
+        * ``links.beatport`` — first-writer-wins (a MusicBrainz-resolved URL
+          survives), consistent with every other link key;
+        * ``label`` / ``release_date`` — only when absent, because Shazam may
+          already have supplied them and its value is the identification's own;
+        * everything else — written unconditionally, because no other source
+          in the pipeline supplies BPM, key, genre, remixers or catalog number.
+        """
+        if result.get("url"):
+            track.metadata.setdefault("links", {}).setdefault("beatport", result["url"])
+        for key in ("label", "release_date"):
+            if result.get(key) and not track.metadata.get(key):
+                track.metadata[key] = result[key]
+        for key in (
+            "beatport_id",
+            "bpm",
+            "key",
+            "genre",
+            "sub_genre",
+            "remixers",
+            "catalog_number",
+        ):
+            if result.get(key):
+                track.metadata[key] = result[key]
+        track.metadata["beatport_match"] = match_kind
 
     async def identify_tracks(self, audio_segments):
         provider_names = self._provider_chain()
