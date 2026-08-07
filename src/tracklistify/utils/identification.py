@@ -188,7 +188,12 @@ def _beatport_candidate_matches(track: Track, candidate: Dict[str, Any]) -> bool
     # the title stem fallback is only safe behind it.
     if not _artists_match(", ".join(artists), track.artist):
         return False
-    return _enrichment_title_match(track.song_name, title)
+    return _enrichment_title_match(
+        track.song_name,
+        title,
+        remixers=candidate.get("remixers"),
+        mix_name=candidate.get("mix_name"),
+    )
 
 
 class ProgressDisplay:
