@@ -20,10 +20,11 @@ Stack: Python 3.11–3.13, `uv` package manager, `pytest` (asyncio strict), `ruf
 | Run CLI | `uv run tracklistify <input>` |
 | Dead-code scan | `uv run vulture src/tracklistify` |
 | Regenerate `.env.example` | `uv run python scripts/generate_env_example.py` (`--check` in CI) |
+| Type check (ratchet) | `uv run python scripts/check_mypy_baseline.py` (`--update` to re-baseline) |
 
 CI (`.github/workflows/ci.yml`) runs lint, format check, the `.env.example`
-drift check, and the test suite on Python 3.11–3.13. Keep it in sync with
-this table.
+drift check, the mypy ratchet, and the test suite on Python 3.11–3.13. Keep it
+in sync with this table.
 
 **Always use `uv run python -m pytest`, not bare `pytest`.** A pyenv-ambient pytest 7.x will shadow the venv's pytest 8.x and silently break async-mode strict.
 

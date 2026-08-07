@@ -2,11 +2,12 @@
 #
 # This is the enforcement layer for the invariants documented in
 # docs/ARCHITECTURE.md. Pre-commit hooks only run on machines where they're
-# installed; this workflow is what actually gates merges. Keep the four jobs
+# installed; this workflow is what actually gates merges. Keep the five jobs
 # in sync with the local commands in CLAUDE.md:
 #   lint    -> uv run ruff check src/ tests/ scripts/
 #   format  -> uv run ruff format --check src/ tests/ scripts/
 #   drift   -> uv run python scripts/generate_env_example.py --check
+#   type    -> uv run python scripts/check_mypy_baseline.py
 #   test    -> uv run python -m pytest -q   (3.11 / 3.12 / 3.13)
 
 name: CI
@@ -49,6 +50,21 @@ jobs:
       - run: uv sync
       - name: .env.example is in sync with TrackIdentificationConfig
         run: uv run python scripts/generate_env_example.py --check
+
+  type:
+    # Q5: mypy type-check with a ratchet. The codebase predates type checking,
+    # so ~90 pre-existing errors are recorded in .mypy-baseline; CI fails only
+    # when the error set GROWS (new errors), not on the existing debt. Fix
+    # errors and run `check_mypy_baseline.py --update` to lower the count.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev
+      - name: Mypy ratchet (no new type errors)
+        run: uv run python scripts/check_mypy_baseline.py
 
   test:
     runs-on: ubuntu-latest
