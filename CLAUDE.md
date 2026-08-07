@@ -131,3 +131,6 @@ For everything else, read the surrounding code — it's the source of truth, not
 - **In code:** anything explanatory about how the code works.
 
 Keep this file **under 200 lines** (current target). If a rule isn't preventing a repeated mistake, it doesn't belong here.
+
+## Operator
+@OPERATOR.md — it is this session's operating charter.
