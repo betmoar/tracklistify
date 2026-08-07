@@ -983,10 +983,10 @@ class TestExtractMixInfo:
         from tracklistify.core.track import _extract_mix_info
 
         result = _extract_mix_info("Track Name (VIP)")
-        # "VIP" alone is a keep-marker with no name after it — the kernel
-        # word IS the identifier. Keep the whole thing as a remixer name.
-        # After stripping the keyword "vip", nothing remains → treat it as
-        # a generic mix type (it's a version label, not a remixer).
+        # "VIP" is a keep-marker with no name attached. Stripping the
+        # keyword leaves nothing, so there is no remixer to record; and
+        # "vip" is not in _SUFFIX_DROP_EXACT, so it is not a mix type
+        # either. Both fields stay empty.
         assert result["remixers"] == []
         assert result["mix_type"] is None
 

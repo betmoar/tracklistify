@@ -223,7 +223,7 @@ link-mode = "copy"
 # ratchet, not leniency, is what keeps existing debt mergeable.
 mypy_path = "src"
 packages = "tracklistify"
-exclude = ["dev_cli/"]  # dev-only CLI, excluded from coverage/bandit too
+exclude = ["dev_cli/"]  # dev-only CLI; also excluded from bandit (but not coverage)
 # Third-party stubs: aiohttp/aiofiles/pydub/shazamio ship their own or are
 # untyped; silence missing-imports rather than chase phantom stub packages.
 ignore_missing_imports = true

@@ -80,18 +80,18 @@ uv run tracklistify https://youtube.com/watch?v=example
 
 ```bash
 # Output format (json | markdown | m3u | all)
-tracklistify -f json input.mp3
+uv run tracklistify -f json input.mp3
 
 # Ignore stored identifications and re-identify (--no-cache is a refresh,
 # not a disable: reads are skipped, writes stay live)
-tracklistify --no-cache input.mp3
+uv run tracklistify --no-cache input.mp3
 
 # Keep the source codec end-to-end (skip yt-dlp's MP3 transcode)
-tracklistify --stream-copy <youtube-url>
+uv run tracklistify --stream-copy <youtube-url>
 
 # Specify the primary provider; disable fallback
-tracklistify --provider shazam input.mp3
-tracklistify --no-fallback input.mp3
+uv run tracklistify --provider shazam input.mp3
+uv run tracklistify --no-fallback input.mp3
 ```
 
 See `.env.example` for every configuration option (provider credentials,
