@@ -158,7 +158,7 @@ class YtDlpDownloader(Downloader):
                 passes its own ``self.temp_dir`` so concurrent runs are
                 isolated.
         """
-        self.ffmpeg_path = self.get_ffmpeg_path()
+        self.ffmpeg_path: Optional[str] = None
         self.verbose = verbose
         self.quality = quality
         self.format = format
@@ -207,6 +207,8 @@ class YtDlpDownloader(Downloader):
         Returns:
             Path to downloaded file
         """
+        if self.ffmpeg_path is None:
+            self.ffmpeg_path = self.get_ffmpeg_path()
         temp_dir = Path(self.temp_dir or self.config.temp_dir)
         temp_dir.mkdir(parents=True, exist_ok=True)
 
