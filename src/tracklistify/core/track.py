@@ -6,7 +6,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import List, Optional, Set, Tuple, Union
+from typing import List, Optional, Set, Tuple, TypedDict, Union
 
 from tracklistify.config import TrackIdentificationConfig
 from tracklistify.core.types import TrackMetadata
@@ -275,7 +275,14 @@ def _title_stem(title: str) -> str:
     return _normalize_token(stripped)
 
 
-def _extract_mix_info(title: str) -> dict[str, list[str] | str | None]:
+class _MixInfo(TypedDict):
+    """Return type of ``_extract_mix_info`` — precise per-key types for mypy."""
+
+    remixers: list[str]
+    mix_type: str | None
+
+
+def _extract_mix_info(title: str) -> _MixInfo:
     """Extract remixer names and mix type from a title's bracketed suffix groups.
 
     Scans trailing bracketed groups via ``_TRAILING_GROUP_RE``. For each group:
