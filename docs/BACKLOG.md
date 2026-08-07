@@ -164,12 +164,12 @@ as ACRCloud.
 > the feature is opt-in and off by default, and the user supplies their own
 > Beatport account. Development uses the `beets-beatport4` public client ID
 > the same way a user would: in a local `.env`, never committed. Spec:
-> `docs/dev/2026-08-05-beatport-enrichment-spec.md`. New unknowns U11 (does
+> the Beatport enrichment spec (local-only, not released). New unknowns U11 (does
 > `/v4/catalog/tracks/?isrc=` actually filter?), U12 (match rate on
 > underground techno), U13 (token lifetime / refresh viability).
 >
 > **Implementation landed 2026-08-05** (plan:
-> `docs/dev/2026-08-05-beatport-enrichment-plan.md`, tasks 1–5): config +
+> the Beatport enrichment plan, tasks 1–5 — local-only): config +
 > limiter branch, `providers/beatport.py` (auth, token cache, catalog
 > lookup/search/extraction), the env-only factory accessor, and the
 > `_enrich_beatport` pass with its acceptance gate. 46 offline tests.
@@ -351,8 +351,8 @@ Measured coverage (U5): ~23–25% Spotify links on underground/EDM ISRCs, ~33%
 on commercial material. The explicit MB pacing is load-bearing — the rate
 limiter's full-token-bucket seed permits a burst; removing the 1.1s sleep
 regresses yield ~8× (3% → 25%), and unit tests mocking HTTP cannot catch it.
-Specs: `docs/dev/2026-08-02-spotify-link-enrichment-spec.md`,
-`docs/dev/2026-08-04-musicbrainz-enrichment-spec.md` (local-only).
+Specs: the Spotify-link and MusicBrainz enrichment specs (local-only, not
+released — see `docs/PLAYBOOKS.md` for the released procedures).
 
 ### 2026-08 changelog + tag reconstruction (`docs/changelog-tag-reconstruction`)
 
