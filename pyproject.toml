@@ -124,7 +124,6 @@ source = ["src"]
 omit = [
     "tests/*",
     "**/tests/*",
-    "**/dev_cli/*",
 ]
 
 [tool.coverage.report]
