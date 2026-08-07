@@ -44,7 +44,7 @@ def _quote_term(term: str) -> str:
     return quote(term, safe="")
 
 
-def _web_search_url(platform: str, uri: str) -> Optional[str]:
+def _web_search_url(platform: str, uri: Optional[str]) -> Optional[str]:
     """Convert a Shazam app-scheme deeplink into a clickable https URL.
 
     Shazam ships platform links as proprietary schemes —
@@ -194,7 +194,7 @@ class ShazamProvider(TrackIdentificationProvider):
             # link; resolving to a real track id needs the Spotify API (see
             # BACKLOG P2). Converted from Shazam's app-scheme deeplinks to
             # https by _web_search_url so they are clickable from the JSON.
-            provider_uris = {}
+            provider_uris: Dict[str, str] = {}
             for prov in hub.get("providers") or []:
                 if not isinstance(prov, dict):
                     continue

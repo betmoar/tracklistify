@@ -20,6 +20,7 @@ from tracklistify.core.track import (
     _artists_match,
     _enrichment_title_match,
 )
+from tracklistify.core.types import TrackMetadata
 from tracklistify.providers.base import (
     AuthenticationError,
     ProviderError,
@@ -373,7 +374,7 @@ class IdentificationManager:
                 artist=artist_name,
                 time_in_mix=time_in_mix,
                 confidence=float(metadata.get("score", 100.0)),
-                metadata=_extra_metadata(metadata),
+                metadata=cast(TrackMetadata, _extra_metadata(metadata)),
             )
         except (ValueError, TypeError) as e:
             logger.error(f"Failed to create track from provider response: {e}")

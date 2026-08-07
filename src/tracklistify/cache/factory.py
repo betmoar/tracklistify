@@ -9,6 +9,7 @@ from typing import Optional, Union
 from .base import BaseCache
 from .invalidation import CompositeStrategy, LRUStrategy, SizeStrategy, TTLStrategy
 from .storage import JSONStorage
+from tracklistify.core.types import CacheStorage, InvalidationStrategy
 from tracklistify.utils.constants import DEFAULT_CACHE_MAX_SIZE, DEFAULT_CACHE_TTL
 from tracklistify.utils.logger import get_logger
 
@@ -38,8 +39,8 @@ def create_cache(
     cache_path = cache_path.expanduser()
     cache_path.mkdir(parents=True, exist_ok=True)
 
-    storage = JSONStorage(str(cache_path))
-    strategy = CompositeStrategy(
+    storage: CacheStorage = JSONStorage(str(cache_path))
+    strategy: InvalidationStrategy = CompositeStrategy(
         [TTLStrategy(ttl), LRUStrategy(ttl), SizeStrategy(max_size)]
     )
     logger.debug(f"Initializing cache in: {cache_path}")

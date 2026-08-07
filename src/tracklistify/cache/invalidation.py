@@ -8,7 +8,7 @@ import json
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import Any, Generic, List, Optional, TypeVar
+from typing import Any, Generic, List, Optional, TypeVar, cast
 
 # Local/package imports
 from tracklistify.core.types import CacheEntry, CacheStorage
@@ -55,7 +55,7 @@ class TTLStrategy(InvalidationStrategy[T]):
     def __init__(self, default_ttl: Optional[int] = None):
         # Handle both int (seconds) and timedelta objects
         if isinstance(default_ttl, timedelta):
-            self.default_ttl = int(default_ttl.total_seconds())
+            self.default_ttl: Optional[int] = int(default_ttl.total_seconds())
         else:
             self.default_ttl = default_ttl
 
@@ -197,7 +197,7 @@ class LRUStrategy(InvalidationStrategy[T]):
                 entry["metadata"]["created"] = current_time
 
             # Create a new entry to avoid modifying the original
-            updated_entry = entry.copy()
+            updated_entry = cast(CacheEntry[T], entry.copy())
             updated_entry["metadata"] = entry["metadata"].copy()
 
             # Update last accessed time

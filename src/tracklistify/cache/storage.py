@@ -40,7 +40,7 @@ class JSONStorage(CacheStorage[T]):
         self._config = get_config()
         self._cache_dir = Path(cache_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
-        self._locks = {}
+        self._locks: dict[str, asyncio.Lock] = {}
         self._index = CacheIndex(cache_dir)
         self._index_loaded = False
 

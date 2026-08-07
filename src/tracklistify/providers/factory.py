@@ -3,7 +3,7 @@
 # Standard library imports
 import os
 import threading
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 # Local imports
 from tracklistify.core.exceptions import ConfigError
@@ -68,7 +68,7 @@ class ProviderFactory:
 
     def __init__(self) -> None:
         """Initialize the provider factory."""
-        self.providers = {}
+        self.providers: Dict[str, Any] = {}
 
     def get_identification_provider(self, provider_name):
         """Retrieve or create an identification provider by name."""

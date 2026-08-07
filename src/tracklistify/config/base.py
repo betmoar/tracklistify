@@ -4,7 +4,7 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
 # Local imports
 from .paths import get_root
@@ -62,7 +62,8 @@ class BaseConfig:
                 env_value = env_value.split("#")[0].strip()
 
                 # Convert string value to appropriate type
-                field_type = field_value.type
+                field_type: Any = field_value.type
+                value: Any
                 try:
                     if field_type is bool:
                         # Handle boolean values

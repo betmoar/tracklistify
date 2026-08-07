@@ -11,7 +11,7 @@ that runs after the Spotify client-credentials source.
 # Standard library imports
 import asyncio
 import os
-from typing import Dict
+from typing import Dict, Optional
 from urllib.parse import urlparse
 
 # Third-party imports
@@ -54,7 +54,7 @@ class MusicBrainzProvider:
                 if that env var is set.
         """
         self.user_agent = user_agent or self._default_user_agent()
-        self._session = None
+        self._session: Optional[aiohttp.ClientSession] = None
 
     @staticmethod
     def _default_user_agent() -> str:
@@ -104,6 +104,7 @@ class MusicBrainzProvider:
             ``{service_key: canonical_url}``; empty when no relations resolve.
         """
         await self._ensure_session()
+        assert self._session is not None  # set by _ensure_session
         url = f"{self.API_BASE}/isrc/{isrc}"
         params = {"inc": "url-rels", "fmt": "json"}
 

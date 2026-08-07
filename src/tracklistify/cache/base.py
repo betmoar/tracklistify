@@ -5,7 +5,7 @@ Base cache implementation with enhanced features.
 # Standard library imports
 import json
 import time
-from typing import Any, Dict, Generic, Optional, TypeVar
+from typing import Any, Dict, Generic, Optional, TypeVar, cast
 
 # Local/package imports
 from tracklistify.core.types import (
@@ -141,17 +141,20 @@ class BaseCache(Generic[T]):
             # TTLStrategy does metadata.get("ttl", default_ttl), and a
             # present-but-None key shadows the default, so is_valid always
             # returned True. Locked by tests/test_handoff_invariants.py.
-            entry: CacheEntry[T] = {
-                "key": key,
-                "value": value,
-                "metadata": {
-                    "created": time.time(),
-                    "last_accessed": time.time(),
-                    "ttl": ttl if ttl is not None else self._ttl,
-                    "compression": compression,
-                    "size": len(json.dumps(value)),
+            entry = cast(
+                CacheEntry[T],
+                {
+                    "key": key,
+                    "value": value,
+                    "metadata": {
+                        "created": time.time(),
+                        "last_accessed": time.time(),
+                        "ttl": ttl if ttl is not None else self._ttl,
+                        "compression": compression,
+                        "size": len(json.dumps(value)),
+                    },
                 },
-            }
+            )
 
             # Write to storage
             await self._storage.set(key, entry, compression=compression)

@@ -135,7 +135,7 @@ def mask_sensitive_data(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         return data
 
-    masked = {}
+    masked: Dict[str, Any] = {}
     for key, value in data.items():
         if isinstance(value, dict):
             masked[key] = mask_sensitive_data(value)

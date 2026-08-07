@@ -203,16 +203,18 @@ def _strip_title_variant(title: str) -> str:
             break
         group = match.group(1)  # the whole `(...)` / `[...]`, delimiters included
         action = _decide_title_group(group[1:-1])
+        act, *rest = action
         before, after = result[: match.start()], result[match.end() :]
-        if action[0] == "keep":
+        if act == "keep":
             break  # this trailing group stays; nothing before it is a suffix
-        if action[0] == "drop":
+        if act == "drop":
             result = f"{before} {after}".strip()
             continue  # the next group along may now be trailing — keep peeling
         # Rewrite: put the canonicalized group back in place, preserving its
         # delimiter type. Like keep, the group is retained, so nothing before
         # it is a trailing suffix and peeling stops here.
-        result = f"{before.rstrip()} {group[0]}{action[1]}{group[-1]}{after}".strip()
+        rewritten = rest[0] if rest else ""
+        result = f"{before.rstrip()} {group[0]}{rewritten}{group[-1]}{after}".strip()
         break
     return result if result.strip() else title
 

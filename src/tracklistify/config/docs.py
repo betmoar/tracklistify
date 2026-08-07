@@ -8,7 +8,7 @@ including markdown documentation, JSON schema, and example configurations.
 # Standard library imports
 from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Dict, List, Optional, Type, TypeVar, Union, cast
 
 # Local/package imports
 from .validation import (
@@ -34,7 +34,7 @@ class ConfigField:
     default: Optional[Any] = None
     required: bool = True
     example: Optional[Any] = None
-    constraints: List[str] = None
+    constraints: Optional[List[str]] = None
 
     def __post_init__(self):
         if self.constraints is None:
@@ -261,7 +261,7 @@ class ConfigDocGenerator:
         schema["description"] = field.description
 
         # Add constraints
-        for constraint in field.constraints:
+        for constraint in field.constraints or []:
             if "pattern" in constraint.lower():
                 schema["pattern"] = constraint.split(": ")[1]
             elif ">" in constraint or "<" in constraint:
@@ -307,7 +307,7 @@ def generate_field_docs(config_class: Type[T]) -> str:
     """
     docs = ["## Configuration Fields\n"]
 
-    for field in fields(config_class):
+    for field in cast(Any, fields)(config_class):
         field_type = field.type
         field_desc = field.__doc__ or "No description available."
         default = getattr(field, "default", None)
@@ -337,7 +337,7 @@ def generate_env_var_docs(config_class: Type[T]) -> str:
         "values:\n"
     )
 
-    for field in fields(config_class):
+    for field in cast(Any, fields)(config_class):
         env_var = f"TRACKLISTIFY_{field.name.upper()}"
         docs.append(f"- `{env_var}`: Override for `{field.name}`")
 
@@ -388,7 +388,7 @@ def generate_example_docs(config_class: Type[T]) -> str:
     docs.append(f"from {config_class.__module__} import {config_class.__name__}\n\n")
     docs.append(f"config = {config_class.__name__}(\n")
 
-    for field in fields(config_class):
+    for field in cast(Any, fields)(config_class):
         field_type = field.type
         if field_type is str:
             example = "'example'"
