@@ -415,24 +415,26 @@ def _enrichment_title_match(
     stem fallback is replaced by a hybrid gate that examines the Shazam title's
     bracketed mix information when the caller provides Beatport remixer data:
 
-    1. Named remixer in Shazam title → gate on remixer identity against
-       Beatport's ``remixers`` list and ``mix_name``.
+    1. Named remixer in Shazam title AND Beatport ``remixers``/``mix_name``
+       data to check it against → gate on remixer identity.
     2. Generic mix type in Shazam title AND a Beatport ``mix_name`` to check
        it against → compare the two; a mismatch rejects the candidate.
-    3. Generic mix type but no ``mix_name`` to verify against, or no mix info
-       at all → stem fallback. Rejecting on absent data would cost recall for
-       no gain, since there is nothing to contradict.
+    3. Mix info present but nothing to verify it against (no ``remixers``
+       and no ``mix_name``), or no mix info at all → stem fallback.
+       Rejecting on absent data would cost recall for no gain, since there
+       is nothing to contradict.
 
-    The new keyword args are optional with ``None`` defaults — the function is
-    also called from Spotify enrichment which doesn't have remixer data, so the
-    stem fallback is the only path for non-Beatport callers.
+    The new keyword args are optional with ``None`` defaults — the sole
+    caller (``utils/identification.py``'s Beatport enrichment path) doesn't
+    always have remixer data for a given candidate, so a caller without it
+    still gets sensible (recall-preserving) behavior.
     """
     if _comparison_title(track_title) == _comparison_title(candidate_title):
         # Fast path — but when the Shazam title carries mix info that
         # ``_comparison_title`` dropped (e.g. "(Club Mix)" vs "(Extended Mix)"
         # both drop to "track name"), we must gate before returning True.
         shazam_mix = _extract_mix_info(track_title)
-        if shazam_mix["remixers"]:
+        if shazam_mix["remixers"] and (remixers or mix_name):
             return _any_remixer_in(shazam_mix["remixers"], remixers, mix_name)
         if shazam_mix["mix_type"] is not None and mix_name is not None:
             return _mix_type_matches(shazam_mix["mix_type"], mix_name)
@@ -441,8 +443,9 @@ def _enrichment_title_match(
     # Comparison titles differ — extract mix info and gate.
     shazam_mix = _extract_mix_info(track_title)
 
-    if shazam_mix["remixers"]:
-        # Named remixer(s) in the Shazam title: gate on remixer identity.
+    if shazam_mix["remixers"] and (remixers or mix_name):
+        # Named remixer(s) in the Shazam title, and we have Beatport data
+        # to verify against: gate on remixer identity.
         return _any_remixer_in(shazam_mix["remixers"], remixers, mix_name)
     elif shazam_mix["mix_type"] is not None and mix_name is not None:
         # Generic mix type, and we have Beatport data to verify against:

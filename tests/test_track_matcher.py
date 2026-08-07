@@ -1247,3 +1247,41 @@ class TestEnrichmentTitleMatchHybrid:
             )
             is False
         )
+
+    def test_identical_remixer_titles_no_kwargs_passes(self):
+        """Regression: byte-identical titles carrying a named remixer must
+        not be rejected just because the caller has no Beatport remixer
+        data to check them against. Rejecting on absent data was the bug
+        — with neither ``remixers`` nor ``mix_name`` supplied, there is
+        nothing to verify, so the fast-path equality check must win.
+        """
+        from tracklistify.core.track import _enrichment_title_match
+
+        title = "Track Name (Artist X Remix)"
+        assert _enrichment_title_match(title, title) is True
+
+    def test_identical_bootleg_titles_no_kwargs_passes(self):
+        """Same regression, non-remix mix-type wording (bootleg): identical
+        titles with no Beatport data to verify against must fall through
+        to True rather than being rejected for lack of data.
+        """
+        from tracklistify.core.track import _enrichment_title_match
+
+        title = "Track Name (DJ Y Bootleg)"
+        assert _enrichment_title_match(title, title) is True
+
+    def test_wrong_remixer_with_data_still_fails(self):
+        """Guards the original U15 fix: when Beatport data IS present and
+        names a different remixer, the mismatch must still reject the
+        candidate — the absent-data fallthrough must not swallow this case.
+        """
+        from tracklistify.core.track import _enrichment_title_match
+
+        assert (
+            _enrichment_title_match(
+                "Track (Artist X Remix)",
+                "Track",
+                remixers=["Artist Y"],
+            )
+            is False
+        )
