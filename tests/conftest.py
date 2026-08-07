@@ -5,6 +5,32 @@ import os
 from tracklistify.config import TrackIdentificationConfig
 
 
+def pytest_addoption(parser):
+    """Add the --live flag to opt into live-network tests.
+
+    Live tests (``@pytest.mark.live``) hit real external services with real
+    credentials. They are NEVER run in CI — they require secrets and network,
+    and are flaky under provider rate limits. Run them locally with
+    ``uv run python -m pytest --live``. Without the flag they are skipped.
+    """
+    parser.addoption(
+        "--live",
+        action="store_true",
+        default=False,
+        help="run live-network tests (hits real services with real creds)",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip live tests unless --live was passed (Q8 verification subsystem)."""
+    if config.getoption("--live"):
+        return
+    skip_live = pytest.mark.skip(reason="needs --live to run (real network/creds)")
+    for item in items:
+        if "live" in item.keywords:
+            item.add_marker(skip_live)
+
+
 @pytest.fixture
 def clean_env(monkeypatch):
     """Clean environment variables before test.

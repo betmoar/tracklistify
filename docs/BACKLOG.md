@@ -183,7 +183,7 @@ hand, because there was no other way.
 **Done looks like:** a decision. Either it earns a test file, or it leaves
 `src/`.
 
-### Q8 (P2) — the behaviors that matter most are unverifiable by the suite
+### Q8 (P2) — the behaviors that matter most are unverifiable by the suite — RESOLVED 2026-08-07
 
 This is the highest-leverage item and the one that keeps recurring.
 
@@ -195,9 +195,30 @@ for U11, and for identification quality in general.
 
 The `integration` marker is registered in `pyproject.toml` and unused.
 
-**Done looks like:** U14 decided, then built — recorded cassettes, an opt-in
-live suite, or a `scripts/probe_*` family whose output lands in this file.
-Manual-forever is a legitimate answer; leaving it undecided is not.
+**Decision (U14): probe scripts + recorded cassettes + opt-in live suite** —
+all three layers shipped, each catching what the layer below cannot:
+
+- **Cassette-locked tests** (`tests/test_cassette_locked.py` + vcrpy
+  cassettes under `tests/cassettes/`): replay recorded HTTP interactions so
+  the pacing/retry/rate-limit shapes are locked offline. The canonical case
+  is a MusicBrainz 503-then-200 cassette that asserts the provider retries
+  instead of returning `{}` — the exact regression an 8× yield loss once
+  shipped through. Verified to fail when the retry logic is removed.
+- **Probe scripts** (`scripts/probe_*.py`, extending
+  `scripts/measure_beatport_remix_matches.py`): on-demand live checks whose
+  output lands here. `probe_musicbrainz_link_rate.py` measures the real
+  resolution rate against known ISRCs — the signal that caught the pacing
+  bug the first time.
+- **Opt-in live suite** (`tests/test_live_probes.py`, `@pytest.mark.live`):
+  gated behind `--live` (skipped by default, never in CI via conftest). The
+  `integration` marker stays for the broader live-hit category; `live` is the
+  creds-required subset.
+
+The pacing *intervals* themselves (`_MUSICBRAINZ_REQUEST_INTERVAL`,
+`_BEATPORT_REQUEST_INTERVAL`) remain asserted by sleep-counting unit tests and
+verified against reality by the probe — a cassette can lock the retry *shape*
+but not the wall-clock pacing value, which is a property of the live API's
+rate-limit behavior. That gap is now documented, not hidden.
 
 ### Q9 (P4) — test file names no longer describe their contents
 

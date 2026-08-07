@@ -56,6 +56,8 @@ dev = [
     "vulture>=2.16",
     "freezegun>=1.5",
     "mypy>=2.3.0",
+    "vcrpy>=8.3.0",
+    "pytest-recording>=0.13.4",
 ]
 
 [project.scripts]
@@ -111,6 +113,7 @@ testpaths = [
 ]
 markers = [
     "integration: marks tests that hit live external services (skipped unless run explicitly)",
+    "live: marks tests that hit live external services with real credentials (opt-in via --live; never in CI)",
 ]
 
 [tool.coverage.run]
