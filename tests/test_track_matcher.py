@@ -1183,6 +1183,21 @@ class TestEnrichmentTitleMatchHybrid:
             is False
         )
 
+    def test_generic_mix_type_no_bp_data_falls_back_to_stem(self):
+        """Recall regression fix: identical mix_type titles with no Beatport
+        mix_name to verify against must fall through to the stem fallback
+        (True) instead of rejecting via _mix_type_matches(..., None) (False).
+        """
+        from tracklistify.core.track import _enrichment_title_match
+
+        assert (
+            _enrichment_title_match(
+                "Track Name (Club Mix)",
+                "Track Name (Club Mix)",
+            )
+            is True
+        )
+
     def test_no_mix_info_falls_back_to_stem(self):
         from tracklistify.core.track import _enrichment_title_match
 

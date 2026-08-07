@@ -1,6 +1,8 @@
 """Tests for dev_cli — config, commands, logging (Q7, 2026-08 review)."""
 
 import json
+import logging
+import sys
 from pathlib import Path
 
 import pytest
@@ -41,15 +43,19 @@ class TestToolsConfiguration:
         cfg = ToolsConfiguration(config_path=missing_path)
         assert cfg.list_tools() == {}
 
-    def test_malformed_tools_json_degrades_gracefully(self, tmp_path: Path):
+    def test_malformed_tools_json_degrades_gracefully(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ):
         """Malformed tools.json must degrade to empty config, not crash."""
         bad_path = tmp_path / "tools.json"
         bad_path.write_text("not json at all {{{")
 
         from tracklistify.dev_cli.config import ToolsConfiguration
 
+        caplog.set_level(logging.WARNING, logger="dev_cli")
         cfg = ToolsConfiguration(config_path=str(bad_path))
         assert cfg.list_tools() == {}
+        assert any(record.levelno >= logging.WARNING for record in caplog.records)
 
     def test_get_tool_returns_config_for_valid_tool(self, tmp_path: Path):
         """get_tool returns the config dict for a known tool."""
@@ -120,7 +126,7 @@ class TestRunCommand:
         cmd = RunCommand()
         # python -c "print('arg with spaces')" — the script is one arg.
         result = cmd.run_shell_command(
-            ["python", "-c", "print('arg with spaces')"], check=True
+            [sys.executable, "-c", "print('arg with spaces')"], check=True
         )
         assert result.returncode == 0
         assert "arg with spaces" in result.stdout
@@ -174,9 +180,19 @@ class TestDevCliLogger:
         process-wide singleton logger. Handlers added by setup() in one
         test would otherwise accumulate and leak into the next.
         """
-        import logging
-
         logging.getLogger("dev_cli").handlers.clear()
+
+    def teardown_method(self):
+        """Close and clear handlers on the shared 'dev_cli' logger after each test.
+
+        Mirrors setup_method — without this, the last logging test in this
+        class leaks an open RotatingFileHandler pointing at a deleted
+        tmp_path dir (plus a stdout handler) into subsequent test modules.
+        """
+        dev_cli_logger = logging.getLogger("dev_cli")
+        for handler in dev_cli_logger.handlers:
+            handler.close()
+        dev_cli_logger.handlers.clear()
 
     def test_setup_constructs_without_error(self, tmp_path: Path):
         """setup() must not raise."""

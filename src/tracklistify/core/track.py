@@ -431,7 +431,7 @@ def _enrichment_title_match(
         shazam_mix = _extract_mix_info(track_title)
         if shazam_mix["remixers"]:
             return _any_remixer_in(shazam_mix["remixers"], remixers, mix_name)
-        if shazam_mix["mix_type"] is not None:
+        if shazam_mix["mix_type"] is not None and mix_name is not None:
             return _mix_type_matches(shazam_mix["mix_type"], mix_name)
         return True
 
@@ -441,11 +441,15 @@ def _enrichment_title_match(
     if shazam_mix["remixers"]:
         # Named remixer(s) in the Shazam title: gate on remixer identity.
         return _any_remixer_in(shazam_mix["remixers"], remixers, mix_name)
-    elif shazam_mix["mix_type"] is not None:
-        # Generic mix type: compare against Beatport's mix_name.
+    elif shazam_mix["mix_type"] is not None and mix_name is not None:
+        # Generic mix type, and we have Beatport data to verify against:
+        # compare mix types. When mix_name is None there's nothing to
+        # verify, so fall through to the stem fallback below instead of
+        # rejecting on missing data (recall regression fix).
         return _mix_type_matches(shazam_mix["mix_type"], mix_name)
     else:
-        # No mix info: fall back to the old stem comparison.
+        # No mix info, or mix info present but nothing to verify against:
+        # fall back to the old stem comparison.
         return _title_stem(track_title) == _title_stem(candidate_title)
 
 

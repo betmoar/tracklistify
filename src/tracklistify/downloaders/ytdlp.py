@@ -172,9 +172,7 @@ class YtDlpDownloader(Downloader):
         # Track yt-dlp postprocessor timing so the user sees progress
         # during the otherwise-silent MP3 transcode phase.
         self._pp_started_at: Optional[float] = None
-        logger.debug(
-            f"Initialized yt-dlp downloader with ffmpeg at: {self.ffmpeg_path}"
-        )
+        logger.debug("Initialized yt-dlp downloader")
         logger.debug(
             f"Settings - Quality: {quality}kbps, Format: {format}, "
             f"stream_copy: {stream_copy}, temp_dir: {temp_dir}"
@@ -209,6 +207,7 @@ class YtDlpDownloader(Downloader):
         """
         if self.ffmpeg_path is None:
             self.ffmpeg_path = self.get_ffmpeg_path()
+            logger.debug(f"Resolved ffmpeg at: {self.ffmpeg_path}")
         temp_dir = Path(self.temp_dir or self.config.temp_dir)
         temp_dir.mkdir(parents=True, exist_ok=True)
 

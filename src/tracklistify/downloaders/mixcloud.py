@@ -44,9 +44,7 @@ class MixcloudDownloader(Downloader):
         self.quality = quality
         self.format = format
         self.temp_dir = temp_dir
-        logger.debug(
-            f"Initialized MixcloudDownloader with ffmpeg at: {self.ffmpeg_path}"
-        )
+        logger.debug("Initialized MixcloudDownloader")
         logger.debug(f"Settings - Quality: {quality}kbps, Format: {format}")
 
     def get_ydl_opts(self) -> dict:
@@ -82,6 +80,7 @@ class MixcloudDownloader(Downloader):
         try:
             if self.ffmpeg_path is None:
                 self.ffmpeg_path = self.get_ffmpeg_path()
+                logger.debug(f"Resolved ffmpeg at: {self.ffmpeg_path}")
             # Clean URL before downloading
             logger.info(f"Starting Mixcloud download: {url}")
             ydl_opts = self.get_ydl_opts()
