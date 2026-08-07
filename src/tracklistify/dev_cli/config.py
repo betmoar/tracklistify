@@ -80,32 +80,6 @@ class ToolsConfiguration:
         except Exception as e:
             raise ConfigurationError(f"Failed to load configuration: {str(e)}") from e
 
-    def load_default_config(self):
-        """Load the default tool configuration."""
-        default_config = {
-            "pylint": {
-                "command": "pylint",
-                "description": "Python code linter",
-                "args": "--rcfile=.pylintrc",
-            },
-            "black": {
-                "command": "black",
-                "description": "Python code formatter",
-                "args": "--line-length=88",
-            },
-            "mypy": {
-                "command": "mypy",
-                "description": "Static type checker",
-                "args": "--strict",
-            },
-            "pytest": {
-                "command": "pytest",
-                "description": "Python test runner",
-                "args": "-v",
-            },
-        }
-        self._config.update(default_config)
-
     def list_tools(self) -> Dict[str, Any]:
         """List all available tools.
 
