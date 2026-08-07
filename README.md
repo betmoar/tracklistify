@@ -21,6 +21,8 @@ A powerful and flexible automatic tracklist generator for DJ mixes and audio str
 
   - Shazam and ACRCloud for fingerprint-based identification
   - Spotify integration for metadata enrichment and playlist export
+  - MusicBrainz and Beatport enrichment for canonical links + DJ metadata
+    (BPM, key, label) — Beatport is opt-in with your own account
   - Smart provider fallback system with circuit breaker
   - High accuracy with confidence scoring
   - Support for multiple platforms (YouTube, Mixcloud, SoundCloud, Spotify)

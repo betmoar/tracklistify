@@ -88,6 +88,8 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
             "acrcloud_max_concurrent",
             "spotify_max_rpm",
             "spotify_max_concurrent",
+            "beatport_max_rpm",
+            "beatport_max_concurrent",
         ],
     ),
     (
@@ -122,6 +124,7 @@ FIELD_SECTIONS: list[tuple[str, list[str]]] = [
             "musicbrainz_enabled",
             "musicbrainz_max_rpm",
             "musicbrainz_max_concurrent",
+            "beatport_enabled",
         ],
     ),
 ]
@@ -150,6 +153,9 @@ INLINE_COMMENTS: dict[str, str] = {
     "musicbrainz_enabled": "keyless ISRC link source (no-op w/o ISRC)",
     "musicbrainz_max_rpm": "requests/min (paced; MB 503s under burst)",
     "musicbrainz_max_concurrent": "concurrent MB requests (1 = serialize)",
+    "beatport_enabled": "Beatport links + BPM/key (opt-in; needs own creds)",
+    "beatport_max_rpm": "requests/min (no official Beatport limit; be polite)",
+    "beatport_max_concurrent": "concurrent Beatport requests (1 = serialize)",
 }
 
 # Fields rendered as commented-out (optional / not always set).
@@ -181,6 +187,26 @@ CREDENTIALS_BLOCK = """\
 # MusicBrainz is keyless and free, but asks for a descriptive User-Agent
 # (it blocks generic agents). Optional — a generic UA is used if unset.
 # TRACKLISTIFY_MUSICBRAINZ_CONTACT=your-email@example.com
+#
+# Beatport (opt-in, off by default — set TRACKLISTIFY_BEATPORT_ENABLED=true).
+# Resolves a canonical Beatport track link plus BPM, musical key, label,
+# genre and remixers per identified track. Beatport has no self-serve API
+# tier: partner access is a commercial-review waitlist. Auth uses the OAuth
+# client_id from Beatport's own API-docs frontend (rotated, so it is scraped
+# from the docs JS bundle at runtime by default — the beets-beatport4 project
+# documents the same approach). Requests are made as YOUR Beatport account,
+# under your own relationship with Beatport.
+# RECOMMENDED: username + password. The password authorize+exchange flow mints
+# a token plus a refresh_token; both are cached, so after the first run every
+# later run renews silently via refresh (no re-login, no token babysitting).
+# Alternative: a pasted access token (devtools -> Network -> the
+# /v4/auth/o/token/ response) — but it is short-lived and not refreshed.
+# The client_id is OPTIONAL: leave it unset to scrape it, or set
+# TRACKLISTIFY_BEATPORT_CLIENT_ID as an override (escape hatch).
+# TRACKLISTIFY_BEATPORT_USERNAME=
+# TRACKLISTIFY_BEATPORT_PASSWORD=
+# TRACKLISTIFY_BEATPORT_TOKEN=
+# TRACKLISTIFY_BEATPORT_CLIENT_ID=
 """
 
 

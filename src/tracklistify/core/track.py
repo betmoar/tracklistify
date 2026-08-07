@@ -122,6 +122,11 @@ def _normalize_token(s: str) -> str:
 # merging distinct tags (defeating the D4 empty-collapse guard).
 _TRAILING_GROUP_RE = re.compile(r"(\([^()\[\]]*\)|\[[^()\[\]]*\])\s*$")
 
+# Every bracketed group (anywhere), used by the enrichment title stem. Unlike
+# _TRAILING_GROUP_RE this is not anchored: it strips ALL bracket groups at once
+# so the stem drops every version/credit/show-ID suffix in one pass.
+_BRACKET_GROUP_RE = re.compile(r"\s*[\[(][^\])]*[\])]\s*")
+
 # Keep-markers as whole words only (so "Vipul" does not match "vip").
 _SUFFIX_KEEP_RE = re.compile(r"\b(?:remix|bootleg|edit by|vip)\b")
 
@@ -242,6 +247,41 @@ def _comparison_title(title: str) -> str:
     cannot grow it without limit.
     """
     return _normalize_token(_strip_title_variant(title))
+
+
+@lru_cache(maxsize=2048)
+def _title_stem(title: str) -> str:
+    """The bare title stem with ALL bracketed suffixes removed.
+
+    Where ``_comparison_title`` is precision-tuned for dedup (it keeps
+    distinguishing remix/feat/show-ID tags so distinct plays don't merge),
+    enrichment wants recall: a track listed on Beatport under a different
+    mix spelling — or carrying a DJ-set show ID like ``(Tritonia 404)`` that
+    Beatport never has — is still the same recording. Stripping every bracket
+    group down to the name stem lets the enrichment gate accept those.
+
+    Safe only behind a confirmed artist match (the enrichment gate enforces
+    one), which is what stops "Blackout Disco" by Spark of Darkness matching
+    a different artist's same-named track. Falls back to the normalized full
+    title when the stem would be empty (e.g. a title that is only brackets).
+    """
+    stripped = _BRACKET_GROUP_RE.sub(" ", title)
+    stripped = re.sub(r"\s+", " ", stripped).strip()
+    if not stripped:
+        return _normalize_token(title)
+    return _normalize_token(stripped)
+
+
+def _enrichment_title_match(track_title: str, candidate_title: str) -> bool:
+    """Enrichment's looser title comparison: strict-equal OR same stem.
+
+    Strict ``_comparison_title`` equality stays the fast primary path. The
+    stem fallback is the recall net for the cases above. The artist gate
+    (checked separately by the caller) is what makes the stem fallback safe.
+    """
+    if _comparison_title(track_title) == _comparison_title(candidate_title):
+        return True
+    return _title_stem(track_title) == _title_stem(candidate_title)
 
 
 def _tracks_match(t1: "Track", t2: "Track") -> bool:

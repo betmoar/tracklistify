@@ -177,3 +177,7 @@ dev/
 !docs/dev/
 docs/temp/
 coverage.json
+# dev-flow's per-session scratch workspace (task briefs, reports, progress
+# ledger). Deliberately untracked: the durable record is the committed
+# spec/plan under docs/dev/ plus git log.
+.dev-flow/

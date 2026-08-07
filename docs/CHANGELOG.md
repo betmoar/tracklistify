@@ -9,6 +9,46 @@ Release dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 
+### Added
+
+- **Beatport links + DJ-metadata enrichment.** A third enrichment source
+  (after Spotify and MusicBrainz) that resolves, per identified track, a
+  canonical Beatport track link plus the fields no other source carries —
+  BPM, musical key, label, genre, sub-genre, remixers, catalog number.
+  Opt-in (`beatport_enabled`, default off). Auth is fully headless:
+  username + password run the OAuth password flow against Beatport's docs
+  client (the `app:docs` client ID scraped from the docs JS bundle, not the
+  storefront id which 401s on the catalog API), mints an access token plus a
+  refresh token, and caches both — so every run after the first refreshes
+  silently, no token babysitting. Live-verified at 70–80% recall across four
+  Tomorrowland sets (~3× the MusicBrainz link rate). See `.env.example` and
+  `docs/BACKLOG.md` (P3 entry).
+- **Per-provider rate limits.** `shazam_max_rpm`/`_max_concurrent` etc.
+  (already present for some providers) now also cover Spotify and Beatport.
+
+### Fixed
+
+- **Beatport enrichment error posture.** OAuth misconfig now disables the
+  pass instead of re-running the login dance once per track; transient 5xx
+  stays per-track; auth 429s carry `Retry-After`; the zero-match summary
+  logs unconditionally (a fully-broken pass is debuggable without `--debug`);
+  the metadata-write and token-cache paths can no longer abort a run.
+- **Token-cache robustness.** A non-numeric `expires_at` in the cache is a
+  miss, not a `ValueError` per track (honoring `_load_cached_token`'s
+  "never raises" contract). `_json_or_none` no longer collapses transport
+  failures (connection reset, truncated body) into a silent miss that read
+  as "wrong credentials."
+
+### Known limitation
+
+- **Beatport search-path remix matching (U15).** The enrichment title gate
+  (loosened for recall) can attach a different remix's metadata on the
+  search-fallback path — distinct remixes are separate Beatport catalog
+  entries. Measured 9/18 search-matches landed on a different mix (BPM is
+  often coincidentally right; key/label/catalog# wrong). ISRC-path matches
+  (the majority) are unaffected. Tracked in `docs/BACKLOG.md` U15 with an
+  acceptance test (`scripts/measure_beatport_remix_matches.py`).
+
 ## [0.10.1] - 2026-08-05
 
 ### Fixed

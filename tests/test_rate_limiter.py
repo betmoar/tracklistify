@@ -243,3 +243,31 @@ def test_register_provider_musicbrainz_reads_config_fields():
     limits = limiter._provider_limits["musicbrainz"]
     assert limits.max_requests_per_minute == 42
     assert limits.max_concurrent_requests == 7
+
+
+def test_register_provider_beatport_reads_config_fields():
+    """register_provider('beatport') resolves limits from the config fields,
+    same parametric-branch pattern as spotify/musicbrainz."""
+    from types import SimpleNamespace
+
+    from tracklistify.utils.rate_limiter import RateLimiter
+
+    cfg = SimpleNamespace(
+        beatport_max_rpm=44,
+        beatport_max_concurrent=3,
+        shazam_max_rpm=25,
+        shazam_max_concurrent=1,
+        acrcloud_max_rpm=300,
+        acrcloud_max_concurrent=10,
+        spotify_max_rpm=120,
+        spotify_max_concurrent=20,
+        musicbrainz_max_rpm=30,
+        musicbrainz_max_concurrent=1,
+        max_requests_per_minute=25,
+        max_concurrent_requests=2,
+    )
+    limiter = RateLimiter(config=cfg)
+    limiter.register_provider("beatport")
+    limits = limiter._provider_limits["beatport"]
+    assert limits.max_requests_per_minute == 44
+    assert limits.max_concurrent_requests == 3

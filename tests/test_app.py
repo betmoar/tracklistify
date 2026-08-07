@@ -30,9 +30,16 @@ def temp_dir():
 
 @pytest.fixture
 def config(temp_dir):
-    """Get config with temporary directory."""
+    """Get config with temporary directory.
+
+    output_dir is redirected too: TracklistOutput.__init__ creates the per-set
+    subfolder as a side effect of construction (reading config.output_dir),
+    so without this the save_output tests would write real folders into
+    .tracklistify/output on every run (e.g. [date] Test Artist 1 - Test Song 1).
+    """
     config = get_config()
     config.temp_dir = str(temp_dir)
+    config.output_dir = str(temp_dir)
     return config
 
 
