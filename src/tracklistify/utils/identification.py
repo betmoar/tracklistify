@@ -382,7 +382,7 @@ class IdentificationManager:
     async def _enrich_tracks(self, unique_tracks: List[Track]) -> None:
         """Resolve canonical streaming links per unique track (spec unit D + MB).
 
-        Two sources, run in sequence so they compose (first-writer-wins per
+        Three sources, run in sequence so they compose (first-writer-wins per
         link key):
 
         1. **Spotify** (client-credentials) — ISRC-first via
@@ -394,17 +394,21 @@ class IdentificationManager:
            Spotify source didn't set; when it supplies the Spotify link it
            records ``spotify_match = "musicbrainz"``. A no-op when disabled or
            when a track has no ISRC.
+        3. **Beatport** (opt-in) — links plus DJ metadata (BPM/key/label/...).
 
         Post-dedup by design. Sequential, not gather — the volume is ~22 and
         concurrency buys nothing worth the added failure modes.
 
         Best-effort (R5): enrichment never fails a run. Each source's error
         posture is local — a source that errors or is disabled leaves the
-        other and the identified tracks intact.
+        others and the identified tracks intact.
 
-        The two sources share the loop scaffolding's *shape* (gating, limiter
-        pairing, error posture) but are separate methods, not an ABC — the
-        charter forbids a registry for two implementations.
+        The three sources share one loop runner (``_run_enrichment_pass``)
+        parameterized by their per-track worker, pacing, and skip predicate —
+        the copy-paste that was correct at two sources was indefensible at
+        three (Q3, 2026-08 code-quality review). Each pass differs only in the
+        provider call and the write policy, which live in the per-track
+        workers (``_enrich_one`` / ``_enrich_one_mb`` / ``_enrich_one_beatport``).
         """
         if not unique_tracks:
             return
@@ -428,44 +432,112 @@ class IdentificationManager:
         if getattr(self.config, "beatport_enabled", False):
             await self._enrich_beatport(unique_tracks)
 
-    async def _enrich_spotify(self, unique_tracks: List[Track]) -> None:
-        """Spotify client-credentials enrichment pass (spec unit D)."""
-        # ``getattr`` fallback: a factory that doesn't supply a Spotify
-        # enrichment provider (e.g. an identification-only stub) degrades to a
-        # no-op, consistent with the no-op-without-credentials posture.
-        get_spotify = getattr(self.provider_factory, "get_spotify_provider", None)
-        provider = get_spotify() if get_spotify is not None else None
+    async def _run_enrichment_pass(
+        self,
+        source: str,
+        accessor: str,
+        worker: "Any",
+        unique_tracks: List[Track],
+        *,
+        skip: "Optional[Any]" = None,
+        pacing: float = 0.0,
+        summarize: "Optional[Any]" = None,
+    ) -> None:
+        """The shared enrichment loop scaffolding (Q3).
+
+        One copy of the gate/provider-resolve/``async with``/loop/disabled-
+        break/summary shape that three passes used to duplicate. The
+        per-source behavior lives in the call arguments:
+
+        Args:
+            source: provider name, for the "skipped: no credentials" log.
+            accessor: factory method name (``get_spotify_provider`` etc.).
+                Resolved via ``getattr`` so an identification-only factory stub
+                degrades to a no-op (never touches the limiter).
+            worker: ``async (provider, limiter, track) -> str`` — the per-track
+                lookup+write. Returns ``"isrc"``/``"search"``/``"none"``/``True``
+                /``False``, or ``"disabled"`` to halt the pass for the run
+                (Auth/RateLimit/ProviderError halt). The runner breaks the loop
+                on ``"disabled"``.
+            skip: optional ``track -> bool``; when true the track is skipped
+                before the worker runs (idempotence / ISRC-required gates).
+            pacing: seconds to ``asyncio.sleep`` between tracks after the
+                worker returns (polite inter-request spacing; 0 = none).
+            summarize: optional ``counts -> str`` building the summary line;
+                when None the pass logs nothing on an empty result (Spotify/
+                MB), when provided it logs unconditionally (Beatport — a
+                zero-match pass must be distinguishable from a silent no-op).
+        """
+        # ``getattr`` fallback: a factory that doesn't supply this provider
+        # (e.g. an identification-only stub) degrades to a no-op, consistent
+        # with the no-op-without-credentials posture.
+        get_provider = getattr(self.provider_factory, accessor, None)
+        provider = get_provider() if get_provider is not None else None
         if provider is None:
             # No credentials — a skip, not an error. Never touch the limiter.
-            logger.debug("Spotify enrichment skipped: no credentials configured")
+            logger.debug(f"{source} enrichment skipped: no credentials configured")
             return
 
         limiter = get_global_rate_limiter()
-        counts = {"isrc": 0, "search": 0, "none": 0}
+        counts: Dict[str, int] = {}
 
         # ``async with provider:`` ensures the aiohttp session is closed even
         # on an early return. ``close()`` is re-entrant, so the later
         # ``close_all()`` closing it again is safe (providers/base.py:113-119).
         async with provider:
             for track in unique_tracks:
-                # Idempotence: skip a track already carrying a canonical link.
-                if track.metadata.get("links", {}).get("spotify"):
+                if skip is not None and skip(track):
                     continue
-
-                match = await self._enrich_one(provider, limiter, track, counts)
-                # AuthenticationError/RateLimitError halt enrichment for the
-                # rest of the run — ``_enrich_one`` signals that by returning
-                # the "disabled" sentinel.
-                if match == "disabled":
+                outcome = await worker(provider, limiter, track, counts)
+                # Auth/RateLimit/ProviderError halt the pass for the rest of
+                # the run — the worker signals that by returning "disabled".
+                if outcome == "disabled":
                     break
+                if pacing:
+                    await asyncio.sleep(pacing)
 
-        enriched = counts["isrc"] + counts["search"]
-        if enriched:
-            logger.info(
+        if summarize is not None:
+            line = summarize(counts)
+            # An empty/None line means "log nothing on this result" (Spotify/
+            # MB skip the log when nothing was resolved). Beatport always
+            # returns a line — a zero-match pass must be visible.
+            if line:
+                logger.info(line)
+
+    async def _enrich_spotify(self, unique_tracks: List[Track]) -> None:
+        """Spotify client-credentials enrichment pass (spec unit D)."""
+
+        def skip(track: Track) -> bool:
+            # Idempotence: skip a track already carrying a canonical link.
+            return bool(track.metadata.get("links", {}).get("spotify"))
+
+        async def worker(provider, limiter, track, counts):
+            counts.setdefault("isrc", 0)
+            counts.setdefault("search", 0)
+            counts.setdefault("none", 0)
+            return await self._enrich_one(provider, limiter, track, counts)
+
+        def summarize(counts):
+            counts.setdefault("isrc", 0)
+            counts.setdefault("search", 0)
+            counts.setdefault("none", 0)
+            enriched = counts["isrc"] + counts["search"]
+            if not enriched:
+                return ""  # Spotify/MB: log nothing on an empty result.
+            return (
                 f"Spotify enrichment: {enriched} links resolved "
                 f"(isrc={counts['isrc']}, search={counts['search']}, "
                 f"none={counts['none']})"
             )
+
+        await self._run_enrichment_pass(
+            "Spotify",
+            "get_spotify_provider",
+            worker,
+            unique_tracks,
+            skip=skip,
+            summarize=summarize,
+        )
 
     async def _enrich_musicbrainz(self, unique_tracks: List[Track]) -> None:
         """Keyless MusicBrainz ISRC enrichment pass (spec unit C, MB doc).
@@ -481,42 +553,46 @@ class IdentificationManager:
         would reimport the wrong-match risk ``spotify_match`` provenance
         exists to audit). No credentials; gated only by
         ``musicbrainz_enabled``.
+
+        MusicBrainz rate-limits with 503 under *burst* load even well under
+        its 1200/min ceiling. The token-bucket limiter starts with a full
+        bucket, so it permits a burst and never spaces requests politely —
+        measured (2026-08-04): the bursted hook resolved 3% of resolvable
+        links while the same provider paced at ~1 req/s resolved 26%. MB's
+        own etiquette asks for ≤1 req/s, so pace explicitly here. This is
+        MB-specific courtesy, not a general limiter change.
         """
-        # ``getattr`` fallback: an identification-only factory stub degrades to
-        # a no-op (mirrors the Spotify pass).
-        get_mb = getattr(self.provider_factory, "get_musicbrainz_provider", None)
-        provider = get_mb() if get_mb is not None else None
-        if provider is None:
-            return
 
-        limiter = get_global_rate_limiter()
-        counts = {"resolved": 0, "none": 0}
+        def skip(track: Track) -> bool:
+            return not track.metadata.get("isrc")
 
-        # MusicBrainz rate-limits with 503 under *burst* load even well under
-        # its 1200/min ceiling. The token-bucket limiter starts with a full
-        # bucket, so it permits a burst and never spaces requests politely —
-        # measured (2026-08-04): the bursted hook resolved 3% of resolvable
-        # links while the same provider paced at ~1 req/s resolved 26%. MB's
-        # own etiquette asks for ≤1 req/s, so pace explicitly here. This is
-        # MB-specific courtesy, not a general limiter change.
-        async with provider:
-            for track in unique_tracks:
-                isrc = track.metadata.get("isrc")
-                if not isrc:
-                    continue
-                ok = await self._enrich_one_mb(provider, limiter, track)
-                if ok:
-                    counts["resolved"] += 1
-                else:
-                    counts["none"] += 1
-                # Polite inter-request spacing (≤1 req/s).
-                await asyncio.sleep(_MUSICBRAINZ_REQUEST_INTERVAL)
+        async def worker(provider, limiter, track, counts):
+            counts.setdefault("resolved", 0)
+            counts.setdefault("none", 0)
+            ok = await self._enrich_one_mb(provider, limiter, track)
+            if ok:
+                counts["resolved"] += 1
+            else:
+                counts["none"] += 1
+            return "ok"
 
-        if counts["resolved"]:
-            logger.info(
+        def summarize(counts):
+            if not counts.get("resolved"):
+                return ""
+            return (
                 f"MusicBrainz enrichment: {counts['resolved']} tracks resolved "
                 f"a link ({counts['none']} no match)"
             )
+
+        await self._run_enrichment_pass(
+            "MusicBrainz",
+            "get_musicbrainz_provider",
+            worker,
+            unique_tracks,
+            skip=skip,
+            pacing=_MUSICBRAINZ_REQUEST_INTERVAL,
+            summarize=summarize,
+        )
 
     async def _enrich_one(
         self,
@@ -660,35 +736,40 @@ class IdentificationManager:
         it) is still queried — the API call is what supplies BPM, key and
         label; the URL is the cheap part.
         """
-        get_bp = getattr(self.provider_factory, "get_beatport_provider", None)
-        provider = get_bp() if get_bp is not None else None
-        if provider is None:
-            # No credentials — a skip, not an error. Never touch the limiter.
-            logger.debug("Beatport enrichment skipped: no credentials configured")
-            return
 
-        limiter = get_global_rate_limiter()
-        counts = {"isrc": 0, "search": 0, "none": 0}
+        async def worker(provider, limiter, track, counts):
+            counts.setdefault("isrc", 0)
+            counts.setdefault("search", 0)
+            counts.setdefault("none", 0)
+            match = await self._enrich_one_beatport(provider, limiter, track)
+            if match == "disabled":
+                return "disabled"
+            if match in counts:
+                counts[match] += 1
+            return match
 
-        async with provider:
-            for track in unique_tracks:
-                match = await self._enrich_one_beatport(provider, limiter, track)
-                if match == "disabled":
-                    break
-                if match in counts:
-                    counts[match] += 1
-                # Polite inter-request spacing (Beatport documents no limit).
-                await asyncio.sleep(_BEATPORT_REQUEST_INTERVAL)
+        def summarize(counts):
+            counts.setdefault("isrc", 0)
+            counts.setdefault("search", 0)
+            counts.setdefault("none", 0)
+            matched = counts["isrc"] + counts["search"]
+            # Log unconditionally: a fully-broken pass (every lookup errored)
+            # looks identical to "Beatport found nothing" otherwise, and the
+            # per-track detail is only at DEBUG. Surfacing a zero-match line at
+            # INFO means a misconfigured account is debuggable without --debug.
+            return (
+                f"Beatport enrichment: {matched} tracks matched "
+                f"(isrc={counts['isrc']}, search={counts['search']}, "
+                f"none={counts['none']})"
+            )
 
-        matched = counts["isrc"] + counts["search"]
-        # Log unconditionally: a fully-broken pass (every lookup errored) looks
-        # identical to "Beatport found nothing" otherwise, and the per-track
-        # detail is only at DEBUG. Surfacing a zero-match line at INFO means a
-        # misconfigured account is debuggable without --debug.
-        logger.info(
-            f"Beatport enrichment: {matched} tracks matched "
-            f"(isrc={counts['isrc']}, search={counts['search']}, "
-            f"none={counts['none']})"
+        await self._run_enrichment_pass(
+            "Beatport",
+            "get_beatport_provider",
+            worker,
+            unique_tracks,
+            pacing=_BEATPORT_REQUEST_INTERVAL,
+            summarize=summarize,
         )
 
     async def _enrich_one_beatport(self, provider, limiter, track: Track) -> str:
