@@ -1042,6 +1042,18 @@ class TestExtractMixInfo:
         assert result["remixers"] == []
         assert result["mix_type"] is None
 
+    def test_extract_mix_info_multi_mix_type_keeps_outermost(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        # Groups peel right-to-left and the first hit wins, so the OUTERMOST
+        # (rightmost) group is kept — not the one closest to the track name.
+        assert _extract_mix_info("Track (Club Mix) (Extended Mix)")["mix_type"] == (
+            "extended mix"
+        )
+        assert _extract_mix_info("Track (Extended Mix) (Club Mix)")["mix_type"] == (
+            "club mix"
+        )
+
 
 class TestRemixerMatching:
     """Unit tests for _any_remixer_in and _mix_type_matches (U15 gate helpers)."""

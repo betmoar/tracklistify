@@ -77,10 +77,10 @@ class MixcloudDownloader(Downloader):
         Raises:
             DownloadError: If download fails for any reason
         """
+        if self.ffmpeg_path is None:
+            self.ffmpeg_path = self.get_ffmpeg_path()
+            logger.debug(f"Resolved ffmpeg at: {self.ffmpeg_path}")
         try:
-            if self.ffmpeg_path is None:
-                self.ffmpeg_path = self.get_ffmpeg_path()
-                logger.debug(f"Resolved ffmpeg at: {self.ffmpeg_path}")
             # Clean URL before downloading
             logger.info(f"Starting Mixcloud download: {url}")
             ydl_opts = self.get_ydl_opts()

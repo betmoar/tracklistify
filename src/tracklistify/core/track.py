@@ -290,8 +290,8 @@ def _extract_mix_info(title: str) -> _MixInfo:
     - If ``_SUFFIX_KEEP_RE`` matches AND stripping the keyword leaves a name
       → remixer name (accumulates).
     - If the normalized inner is in ``_SUFFIX_DROP_EXACT`` → generic mix type
-      (only the last one matters — the innermost bracket closest to the track
-      name).
+      (the FIRST one encountered wins — groups are peeled right-to-left, so
+      that is the outermost/rightmost bracket, furthest from the track name).
     - If ``_SUFFIX_DROP_PREFIXES`` matches → ignored (live-at location).
     - Empty groups, feat-canonicalization groups, and unrecognized groups →
       ignored.
@@ -326,8 +326,9 @@ def _extract_mix_info(title: str) -> _MixInfo:
                 remixers.append(name)
             # else: bare keyword like "(Remix)" — no name, not a remixer signal.
         elif inner_norm in _SUFFIX_DROP_EXACT:
-            # Generic mix type — only the LAST one matters (the innermost
-            # bracket closest to the track name).
+            # Generic mix type — the first one encountered wins. Peeling is
+            # right-to-left, so "(Club Mix) (Extended Mix)" keeps "extended
+            # mix" (the outermost group), not "club mix".
             if mix_type is None:
                 mix_type = inner_norm
         elif inner_norm.startswith(_SUFFIX_DROP_PREFIXES):
@@ -416,9 +417,11 @@ def _enrichment_title_match(
 
     1. Named remixer in Shazam title → gate on remixer identity against
        Beatport's ``remixers`` list and ``mix_name``.
-    2. Generic mix type in Shazam title → compare mix types against Beatport's
-       ``mix_name``.
-    3. No mix info in Shazam title → stem fallback.
+    2. Generic mix type in Shazam title AND a Beatport ``mix_name`` to check
+       it against → compare the two; a mismatch rejects the candidate.
+    3. Generic mix type but no ``mix_name`` to verify against, or no mix info
+       at all → stem fallback. Rejecting on absent data would cost recall for
+       no gain, since there is nothing to contradict.
 
     The new keyword args are optional with ``None`` defaults — the function is
     also called from Spotify enrichment which doesn't have remixer data, so the
