@@ -157,3 +157,74 @@ class TestRunCommand:
         cmd = RunCommand()
         with pytest.raises(FileNotFoundError):
             cmd.run_shell_command("nonexistent_command_xyzzy", check=True)
+
+
+# ---------------------------------------------------------------------------
+# logging.py
+# ---------------------------------------------------------------------------
+
+
+class TestDevCliLogger:
+    """Tests for DevCliLogger — the dev CLI logging setup."""
+
+    def setup_method(self):
+        """Clear handlers on the shared 'dev_cli' logger before each test.
+
+        DevCliLogger() always binds to logging.getLogger("dev_cli"), a
+        process-wide singleton logger. Handlers added by setup() in one
+        test would otherwise accumulate and leak into the next.
+        """
+        import logging
+
+        logging.getLogger("dev_cli").handlers.clear()
+
+    def test_setup_constructs_without_error(self, tmp_path: Path):
+        """setup() must not raise."""
+        from tracklistify.dev_cli.logging import DevCliLogger
+
+        logger = DevCliLogger()
+        logger.setup(debug=False, log_dir=None)
+        # The underlying stdlib logger is accessible.
+        assert logger.logger is not None
+
+    def test_setup_debug_sets_debug_level(self, tmp_path: Path):
+        """setup(debug=True) sets the console handler to DEBUG."""
+        import logging
+
+        from tracklistify.dev_cli.logging import DevCliLogger
+
+        logger = DevCliLogger()
+        logger.setup(debug=True, log_dir=None)
+        # The console handler (first handler) should be at DEBUG level.
+        console_handler = logger.logger.handlers[0]
+        assert console_handler.level == logging.DEBUG
+
+    def test_setup_log_dir_creates_directory_and_file(self, tmp_path: Path):
+        """setup(log_dir=...) creates the directory and a log file."""
+        from tracklistify.dev_cli.logging import DevCliLogger
+
+        log_dir = tmp_path / "logs"
+        logger = DevCliLogger()
+        logger.setup(debug=False, log_dir=str(log_dir))
+
+        assert log_dir.is_dir()
+        log_files = list(log_dir.glob("dev-cli-*.log"))
+        assert len(log_files) == 1
+
+    def test_setup_is_idempotent(self, tmp_path: Path):
+        """Calling setup() twice must not add duplicate handlers."""
+        from tracklistify.dev_cli.logging import DevCliLogger
+
+        logger = DevCliLogger()
+        logger.setup(debug=False, log_dir=None)
+        handler_count = len(logger.logger.handlers)
+        logger.setup(debug=False, log_dir=None)
+        assert len(logger.logger.handlers) == handler_count
+
+    def test_get_context_logger_returns_logger(self):
+        """get_context_logger returns a LoggerAdapter."""
+        from tracklistify.dev_cli.logging import DevCliLogger
+
+        logger = DevCliLogger()
+        ctx = logger.get_context_logger(config_class="TestClass")
+        assert ctx is not None
