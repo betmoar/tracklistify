@@ -11,6 +11,12 @@ Release dates are in YYYY-MM-DD format.
 
 ### Added
 
+- _(nothing yet)_
+
+## [0.11.0] - 2026-08-07
+
+### Added
+
 - **Beatport links + DJ-metadata enrichment.** A third enrichment source
   (after Spotify and MusicBrainz) that resolves, per identified track, a
   canonical Beatport track link plus the fields no other source carries —
