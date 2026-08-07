@@ -1109,3 +1109,114 @@ class TestRemixerMatching:
         from tracklistify.core.track import _mix_type_matches
 
         assert _mix_type_matches("Club Mix", None) is False
+
+
+class TestEnrichmentTitleMatchHybrid:
+    """Integration tests for the hybrid U15 gate in _enrichment_title_match."""
+
+    def test_strict_equality_still_fast_path(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Titles that match via _comparison_title → True, no remixer needed.
+        assert _enrichment_title_match("Track Name", "Track Name") is True
+
+    def test_remixer_name_match_passes(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Shazam "Track (Artist X Remix)" + Beatport remixers=["Artist X"]
+        assert (
+            _enrichment_title_match(
+                "Track Name (Artist X Remix)",
+                "Track Name",
+                remixers=["Artist X"],
+            )
+            is True
+        )
+
+    def test_remixer_name_mismatch_fails(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Shazam "Track (Artist X Remix)" + Beatport remixers=["Artist Y"]
+        assert (
+            _enrichment_title_match(
+                "Track Name (Artist X Remix)",
+                "Track Name",
+                remixers=["Artist Y"],
+            )
+            is False
+        )
+
+    def test_remixer_in_mix_name_passes(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Remixer embedded in mix_name rather than remixers list.
+        assert (
+            _enrichment_title_match(
+                "Track Name (Artist X Remix)",
+                "Track Name",
+                mix_name="Artist X Remix",
+            )
+            is True
+        )
+
+    def test_generic_mix_type_match_passes(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        assert (
+            _enrichment_title_match(
+                "Track Name (Club Mix)",
+                "Track Name (Club Mix)",
+                mix_name="Club Mix",
+            )
+            is True
+        )
+
+    def test_generic_mix_type_mismatch_fails(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        assert (
+            _enrichment_title_match(
+                "Track Name (Club Mix)",
+                "Track Name (Extended Mix)",
+                mix_name="Extended Mix",
+            )
+            is False
+        )
+
+    def test_no_mix_info_falls_back_to_stem(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Shazam "Track" (no brackets) + Beatport "Track (Original Mix)"
+        # → stem match: both strip to "track".
+        assert (
+            _enrichment_title_match(
+                "Track Name",
+                "Track Name (Original Mix)",
+            )
+            is True
+        )
+
+    def test_stem_fallback_still_works_for_non_beatport_callers(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # No remixers/mix_name kwargs → stem fallback (Spotify path).
+        assert (
+            _enrichment_title_match(
+                "Track Name (Tritonia 404)",
+                "Track Name (Original Mix)",
+            )
+            is True
+        )
+
+    def test_remixer_gate_blocks_wrong_remix_with_same_stem(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Both stem to "track name" — the remixer gate must catch this.
+        assert (
+            _enrichment_title_match(
+                "Track Name (Artist X Remix)",
+                "Track Name (Artist Y Remix)",
+                remixers=["Artist Y"],
+            )
+            is False
+        )

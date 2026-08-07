@@ -394,16 +394,52 @@ def _mix_type_matches(shazam_mix_type: str, bp_mix_name: str | None) -> bool:
     return _normalize_token(shazam_mix_type) == _normalize_token(bp_mix_name)
 
 
-def _enrichment_title_match(track_title: str, candidate_title: str) -> bool:
-    """Enrichment's looser title comparison: strict-equal OR same stem.
+def _enrichment_title_match(
+    track_title: str,
+    candidate_title: str,
+    *,
+    remixers: list[str] | None = None,
+    mix_name: str | None = None,
+) -> bool:
+    """Enrichment's title gate: strict-equal, remixer identity, or stem fallback.
 
     Strict ``_comparison_title`` equality stays the fast primary path. The
-    stem fallback is the recall net for the cases above. The artist gate
-    (checked separately by the caller) is what makes the stem fallback safe.
+    stem fallback is replaced by a hybrid gate that examines the Shazam title's
+    bracketed mix information when the caller provides Beatport remixer data:
+
+    1. Named remixer in Shazam title → gate on remixer identity against
+       Beatport's ``remixers`` list and ``mix_name``.
+    2. Generic mix type in Shazam title → compare mix types against Beatport's
+       ``mix_name``.
+    3. No mix info in Shazam title → stem fallback.
+
+    The new keyword args are optional with ``None`` defaults — the function is
+    also called from Spotify enrichment which doesn't have remixer data, so the
+    stem fallback is the only path for non-Beatport callers.
     """
     if _comparison_title(track_title) == _comparison_title(candidate_title):
+        # Fast path — but when the Shazam title carries mix info that
+        # ``_comparison_title`` dropped (e.g. "(Club Mix)" vs "(Extended Mix)"
+        # both drop to "track name"), we must gate before returning True.
+        shazam_mix = _extract_mix_info(track_title)
+        if shazam_mix["remixers"]:
+            return _any_remixer_in(shazam_mix["remixers"], remixers, mix_name)
+        if shazam_mix["mix_type"] is not None:
+            return _mix_type_matches(shazam_mix["mix_type"], mix_name)
         return True
-    return _title_stem(track_title) == _title_stem(candidate_title)
+
+    # Comparison titles differ — extract mix info and gate.
+    shazam_mix = _extract_mix_info(track_title)
+
+    if shazam_mix["remixers"]:
+        # Named remixer(s) in the Shazam title: gate on remixer identity.
+        return _any_remixer_in(shazam_mix["remixers"], remixers, mix_name)
+    elif shazam_mix["mix_type"] is not None:
+        # Generic mix type: compare against Beatport's mix_name.
+        return _mix_type_matches(shazam_mix["mix_type"], mix_name)
+    else:
+        # No mix info: fall back to the old stem comparison.
+        return _title_stem(track_title) == _title_stem(candidate_title)
 
 
 def _tracks_match(t1: "Track", t2: "Track") -> bool:
