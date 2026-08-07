@@ -191,11 +191,11 @@ class RateLimiter:
         limits.ensure_async_primitives()
 
         # Check circuit breaker first (don't count rejected requests)
-        circuit_breaker_enabled = getattr(self._config, "circuit_breaker_enabled", True)
-        if circuit_breaker_enabled and limits.circuit_state == CircuitState.OPEN:
-            circuit_reset_timeout = getattr(
-                self._config, "circuit_breaker_reset_timeout", 60.0
-            )
+        if (
+            self._config.circuit_breaker_enabled
+            and limits.circuit_state == CircuitState.OPEN
+        ):
+            circuit_reset_timeout = self._config.circuit_breaker_reset_timeout
             if (
                 limits.circuit_open_time
                 and time.monotonic() - limits.circuit_open_time > circuit_reset_timeout
@@ -224,8 +224,7 @@ class RateLimiter:
             limits.metrics.total_requests += 1
 
             # Check if rate limiting is enabled
-            rate_limit_enabled = getattr(self._config, "rate_limit_enabled", True)
-            if not rate_limit_enabled:
+            if not self._config.rate_limit_enabled:
                 return True
 
             # Check rate limiting tokens
@@ -299,9 +298,8 @@ class RateLimiter:
             return
 
         limits = self._provider_limits[provider]
-        circuit_breaker_enabled = getattr(self._config, "circuit_breaker_enabled", True)
 
-        if not circuit_breaker_enabled:
+        if not self._config.circuit_breaker_enabled:
             return
 
         if success:
@@ -310,7 +308,7 @@ class RateLimiter:
                 limits.circuit_state = CircuitState.CLOSED
         else:
             limits.consecutive_failures += 1
-            circuit_threshold = getattr(self._config, "circuit_breaker_threshold", 5)
+            circuit_threshold = self._config.circuit_breaker_threshold
             if (
                 limits.consecutive_failures >= circuit_threshold
                 and limits.circuit_state == CircuitState.CLOSED

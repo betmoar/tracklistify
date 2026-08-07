@@ -492,7 +492,7 @@ class TrackMatcher:
             )
             return _FALLBACK_DEDUP_WINDOW
         derived = 2.0 * step
-        override = getattr(self._config, "time_threshold", 0) or 0
+        override = self._config.time_threshold or 0
         if override > 0:
             if override < derived:
                 logger.warning(

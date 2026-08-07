@@ -98,11 +98,7 @@ class ShazamProvider(TrackIdentificationProvider):
         """Identify track from an audio segment."""
         try:
             # Brief cooldown to avoid hammering upstream between calls
-            try:
-                cooldown = float(getattr(self._config, "shazam_cooldown_seconds", 2.25))
-            except (ValueError, AttributeError, TypeError) as e:
-                logger.debug(f"Failed to get cooldown config, using default: {e}")
-                cooldown = 2.25
+            cooldown = float(self._config.shazam_cooldown_seconds)
             if cooldown and cooldown > 0:
                 await asyncio.sleep(cooldown)
             # Debug: one line per segment with no outcome attached is pure
@@ -117,7 +113,7 @@ class ShazamProvider(TrackIdentificationProvider):
                 return None
 
             # Perform track recognition using the updated method
-            proxy = getattr(self._config, "shazam_proxy", "") or None
+            proxy = self._config.shazam_proxy or None
             result = await self.shazam.recognize(audio_segment.file_path, proxy=proxy)
             logger.debug(f"Shazam response: {result}")
 

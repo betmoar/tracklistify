@@ -327,7 +327,7 @@ class IdentificationManager:
         property rather than captured at construction because the CLI
         override mutates the config after this manager already exists.
         """
-        return bool(getattr(self.config, "cache_refresh", False))
+        return bool(self.config.cache_refresh)
 
     def _provider_chain(self) -> List[str]:
         """Resolve the ordered provider chain: primary, then fallbacks.
@@ -338,8 +338,8 @@ class IdentificationManager:
         same provider.
         """
         chain = [self.config.primary_provider]
-        if getattr(self.config, "fallback_enabled", False):
-            for name in getattr(self.config, "fallback_providers", None) or []:
+        if self.config.fallback_enabled:
+            for name in self.config.fallback_providers or []:
                 if name not in chain:
                     chain.append(name)
         return chain
@@ -412,11 +412,11 @@ class IdentificationManager:
         """
         if not unique_tracks:
             return
-        if not getattr(self.config, "enrichment_enabled", True):
+        if not self.config.enrichment_enabled:
             return
 
         await self._enrich_spotify(unique_tracks)
-        if getattr(self.config, "musicbrainz_enabled", True):
+        if self.config.musicbrainz_enabled:
             # MusicBrainz is paced at ~1 req/s (its etiquette asks for it, and
             # a burst trips its 503 protection). On a 35-track set that's ~30s+
             # of apparent silence between "Identified N unique tracks" and the
@@ -429,7 +429,7 @@ class IdentificationManager:
             )
             await self._enrich_musicbrainz(unique_tracks)
 
-        if getattr(self.config, "beatport_enabled", False):
+        if self.config.beatport_enabled:
             await self._enrich_beatport(unique_tracks)
 
     async def _run_enrichment_pass(
@@ -1043,7 +1043,7 @@ class IdentificationManager:
         hashed once even when multiple providers in the chain consult the
         cache. Reads are chunked to avoid memory spikes on large segments.
         """
-        if not getattr(self.config, "cache_enabled", False):
+        if not self.config.cache_enabled:
             return None
         digest = self._segment_digests.get(segment.file_path)
         if digest is None:

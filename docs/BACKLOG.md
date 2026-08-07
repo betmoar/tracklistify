@@ -133,7 +133,7 @@ copy-paste, and the next source makes it four. The `getattr(factory,
 callable, write policy, pacing interval, counter labels). Not a registry — a
 function with four arguments.
 
-### Q4 (P2) — `TrackIdentificationConfig` is a god object
+### Q4 (P2) — `TrackIdentificationConfig` is a god object — partially resolved 2026-08-07
 
 ~40 flat fields spanning directories, logging, segmentation, six providers,
 circuit breaker, cache, downloads, output and enrichment. Every feature bolts
@@ -147,8 +147,23 @@ typos — a misspelled attribute silently takes the default. That is the exact
 shape of the `min_confidence` bug that already shipped once (config knob wired
 at 0–1, property setter unscaled).
 
-**Done looks like:** nested config sections (or grouped mixins), and direct
-attribute access wherever the field is guaranteed to exist.
+**Resolved (the typo-hiding smell):** all 14 config-field `getattr` reads
+replaced with direct attribute access — the fields are statically known on the
+dataclass, so a typo is now a mypy error (Q5's ratchet catches it) instead of
+a silent default. The one remaining `getattr(config, "_validator", None)` is a
+legitimately-optional internal attr, not a config field. This was the finding's
+core safety concern (the `min_confidence` bug shape).
+
+**Deferred (the structural nesting):** grouping the ~50 fields into nested
+sub-dataclasses (directories / logging / segmentation / per-provider / cache /
+output / enrichment) is deliberately NOT done in this pass. Rationale: it is a
+large structural change (every flat `config.field` access site — 50+ direct
+plus hundreds in tests — the env-var loader's `TRACKLISTIFY_<FIELD>` scheme,
+`.env.example` generation, and the types.py Protocol all assume the flat
+shape) with no behavior or safety payoff beyond organization, and high
+regression surface. The getattr removal captured the finding's actual risk
+(typo-hiding); the nesting is an organizational improvement that can land as a
+focused, separately-reviewed change when the field count grows further.
 
 ### Q5 (P2) — no type checking in CI
 
