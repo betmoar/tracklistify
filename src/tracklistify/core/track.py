@@ -6,9 +6,10 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import List, Optional, Set, Tuple, Union
 
 from tracklistify.config import TrackIdentificationConfig
+from tracklistify.core.types import TrackMetadata
 from tracklistify.utils.logger import get_logger
 
 
@@ -353,7 +354,7 @@ class Track:
     time_in_mix: str
     confidence: float
     config: Optional["TrackIdentificationConfig"] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: TrackMetadata = field(default_factory=TrackMetadata)
 
     def __str__(self) -> str:
         return (

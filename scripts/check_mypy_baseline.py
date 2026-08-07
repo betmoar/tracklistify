@@ -60,8 +60,14 @@ def _run_mypy() -> str:
 def _normalize(stdout: str) -> set[str]:
     """Normalize mypy error lines into a stable set.
 
-    Drop the directory path (keep basename + line), the column, and sort, so a
-    file move or a whitespace-only diff doesn't churn the whole set.
+    Drop the directory path (keep basename only), the line AND column numbers,
+    and sort. Line numbers are intentionally dropped: any edit that shifts
+    lines above an error would otherwise read as a "new" error at the new
+    line number, making the gate noisy and brittle against benign diffs.
+    The message + error code is specific enough to catch real regressions
+    (a genuinely new error has a new message), while a fix removes the line.
+    The trade-off: two distinct errors with identical file+message in one run
+    would collapse — acceptable for a loose-to-start ratchet.
     """
     lines: set[str] = set()
     for raw in stdout.splitlines():
@@ -69,7 +75,7 @@ def _normalize(stdout: str) -> set[str]:
         if not m:
             continue
         path = Path(m["loc"]).name
-        lines.add(f"{path}:{m['line']}: {m['msg'].strip()}")
+        lines.add(f"{path}: {m['msg'].strip()}")
     return lines
 
 

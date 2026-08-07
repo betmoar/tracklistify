@@ -80,17 +80,73 @@ class TrackIdentificationConfigDict(TypedDict):
 
 
 # Track types
-class TrackMetadata(TypedDict):
-    """Track metadata type."""
+class TrackLinks(TypedDict, total=False):
+    """Canonical per-platform track URLs nested under ``Track.metadata['links']``.
 
-    song_name: str
-    artist: str
-    album: Optional[str]
-    duration: Optional[float]
-    genre: Optional[str]
-    year: Optional[int]
-    confidence: float
-    time_in_mix: str
+    ``spotify`` / ``deezer`` / ``tidal`` / ``apple`` / ``beatport`` are
+    *resolved canonical* links (set by the enrichment passes); ``shazam`` is
+    Shazam's own track page. ``spotify_search`` / ``deezer_search`` are the
+    *search* URLs Shazam ships with a match — kept distinct from the
+    canonical keys so a consumer can tell a resolved track link from a
+    search. ``apple_music_id`` stays flat on ``TrackMetadata`` (an id, not a
+    URL). All optional: a track with no links omits ``links`` entirely.
+    """
+
+    shazam: str
+    spotify: str
+    spotify_search: str
+    deezer: str
+    deezer_search: str
+    tidal: str
+    apple: str
+    beatport: str
+
+
+class TrackMetadata(TypedDict, total=False):
+    """The contract for ``Track.metadata`` — the per-track extras dict.
+
+    ``total=False``: no provider fills every key, and a track with no extras
+    has an empty dict. This TypedDict names the keys and types in one place
+    so writers (``_extra_metadata``, the three enrichment passes) go through
+    a checked name and a typo is a mypy error rather than a silent new key
+    in the JSON output (Q2, 2026-08 code-quality review).
+
+    Flat keys plus a nested ``links`` object. The Beatport enrichment fields
+    (``bpm``, ``key``, ``genre``, ``sub_genre``, ``remixers``,
+    ``catalog_number``, ``beatport_id``) are DJ metadata no other source
+    carries. ``*_match`` values record which lookup path set the
+    corresponding link/id (``'isrc'`` / ``'search'`` / ``'musicbrainz'``)
+    so a consumer can weigh a fuzzy hit.
+    """
+
+    # --- identification (Shazam / ACRCloud via _extra_metadata) ---
+    isrc: str
+    album: str
+    label: str
+    release_date: str
+    genres: List[str]
+    shazam_id: str
+    apple_music_id: str
+    artwork_url: str
+
+    # --- Spotify enrichment ---
+    spotify_id: str
+    spotify_match: str
+
+    # --- MusicBrainz enrichment (writes into links; may set spotify_match) ---
+
+    # --- Beatport enrichment ---
+    beatport_id: str
+    bpm: int
+    key: str
+    genre: str
+    sub_genre: str
+    remixers: List[str]
+    catalog_number: str
+    beatport_match: str
+
+    # --- nested canonical links (all optional) ---
+    links: TrackLinks
 
 
 class ProviderResponse(TypedDict):
@@ -98,7 +154,9 @@ class ProviderResponse(TypedDict):
 
     success: bool
     error: Optional[str]
-    metadata: Optional[TrackMetadata]
+    # Provider-response payloads are third-party JSON of varying shape; this
+    # is the raw enrichment dict _extra_metadata consumes, NOT a TrackMetadata.
+    metadata: Optional[Dict[str, object]]
     raw_response: Dict
 
 
