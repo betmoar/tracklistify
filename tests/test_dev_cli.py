@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 
 # ---------------------------------------------------------------------------
 # config.py
@@ -79,3 +81,79 @@ class TestToolsConfiguration:
 
         cfg = ToolsConfiguration(config_path=str(tools_path))
         assert cfg.get_tool("nonexistent") is None
+
+
+# ---------------------------------------------------------------------------
+# commands/run.py
+# ---------------------------------------------------------------------------
+
+
+class TestRunCommand:
+    """Tests for RunCommand — the dev CLI shell command execution."""
+
+    def test_run_shell_command_str_input(self):
+        """run_shell_command with a string command."""
+        from tracklistify.dev_cli.commands.run import RunCommand
+
+        cmd = RunCommand()
+        result = cmd.run_shell_command("echo hello", check=True)
+        assert result.returncode == 0
+        assert "hello" in result.stdout
+
+    def test_run_shell_command_list_input(self):
+        """run_shell_command with a list command — args survive verbatim."""
+        from tracklistify.dev_cli.commands.run import RunCommand
+
+        cmd = RunCommand()
+        result = cmd.run_shell_command(["echo", "hello world"], check=True)
+        assert result.returncode == 0
+        assert "hello world" in result.stdout
+
+    def test_run_shell_command_list_input_preserves_spaced_args(self):
+        """List-form: spaced/quoted args survive as one argv element.
+
+        This is the arg-mangling fix — the old code joined the list into a
+        string and let shlex re-split it, mangling args with spaces.
+        """
+        from tracklistify.dev_cli.commands.run import RunCommand
+
+        cmd = RunCommand()
+        # python -c "print('arg with spaces')" — the script is one arg.
+        result = cmd.run_shell_command(
+            ["python", "-c", "print('arg with spaces')"], check=True
+        )
+        assert result.returncode == 0
+        assert "arg with spaces" in result.stdout
+
+    def test_run_shell_command_empty_input(self):
+        """run_shell_command with empty input raises IndexError (no argv[0]).
+
+        shlex.split("") returns [], and subprocess.run([], ...) internally
+        does `executable = args[0]`, which raises IndexError on an empty
+        list (verified against the actual CPython 3.11 subprocess module —
+        not ValueError as might be assumed).
+        """
+        from tracklistify.dev_cli.commands.run import RunCommand
+
+        cmd = RunCommand()
+        with pytest.raises(IndexError):
+            cmd.run_shell_command("", check=True)
+
+    def test_run_shell_command_nonzero_exit(self):
+        """run_shell_command with a failing command raises ToolExecutionError."""
+        from tracklistify.dev_cli.commands.run import RunCommand
+        from tracklistify.dev_cli.exceptions import ToolExecutionError
+
+        cmd = RunCommand()
+        with pytest.raises(ToolExecutionError) as exc_info:
+            # `false` is a standard Unix command that exits 1 with shell=False.
+            cmd.run_shell_command("false", check=True)
+        assert exc_info.value.exit_code == 1
+
+    def test_run_shell_command_nonexistent_command(self):
+        """run_shell_command with a nonexistent command raises FileNotFoundError."""
+        from tracklistify.dev_cli.commands.run import RunCommand
+
+        cmd = RunCommand()
+        with pytest.raises(FileNotFoundError):
+            cmd.run_shell_command("nonexistent_command_xyzzy", check=True)
