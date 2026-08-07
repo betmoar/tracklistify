@@ -21,7 +21,6 @@ findings from the code-quality review are filed separately as **Q1–Q9** below
 | U8  | Will Beatport grant partner access?                                                                                                   | external    | P3 Beatport (unblocked 2026-08-05)                    | Still open — commercial-use review through the Partner Portal, a long waitlist. **No longer blocking:** ships no client ID/scraper; the user supplies their own credentials, opt-in and off by default. If access is granted later, only the credential source changes |
 | U9  | What is the real scope of the Spotify authorization-code + PKCE flow?                                                                 | decision    | Playlist export (`exporters/spotify.py`)              | Unscoped. Client-credentials tokens can never reach `/me/playlists`, so this is a feature project, not a wiring task                                                                                                         |
 | U10 | Should a `download_quality` / `download_format` change invalidate the download cache?                                                 | decision    | download cache key                                    | **Partly answered 2026-08-07 (Q1):** the identification cache has no automatic eviction (manual-forever; re-fetchable, cleanup is `rm -rf`). The download-quality cache-key question is still open: those fields are not wired through the factory and are absent from the cache key, so a re-run at a different quality serves the old file. |
-| U15 | Beatport enrichment gate matches the wrong remix's metadata — how to fix?                                                              | fix         | Beatport enrichment correctness (`_enrichment_title_match`/`_title_stem`)             | **Measured 2026-08-07 (live, 5 sets): wrong-remix rate is set-dependent, not uniform.** Sets 1–4: 9/18 search-matches landed on a different mix. Set 5 (Reinier Zonneveld WE1 2026, 9 verifiable search-matches): **0 wrong-remix** — one was the *Extended* variant of the same remix (same remixer, acceptable). Difference: this set's search matches are mostly single-remix techno releases (Original Mix dominant), where the fallback can't go wrong; sets 1–4's failures came from denser remix catalogs. BPM is often coincidentally right (techno tempo is release-robust) but key/label/catalog# are wrong on a real mismatch. Root cause: `_title_stem` strips the remix marker, so distinct remixes (separate Beatport catalog entries) collapse to one stem; the artist gate can't save it (remixes share the credited artist). The real distinguishing signal is the **remixer name**, not the word "remix". Fix direction: redesign the gate on remixer-name identity (keep named-remixer groups distinguishing; generic mix types like Club/Extended/Edit compare on type). Acceptance: re-run the probe → 0 wrong-remix matches across all 5 sets. Parked from the 2026-08-07 review. |
 
 ## Resolved unknowns
 
@@ -35,9 +34,10 @@ Recorded measurements, retained so nobody re-derives them.
 | U4  | Flat per-platform keys or a nested `links` object in `Track.metadata`?                                                                | decision    | **Decided 2026-08-02, shipped 2026-08-04 (v0.10.0) — nested `metadata.links`** (flat keys removed, `links.spotify` canonical-only, search URLs keep `*_search` keys)                                          |
 | U5  | How well does MusicBrainz cover underground-electronic ISRCs?                                                                         | measurement | **2026-08-04 (v0.10.0).** Measured by live probe over 117 real ISRCs: ~26% resolve, ~23-25% yield a Spotify URL. Thin for underground (the spec's caveat held), higher on commercial — additive, not exclusive  |
 | U11 | Does `GET /v4/catalog/tracks/?isrc=` actually filter by ISRC?                                                                          | measurement | **2026-08-06 (live).** Yes — 42 ISRC hits across four Tomorrowland sets with no spurious mismatch-guard rejects; the ISRC-miss → search fallback fired correctly (18 search hits).                             |
-| U12 | What is the Beatport match rate on underground techno, split isrc/search/none?                                                        | measurement | **2026-08-06 (live).** 70–80% across four sets (techno holds, not just house: 70–80% vs 74% house), ~3× the ~23–25% MusicBrainz baseline. Search path carried ~40% of the Hi-LO matches. Caveat U15: the loosened gate mismatches remixes on the search path (9/18). |
+| U12 | What is the Beatport match rate on underground techno, split isrc/search/none?                                                        | measurement | **2026-08-06 (live).** 70–80% across four sets (techno holds, not just house: 70–80% vs 74% house), ~3× the ~23–25% MusicBrainz baseline. Search path carried ~40% of the Hi-LO matches. Caveat U15 (fixed, `chore/backlog-p1p2`): the loosened gate mismatched remixes on the search path (9/18) — a remixer-identity gate now replaces the stem fallback; live re-verification against these numbers is still outstanding. |
 | U13 | Real Beatport token lifetime, and does the refresh-token grant work with the swagger-ui client ID?                                     | measurement | **2026-08-06 (live).** Access tokens live ~10 h; the docs client (`app:docs`, scraped) supports the refresh-token grant and rotates it. Auth mints+refreshes headlessly from username/password — no pasted token, no babysitting. Storefront `app:prostore` id 401s on `/catalog/` and its refresh returns `invalid_client`; only the docs client works. |
 | U14 | How do we verify live-only behavior at all — recorded cassettes, an opt-in `integration` suite, or permanently-manual probes?          | decision    | **Decided 2026-08-07 (Q8): all three.** Cassette-locked tests (vcrpy) replay pacing/retry shapes offline; `scripts/probe_*.py` measure live rates on demand; an opt-in `@pytest.mark.live` suite (`--live`, never in CI) covers creds-required checks. |
+| U15 | Beatport enrichment gate matches the wrong remix's metadata — how to fix?                                                              | fix         | **Fixed (`chore/backlog-p1p2`, PR #76).** Measured 2026-08-07 (live, 5 sets): wrong-remix rate is set-dependent, not uniform — sets 1–4: 9/18 search-matches landed on a different mix; set 5 (Reinier Zonneveld WE1 2026, 9 verifiable search-matches): 0 wrong-remix (one was the *Extended* variant of the same remix, same remixer, acceptable). Root cause: `_title_stem` strips the remix marker, so distinct remixes (separate Beatport catalog entries) collapsed to one stem; the artist gate couldn't save it (remixes share the credited artist). **Shipped:** a hybrid remixer-identity gate in `core/track.py` — `_extract_mix_info` pulls remixer names + generic mix type out of trailing bracketed groups, `_any_remixer_in` does word-boundary case-insensitive remixer matching, `_mix_type_matches` normalizes generic mix-type comparison, and `_enrichment_title_match` gates on those only when Beatport actually supplies `remixers`/`mix_name` to verify against — absent data falls through to the stem comparison instead of being rejected (a recall regression caught in review). Locked by 39 new tests in `tests/test_track_matcher.py`. **Still outstanding:** the live acceptance probe (`scripts/measure_beatport_remix_matches.py`, target 0-wrong-remix across the 5 sets) has not been re-run against the new gate — it needs live Beatport credentials. Unit behavior is locked; live re-verification is open. |
 
 ---
 
@@ -63,8 +63,10 @@ the behaviors that matter most are invisible to the test suite by construction.
 **2026-08-07 update:** Q1/Q2/Q3/Q5/Q8 are resolved (see Fixed) — the two
 dominant risks named above now have guardrails (a mypy ratchet catches config/
 metadata-key drift; cassette-locked tests + probes cover the pacing-regression
-class). Q4 is partially resolved; Q6/Q7/Q9 remain open. Resolved findings are
-recorded in the Fixed table; only the still-open items appear below.
+class). Q4 is partially resolved. **Update (`chore/backlog-p1p2`, PR #76):**
+Q6 and Q7 are also resolved (see Fixed); only Q9 remains open. Resolved
+findings are recorded in the Fixed table; only the still-open items appear
+below.
 
 Three corrections to the first draft of this review, recorded so they are not
 repeated: CI *does* install ffmpeg (Q6 is a testability point, not a CI
@@ -102,30 +104,6 @@ shape) with no behavior or safety payoff beyond organization, and high
 regression surface. The getattr removal captured the finding's actual risk
 (typo-hiding); the nesting is an organizational improvement that can land as a
 focused, separately-reviewed change when the field count grows further.
-
-### Q6 (P3) — ffmpeg is required to *construct* a downloader
-
-`YTDLPDownloader.__init__` calls `get_ffmpeg_path()` (`downloaders/ytdlp.py:161`,
-`mixcloud.py:42`), which raises `FileNotFoundError` when the binary is absent.
-So a unit test asserting `ydl_opts["verbose"] is False` needs a media binary
-installed. CI works around this by installing ffmpeg
-(`.github/workflows/ci.yml`, "Install ffmpeg"), so this is **not** a CI
-failure — but it is 21 tests that cannot run in a plain checkout, and it
-means the class cannot be constructed for inspection.
-
-**Done looks like:** ffmpeg path resolution injectable or lazy, so options can
-be built without the binary. The fail-fast check in `cli.py` stays.
-
-### Q7 (P3) — `dev_cli/` has no tests at all
-
-`testpaths = ["tests"]` and nothing under `tests/` covers it; it is also
-excluded from coverage (`pyproject.toml:122`) and from bandit
-(`exclude_dirs`). The 2026-08 cheap batch fixed two real bugs in it
-(`run.py` argv mangling, `config.py` unreachable fallback) — both verified by
-hand, because there was no other way.
-
-**Done looks like:** a decision. Either it earns a test file, or it leaves
-`src/`.
 
 ### Q9 (P4) — test file names no longer describe their contents
 
@@ -213,15 +191,17 @@ as ACRCloud.
 >   techno/hard-techno sets vs 74% on Meduza house. All ~3× the ~23–25%
 >   MusicBrainz Spotify-link baseline. The search path carried ~40% of the
 >   Hi-LO matches (11/23), so the acceptance gate earns its keep on the
->   noisier catalog. **Caveat (U15, open):** the gate was loosened for recall
->   via `_enrichment_title_match` (accepts on a bare title stem behind a
->   confirmed artist match, without touching the precision-tuned dedup gate),
->   but that over-loosened — stripping the remix marker lets distinct remixes
->   collapse to one stem, so 9/18 measured search-matches landed on a
->   different mix's metadata (key/label/catalog# wrong; BPM coincidentally
->   often right). See U15 for the redesign (remixer-name identity). Until U15
->   lands, ISRC-path matches (the majority) are unaffected; only the
->   search-fallback path carries the risk.
+>   noisier catalog. **Caveat (U15, fixed `chore/backlog-p1p2`):** the gate
+>   was loosened for recall via `_enrichment_title_match` (accepts on a bare
+>   title stem behind a confirmed artist match, without touching the
+>   precision-tuned dedup gate), but that over-loosened — stripping the remix
+>   marker let distinct remixes collapse to one stem, so 9/18 measured
+>   search-matches landed on a different mix's metadata (key/label/catalog#
+>   wrong; BPM coincidentally often right). The redesign (remixer-name
+>   identity) has since shipped — see U15 in Resolved unknowns. ISRC-path
+>   matches (the majority) were unaffected throughout; only the
+>   search-fallback path carried the risk, and unit behavior is now locked
+>   by 39 tests (live re-verification is still outstanding).
 > - **U13** — **resolved, refresh works.** The auth uses Beatport's OAuth
 >   docs client (the `app:docs` `API_CLIENT_ID` scraped from the `/v4/docs/`
 >   JS bundle, not the storefront `app:prostore` id which 401s on `/catalog/`;
@@ -299,9 +279,9 @@ field description. Low value — consider generating from
 
 ### 2026-08 code-quality review P1+P2 batch (`chore/backlog-p1p2`, PR #76)
 
-Resolved six of the Q1–Q9 findings from the structural review (Q1, Q2, Q3, Q5,
-Q8 fully; Q4 partially). 659 → 666 tests, 0 regressions; new mypy + cassette
-verification surfaces.
+Resolved eight of the Q1–Q9 findings from the structural review (Q1, Q2, Q3,
+Q5, Q6, Q7, Q8 fully; Q4 partially), plus U15 (Beatport wrong-remix gate).
+659 → 723 tests, 0 regressions; new mypy + cassette verification surfaces.
 
 | Finding | What shipped | Test / verify |
 | --- | --- | --- |
@@ -311,11 +291,13 @@ verification surfaces.
 | **Q3** enrichment: 3 duplicate passes | one `_run_enrichment_pass` runner; 3 `getattr(factory,...)` fallbacks → 1; per-track workers unchanged | all 47 enrichment tests pass; invariant I6 |
 | **Q8** verification: live behavior unverifiable (U14) | cassette-locked tests (vcrpy) + `scripts/probe_*.py` + opt-in `@pytest.mark.live` (`--live`) | `test_cassette_locked.py` (503-retry lock, verified to fail when retry removed) |
 | **Q4** config: god object + defensive `getattr` (partial) | 14 `getattr(config,...)` reads → direct access (typo = mypy error now). Structural nesting deferred | `test_config.py` + mypy ratchet |
+| **Q6** ffmpeg required to *construct* a downloader | `get_ffmpeg_path()` moved from `__init__` to `download()` in `ytdlp.py`/`mixcloud.py`, resolved lazily and cached; must stay outside the `try:` block — a review found mixcloud's broad handler string-matching `"not found"` turned a missing binary into `DownloadError("Mix not found: ...")` | manual construction without ffmpeg; existing downloader tests |
+| **Q7** `dev_cli/` had no tests | decision: it earns a test file — `tests/test_dev_cli.py` (16 tests) over `config.py`, `run.py`, `logging.py`; `dev_cli/` un-excluded from coverage (bandit/mypy exclusions kept, deliberate). Surfaced a behavior change: `ToolsConfiguration` now degrades to an empty config on missing/malformed `tools.json` (was: defaults / raise) | `tests/test_dev_cli.py` |
+| **U15** Beatport gate attached the wrong remix's metadata | hybrid remixer-identity gate (`_extract_mix_info`, `_any_remixer_in`, `_mix_type_matches`) in `core/track.py`; gates only when Beatport supplies `remixers`/`mix_name`, else falls through to the stem comparison | 39 new tests, `tests/test_track_matcher.py`; live probe re-run still outstanding |
 
 **Deferred:** Q4 structural nesting (grouping ~50 fields into sub-dataclasses)
 — large surface, no behavior payoff; the getattr removal captured the typo-
-hiding risk. **Open P3/P4:** Q6 (ffmpeg-at-construct), Q7 (dev_cli tests),
-Q9 (test-file rename).
+hiding risk. **Open P3/P4:** Q9 (test-file rename).
 
 ### 2026-08 cheap batch: dead code + dev_cli + security polish (`chore/cheap-batch-*`)
 

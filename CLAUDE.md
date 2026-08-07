@@ -56,6 +56,8 @@ in sync with this table.
 - **`tests/test_handoff_invariants.py` locks the load-bearing invariants** (validation enforced, positive segmentation step, provider constructibility, fallback chain, circuit-breaker wiring, cache TTL/index persistence). If one fails, read docs/ARCHITECTURE.md before "fixing" the test.
 - **Release tag chain is `v0.7.0`→HEAD, all `v`-prefixed.** `0.7.0` (the 2025-09 clean-slate squash) and `0.8.0` (2026-05 audit) were reconstructed as back-dated annotated tags in 2026-08; `changelog_start_rev = "v0.7.0"` (in pyproject) is the oldest commitizen sees. Never auto-regenerate the changelog: `cz bump` runs the non-incremental generator that overwrites curated history — the flow is `cz changelog --incremental` (one hand-curated section) then `cz bump` (version + tag only, `update_changelog_on_bump = false`). Full procedure in `docs/PLAYBOOKS.md` → Release.
 - **`docs/dev/` is gitignored (specs/plans are local-only, not released).** Don't point released docs (`CHANGELOG.md`, `BACKLOG.md`, README) at `docs/dev/*` paths — the reference dangles on GitHub. Reference released docs (`docs/PLAYBOOKS.md`, `docs/ARCHITECTURE.md`) or inline the detail.
+- **Beatport enrichment gate must reject only on data it can verify.** `_enrichment_title_match` (`core/track.py`) gates on remixer identity, but only when Beatport supplies `remixers`/`mix_name` to compare against — rejecting on absent data is a recall regression that has shipped twice already (once via `mix_type`, once via `remixers`), both caught in review.
+- **Lazy `get_ffmpeg_path()` must stay outside `download()`'s `try:`.** Inside it, mixcloud's broad handler string-matches `"not found"` (which ffmpeg's own missing-binary error contains) and misreports a missing binary as "Mix not found".
 
 ---
 
@@ -92,7 +94,7 @@ Access via `from tracklistify.config import get_config; cfg = get_config()`. Use
 - Prefer `tmp_path` fixture over building paths manually.
 - For provider tests, monkeypatch `_api_request` or `_ensure_session`; don't hit the network.
 - For config tests touching env, `monkeypatch.delenv("TRACKLISTIFY_*", raising=False)` first.
-- Coverage source is `src/` (see `[tool.coverage.run]` in `pyproject.toml`); `dev_cli/` is excluded.
+- Coverage source is `src/` (see `[tool.coverage.run]` in `pyproject.toml`); `dev_cli/` is included (still excluded from bandit and mypy).
 
 ---
 

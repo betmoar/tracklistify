@@ -11,6 +11,12 @@ Release dates are in YYYY-MM-DD format.
 
 ### Added
 
+- **`dev_cli` test suite + coverage enablement.** `tests/test_dev_cli.py`
+  (16 tests) covers `config.py`, `commands/run.py` (via
+  `DevCommand.run_shell_command`), and `logging.py`. `dev_cli/` is removed
+  from both the `[tool.coverage.run]` and `[tool.coverage.report]` `omit`
+  lists in `pyproject.toml`, so it is now measured (still excluded from
+  bandit and mypy — deliberate, out of scope).
 - **Mypy type-checking in CI (ratchet).** `mypy` runs as a CI gate with a
   baseline of pre-existing errors (`.mypy-baseline`); CI fails only on *new*
   type errors, so the existing debt is chipped away without blocking merges.
@@ -22,6 +28,17 @@ Release dates are in YYYY-MM-DD format.
 
 ### Changed
 
+- **Lazy ffmpeg resolution in downloaders (Q6).** `get_ffmpeg_path()` moved
+  from `__init__` to `download()` in `downloaders/ytdlp.py` and
+  `downloaders/mixcloud.py`; `self.ffmpeg_path` starts `None` and is
+  resolved once on first download, then cached. Downloaders are now
+  constructible without ffmpeg installed — the `cli.py` fail-fast check is
+  unchanged.
+- **`dev_cli` config degrades instead of erroring or silently defaulting.**
+  `ToolsConfiguration` now loads to an EMPTY config when `tools.json` is
+  missing or malformed (previously: missing → loaded 4 built-in defaults;
+  malformed → raised `ConfigurationError`). The now-dead
+  `load_default_config` was deleted.
 - **`Track.metadata` is now a typed schema.** A `TrackMetadata` TypedDict
   names every metadata key + type (plus a nested `TrackLinks`); a typo'd key
   is a mypy error instead of a silent JSON field.
@@ -34,6 +51,28 @@ Release dates are in YYYY-MM-DD format.
 
 ### Fixed
 
+- **Beatport wrong-remix gate (U15).** `_enrichment_title_match` fell back
+  to `_title_stem`, which strips remix markers, so distinct remixes
+  collapsed to one stem and the enrichment gate attached the wrong remix's
+  BPM/key/label/catalog# to a track. Replaced with a hybrid
+  remixer-identity gate in `core/track.py` (`_extract_mix_info`,
+  `_any_remixer_in`, `_mix_type_matches`) that compares remixer names and
+  mix types pulled from Beatport's own data. Governing principle: gate only
+  when Beatport actually supplies `remixers`/`mix_name` to verify against —
+  when both are absent there is nothing to contradict, so the match falls
+  through to the stem comparison rather than being rejected. Rejecting on
+  absent data was a recall regression caught in review and fixed before
+  merge. 39 new tests in `tests/test_track_matcher.py`. The live acceptance
+  probe (`scripts/measure_beatport_remix_matches.py`) has not been re-run
+  against these changes — unit-level behavior is locked by tests, but live
+  re-verification is still outstanding.
+- **Mixcloud misdiagnosed a missing ffmpeg as "Mix not found".** The lazy
+  ffmpeg resolution (Q6, above) originally sat inside `download()`'s `try:`
+  block; mixcloud's broad exception handler string-matched `"not found"`
+  (present in ffmpeg's own missing-binary error) and re-raised it as
+  `DownloadError("Mix not found: <url>")`, telling users their link was
+  dead when ffmpeg was merely absent. Both downloaders now resolve the
+  ffmpeg path above the `try:`.
 - **Cache defects.** A read hit no longer rewrites the entry file (was a
   write+fsync per read under `TTLStrategy`); the phantom `_stats['entries']`
   counter (tracked total writes, not live entries) is removed; reads trust
