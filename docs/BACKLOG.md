@@ -8,48 +8,44 @@ nobody re-audits them from scratch.
 
 ## Open unknowns
 
-The items below are blocked on something other than effort. Without this
-register the distinction is invisible — the blocker kind (measurement /
-decision / external) determines whether a P3 item is one evening's work or
-blocked indefinitely on someone outside the project saying yes. U1–U5
-(enrichment), U11–U14 (Beatport + verification) are resolved and retained as
-recorded measurements; U6, U7, U9, U10, U15 remain open.
+Blocked on something other than effort. Three kinds of blocker:
+**measurement** (nobody has the number yet), **decision** (nobody has chosen
+yet), **external** (someone outside the project has to say yes). Structural
+findings from the code-quality review are filed separately as **Q1–Q9** below
+— those are blocked only on effort.
 
-Three kinds of blocker: **measurement** (nobody has the number yet),
-**decision** (nobody has chosen yet), **external** (someone outside the project
-has to say yes).
-
-Structural findings from the 2026-08 code-quality review are filed separately
-as **Q1–Q9** below — those are not blocked on anything, only on effort.
-
-| ID  | Question                                                                                                                              | Kind        | Blocks                                                | How it gets resolved                                                                                                                                                                                                         |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| U1  | What is the overall ISRC presence rate in Shazam responses?                                                                           | measurement | ~~Sizes both enrichment items~~                       | **Resolved 2026-08-04 (v0.10.0).** Measured ~94% on a commercial set (31/33) and ~70% on underground (26/36, 29/30) via the shipped per-run isrc/search/none counter + MusicBrainz enrichment |
-| U2  | What fraction of ISRCs resolve to a Spotify track?                                                                                    | measurement | ~~P2 Spotify payoff estimate~~                        | **Resolved 2026-08-04 (v0.10.0).** MusicBrainz resolves ~23-25% of ISRCs to a Spotify URL (underground/EDM) and ~33% on commercial material. The Spotify-source estimate (~95%) is not separately measurable until a Premium-backed dev app exists |
-| U3  | How often does title/artist search return the _wrong_ track for underground techno?                                                   | measurement | ~~Trusting the P2 Spotify fallback path~~             | **Resolved (instrumented) 2026-08-04 (v0.10.0).** `spotify_match: "isrc"\|"search"\|"musicbrainz"` is recorded per track, so fuzzy hits are auditable in real output instead of silently presented as fact. The wrong-match rate is now derivable from any real run |
-| U4  | Flat per-platform keys or a nested `links` object in `Track.metadata`?                                                                | decision    | ~~P3 schema item~~                                    | **Decided 2026-08-02, shipped 2026-08-04 (v0.10.0) — nested `metadata.links`** (flat keys removed, `links.spotify` canonical-only, search URLs keep `*_search` keys) |
-| U5  | How well does MusicBrainz cover underground-electronic ISRCs?                                                                         | measurement | ~~P3 MusicBrainz~~                                    | **Resolved 2026-08-04 (v0.10.0).** Measured by live probe over 117 real ISRCs: ~26% resolve, ~23-25% yield a Spotify URL. Thin for underground (the spec's caveat held), higher on commercial — additive, not exclusive |
-| U6  | Is the non-distinguishing title-suffix allowlist complete?                                                                            | measurement | P2 dedup                                              | Not resolvable up front, and deliberately so: the dedup spec defaults to _keep_, so an incomplete allowlist costs a visible duplicate row, never a silent deletion. Widen it from observed output over time                  |
-| U7  | RapidAPI Shazam: PCM conversion cost, metadata parity with shazamio, per-request price at ~216 segments/run, bot-defender reliability | external    | P3 RapidAPI                                           | Needs a paid key to answer any of it                                                                                                                                                                                         |
-| U8  | Will Beatport grant partner access?                                                                                                   | external    | ~~P3 Beatport~~ (unblocked 2026-08-05)                | Still open — commercial-use review through the Partner Portal, a long waitlist. **No longer blocking:** the 2026-08-05 decision ships no client ID and no scraper; the user supplies their own credentials, opt-in and off by default (see the P3 Beatport section). If access is granted later, only the credential source changes |
+| ID  | Question                                                                                                                              | Kind        | Blocks                                                | Status                                                                                                                                                                                                       |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| U6  | Is the non-distinguishing title-suffix allowlist complete?                                                                            | measurement | P2 dedup                                              | Not resolvable up front, and deliberately so: the dedup spec defaults to _keep_, so an incomplete allowlist costs a visible duplicate row, never a silent deletion. Widen it from observed output over time  |
+| U7  | RapidAPI Shazam: PCM conversion cost, metadata parity with shazamio, per-request price at ~216 segments/run, bot-defender reliability | external    | P3 RapidAPI                                           | Needs a paid key to answer any of it                                                                                                                                                                         |
+| U8  | Will Beatport grant partner access?                                                                                                   | external    | P3 Beatport (unblocked 2026-08-05)                    | Still open — commercial-use review through the Partner Portal, a long waitlist. **No longer blocking:** ships no client ID/scraper; the user supplies their own credentials, opt-in and off by default. If access is granted later, only the credential source changes |
 | U9  | What is the real scope of the Spotify authorization-code + PKCE flow?                                                                 | decision    | Playlist export (`exporters/spotify.py`)              | Unscoped. Client-credentials tokens can never reach `/me/playlists`, so this is a feature project, not a wiring task                                                                                                         |
-| U10 | Should a `download_quality` / `download_format` change invalidate the download cache?                                                 | decision    | download cache key                                    | **Partly answered 2026-08-07 (Q1):** the identification cache has no automatic eviction (manual-forever; re-fetchable, cleanup is `rm -rf`). The download-quality cache-key question is still open: `download_quality`/`download_format` are not wired through the factory and are absent from the cache key, so a re-run at a different quality serves the old file. |
-| U11 | Does `GET /v4/catalog/tracks/?isrc=` actually filter by ISRC?                                                                          | measurement | Beatport ISRC path (not the feature)                  | **Resolved 2026-08-06 (live).** Yes — 42 ISRC hits across four Tomorrowland sets with no spurious mismatch-guard rejects; the ISRC-miss → search fallback fired correctly (18 search hits). |
-| U12 | What is the Beatport match rate on underground techno, split isrc/search/none?                                                        | measurement | Sizing Beatport against MusicBrainz as a link source  | **Resolved 2026-08-06 (live).** 70–80% across four sets (techno holds, not just house: 70–80% vs 74% house), ~3× the ~23–25% MusicBrainz baseline. Search path carried ~40% of the Hi-LO matches. Caveat U15: the loosened gate mismatches remixes on the search path (9/18). |
-| U13 | Real Beatport token lifetime, and does the refresh-token grant work with the swagger-ui client ID?                                     | measurement | Whether the pasted-token path is one-off or a chore   | **Resolved 2026-08-06 (live).** Access tokens live ~10 h; the docs client (`app:docs`, scraped) supports the refresh-token grant and rotates it. Auth mints+refreshes headlessly from username/password — no pasted token, no babysitting. Storefront `app:prostore` id 401s on `/catalog/` and its refresh returns `invalid_client`; only the docs client works. See the verified block in the P3 entry below.         |
-| U14 | How do we verify live-only behavior at all — recorded cassettes, an opt-in `integration` suite, or permanently-manual probes?          | decision    | ~~Q8~~ (resolved 2026-08-07)                          | **Decided 2026-08-07 (Q8): all three.** Cassette-locked tests (vcrpy) replay pacing/retry shapes offline; `scripts/probe_*.py` measure live rates on demand; an opt-in `@pytest.mark.live` suite (`--live`, never in CI) covers creds-required checks. The `integration` marker stays registered for the broader category. |
+| U10 | Should a `download_quality` / `download_format` change invalidate the download cache?                                                 | decision    | download cache key                                    | **Partly answered 2026-08-07 (Q1):** the identification cache has no automatic eviction (manual-forever; re-fetchable, cleanup is `rm -rf`). The download-quality cache-key question is still open: those fields are not wired through the factory and are absent from the cache key, so a re-run at a different quality serves the old file. |
 | U15 | Beatport enrichment gate matches the wrong remix's metadata — how to fix?                                                              | fix         | Beatport enrichment correctness (`_enrichment_title_match`/`_title_stem`)             | **Measured 2026-08-07 (live, 4 sets): 9/18 search-matches landed on a different mix.** BPM is often coincidentally right (techno tempo is release-robust) but key/label/catalog# — the fields Beatport exists to add — are wrong for 4+ of them. Root cause: `_title_stem` strips the remix marker, so distinct remixes (separate Beatport catalog entries) collapse to one stem; the artist gate can't save it (remixes share the credited artist). The real distinguishing signal is the **remixer name**, not the word "remix": `Adam Sellouk Remix` vs `Original Mix` = wrong; `Adam Sellouk Remix` vs `Adam Sellouk Extended Remix` = same remix, Extended variant (acceptable). Fix direction: redesign the gate on remixer-name identity (keep named-remixer groups distinguishing; generic mix types like Club/Extended/Edit compare on type). Acceptance: re-run the measure probe (scratchpad `measure_remix_live.py`) → 0 wrong-remix matches, the 2 recall bugs (Adelphi show-ID, MEDUZA feat) still pass, wrong-artist still rejected. Parked from the 2026-08-07 review. |
 
-**Unblocked right now:** the MusicBrainz item shipped in v0.10.0 (keyless, no
-external gate). The Spotify client-credentials source also shipped but is
-blocked behind a Premium-backed developer app for *live* use (Spotify's
-late-2024 Web API policy) — the code is correct and degrades cleanly to a
-no-op without it. Everything else in this table is waiting on a measurement,
-an external decision, or someone outside the project.
+## Resolved unknowns
+
+Recorded measurements, retained so nobody re-derives them.
+
+| ID  | Question                                                                                                                              | Kind        | Resolution                                                                                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| U1  | What is the overall ISRC presence rate in Shazam responses?                                                                           | measurement | **2026-08-04 (v0.10.0).** ~94% on a commercial set (31/33) and ~70% on underground (26/36, 29/30) via the shipped per-run isrc/search/none counter + MusicBrainz enrichment                                   |
+| U2  | What fraction of ISRCs resolve to a Spotify track?                                                                                    | measurement | **2026-08-04 (v0.10.0).** MusicBrainz resolves ~23-25% of ISRCs to a Spotify URL (underground/EDM) and ~33% on commercial. The Spotify-source estimate (~95%) is not separately measurable until a Premium-backed dev app exists |
+| U3  | How often does title/artist search return the _wrong_ track for underground techno?                                                   | measurement | **2026-08-04 (v0.10.0, instrumented).** `spotify_match: "isrc"\|"search"\|"musicbrainz"` is recorded per track, so fuzzy hits are auditable in real output. The wrong-match rate is now derivable from any real run |
+| U4  | Flat per-platform keys or a nested `links` object in `Track.metadata`?                                                                | decision    | **Decided 2026-08-02, shipped 2026-08-04 (v0.10.0) — nested `metadata.links`** (flat keys removed, `links.spotify` canonical-only, search URLs keep `*_search` keys)                                          |
+| U5  | How well does MusicBrainz cover underground-electronic ISRCs?                                                                         | measurement | **2026-08-04 (v0.10.0).** Measured by live probe over 117 real ISRCs: ~26% resolve, ~23-25% yield a Spotify URL. Thin for underground (the spec's caveat held), higher on commercial — additive, not exclusive  |
+| U11 | Does `GET /v4/catalog/tracks/?isrc=` actually filter by ISRC?                                                                          | measurement | **2026-08-06 (live).** Yes — 42 ISRC hits across four Tomorrowland sets with no spurious mismatch-guard rejects; the ISRC-miss → search fallback fired correctly (18 search hits).                             |
+| U12 | What is the Beatport match rate on underground techno, split isrc/search/none?                                                        | measurement | **2026-08-06 (live).** 70–80% across four sets (techno holds, not just house: 70–80% vs 74% house), ~3× the ~23–25% MusicBrainz baseline. Search path carried ~40% of the Hi-LO matches. Caveat U15: the loosened gate mismatches remixes on the search path (9/18). |
+| U13 | Real Beatport token lifetime, and does the refresh-token grant work with the swagger-ui client ID?                                     | measurement | **2026-08-06 (live).** Access tokens live ~10 h; the docs client (`app:docs`, scraped) supports the refresh-token grant and rotates it. Auth mints+refreshes headlessly from username/password — no pasted token, no babysitting. Storefront `app:prostore` id 401s on `/catalog/` and its refresh returns `invalid_client`; only the docs client works. |
+| U14 | How do we verify live-only behavior at all — recorded cassettes, an opt-in `integration` suite, or permanently-manual probes?          | decision    | **Decided 2026-08-07 (Q8): all three.** Cassette-locked tests (vcrpy) replay pacing/retry shapes offline; `scripts/probe_*.py` measure live rates on demand; an opt-in `@pytest.mark.live` suite (`--live`, never in CI) covers creds-required checks. |
 
 ---
 
-## 2026-08 code-quality review (Q1–Q9)
+## 2026-08 code-quality review — open findings
+
+Nine findings (Q1–Q9) from a structural read taken while building the Beatport
+source. Q1/Q2/Q3/Q5/Q8 are resolved (see Fixed); Q4 is partial. Below are the
+still-open items. Every claim was verified against the tree on 2026-08-05.
 
 A structural read of the codebase taken while building the Beatport source —
 config, providers, identification, `core/track.py`, cache, factory, limiter,
@@ -64,34 +60,16 @@ down. The dominant risk is not bugs; it is **surface accumulating faster than
 anything that validates it** (config fields, metadata keys). The second is that
 the behaviors that matter most are invisible to the test suite by construction.
 
-**2026-08-07 update:** Q1/Q2/Q3/Q5/Q8 are resolved (moved to Fixed) — the two
+**2026-08-07 update:** Q1/Q2/Q3/Q5/Q8 are resolved (see Fixed) — the two
 dominant risks named above now have guardrails (a mypy ratchet catches config/
 metadata-key drift; cassette-locked tests + probes cover the pacing-regression
-class). Q4 is partially resolved; Q6/Q7/Q9 remain open. The per-finding detail
-below is retained for the still-open items; resolved items carry a one-line
-pointer to the Fixed entry.
+class). Q4 is partially resolved; Q6/Q7/Q9 remain open. Resolved findings are
+recorded in the Fixed table; only the still-open items appear below.
 
 Three corrections to the first draft of this review, recorded so they are not
 repeated: CI *does* install ffmpeg (Q6 is a testability point, not a CI
 failure); the defensive `getattr` pattern was 15 sites (now 1, post-Q4); and
 `BaseCache.get`'s rewrite-on-hit is fixed (Q1), not merely conditional.
-
-### Q1 (P1) — the cache subsystem is where "documented" replaced "fixed" — RESOLVED 2026-08-07
-
-→ Moved to **Fixed** (dead knobs deleted; read-path rewrite, phantom entries
-counter, compression sniff all fixed; manual-forever eviction decision
-recorded). U10 partly answered.
-
-### Q2 (P2) — `Track.metadata` is a growing dict with no schema — RESOLVED 2026-08-07
-
-→ Moved to **Fixed** (`TrackMetadata` TypedDict names every key + nested
-`TrackLinks`; writers go through it; a typo is a mypy error).
-
-### Q3 (P2) — three near-duplicate enrichment passes — RESOLVED 2026-08-07
-
-→ Moved to **Fixed** (one parameterized `_run_enrichment_pass` runner; the
-three `getattr(factory, ...)` fallbacks collapsed to one; per-track workers
-unchanged).
 
 ### Q4 (P2) — `TrackIdentificationConfig` is a god object — partially resolved 2026-08-07
 
@@ -125,11 +103,6 @@ regression surface. The getattr removal captured the finding's actual risk
 (typo-hiding); the nesting is an organizational improvement that can land as a
 focused, separately-reviewed change when the field count grows further.
 
-### Q5 (P2) — no type checking in CI — RESOLVED 2026-08-07
-
-→ Moved to **Fixed** (mypy ratchet gate in CI; `.mypy-baseline` of 58
-pre-existing errors, CI fails only on new errors).
-
 ### Q6 (P3) — ffmpeg is required to *construct* a downloader
 
 `YTDLPDownloader.__init__` calls `get_ffmpeg_path()` (`downloaders/ytdlp.py:161`,
@@ -153,13 +126,6 @@ hand, because there was no other way.
 
 **Done looks like:** a decision. Either it earns a test file, or it leaves
 `src/`.
-
-### Q8 (P2) — the behaviors that matter most are unverifiable by the suite — RESOLVED 2026-08-07
-
-→ Moved to **Fixed**. Decision (U14): cassette-locked tests + probe scripts +
-opt-in live suite. The pacing *intervals* themselves remain sleep-counting
-unit tests verified by the probe (a cassette locks the retry *shape*, not the
-wall-clock pacing value) — that gap is documented, not hidden.
 
 ### Q9 (P4) — test file names no longer describe their contents
 
