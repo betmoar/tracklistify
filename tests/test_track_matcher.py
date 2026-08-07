@@ -922,3 +922,122 @@ def test_low_confidence_skip_stays_below_info(track_matcher, caplog):
 
     assert not [r for r in caplog.records if r.levelno >= logging.INFO]
     assert any(r.levelno == logging.DEBUG for r in caplog.records)
+
+
+class TestExtractMixInfo:
+    """Unit tests for _extract_mix_info — the U15 remixer-name gate helper."""
+
+    def test_extract_mix_info_named_remixer(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Artist X Remix)")
+        # _normalize_token lowercases and accent-folds; the extracted name
+        # is the normalized form after the remix keyword is stripped.
+        assert result["remixers"] == ["artist x"]
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_generic_mix(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Club Mix)")
+        assert result["remixers"] == []
+        assert result["mix_type"] == "club mix"
+
+    def test_extract_mix_info_no_brackets(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name")
+        assert result["remixers"] == []
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_multiple_remixers(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        # "Artist X & Y" → _normalize_token → "artist x y" (punctuation→space)
+        result = _extract_mix_info("Track Name (Artist X & Y Remix)")
+        assert result["remixers"] == ["artist x y"]
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_remix_and_mix_type(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Artist X Remix) (Club Mix)")
+        assert result["remixers"] == ["artist x"]
+        assert result["mix_type"] == "club mix"
+
+    def test_extract_mix_info_bootleg(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (DJ Someone Bootleg)")
+        assert result["remixers"] == ["dj someone"]
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_edit_by(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Edit By Producer)")
+        assert result["remixers"] == ["producer"]
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_vip(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (VIP)")
+        # "VIP" alone is a keep-marker with no name after it — the kernel
+        # word IS the identifier. Keep the whole thing as a remixer name.
+        # After stripping the keyword "vip", nothing remains → treat it as
+        # a generic mix type (it's a version label, not a remixer).
+        assert result["remixers"] == []
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_original_mix_ignored(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Original Mix)")
+        assert result["remixers"] == []
+        assert result["mix_type"] == "original mix"
+
+    def test_extract_mix_info_extended_mix(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Extended Mix)")
+        assert result["remixers"] == []
+        assert result["mix_type"] == "extended mix"
+
+    def test_extract_mix_info_radio_edit(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Radio Edit)")
+        assert result["remixers"] == []
+        assert result["mix_type"] == "radio edit"
+
+    def test_extract_mix_info_live_at_ignored(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Live at Tomorrowland)")
+        assert result["remixers"] == []
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_feat_ignored(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        # feat groups are canonicalized by _decide_title_group, not mix info.
+        result = _extract_mix_info("Track Name (feat. Vocalist)")
+        assert result["remixers"] == []
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_square_brackets(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name [DJ X Remix]")
+        # _normalize_token("DJ X Remix") → "dj x remix", strip "remix" → "dj x"
+        assert result["remixers"] == ["dj x"]
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_remix_keyword_only(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        # "(Remix)" — a remix keyword with no name after it.
+        result = _extract_mix_info("Track Name (Remix)")
+        assert result["remixers"] == []
+        assert result["mix_type"] is None

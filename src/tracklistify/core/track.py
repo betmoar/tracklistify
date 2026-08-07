@@ -275,6 +275,68 @@ def _title_stem(title: str) -> str:
     return _normalize_token(stripped)
 
 
+def _extract_mix_info(title: str) -> dict[str, list[str] | str | None]:
+    """Extract remixer names and mix type from a title's bracketed suffix groups.
+
+    Scans trailing bracketed groups via ``_TRAILING_GROUP_RE``. For each group:
+
+    - If ``_SUFFIX_KEEP_RE`` matches AND stripping the keyword leaves a name
+      → remixer name (accumulates).
+    - If the normalized inner is in ``_SUFFIX_DROP_EXACT`` → generic mix type
+      (only the last one matters — the innermost bracket closest to the track
+      name).
+    - If ``_SUFFIX_DROP_PREFIXES`` matches → ignored (live-at location).
+    - Empty groups, feat-canonicalization groups, and unrecognized groups →
+      ignored.
+
+    Note: does NOT use ``_decide_title_group`` — that function returns
+    ``("drop",)`` for ``_SUFFIX_DROP_EXACT`` members (they are non-distinguishing
+    for dedup), but we need to capture them as mix types here.
+
+    Returns:
+        dict with ``remixers`` (list of str, possibly empty) and ``mix_type``
+        (str or None).
+    """
+    remixers: list[str] = []
+    mix_type: str | None = None
+
+    # Peel trailing groups from right to left, same as _strip_title_variant.
+    remaining = title
+    for _ in range(_MAX_GROUP_PEELS):
+        match = _TRAILING_GROUP_RE.search(remaining)
+        if not match:
+            break
+        inner = match.group(1)[1:-1]  # strip delimiters
+        inner_norm = _normalize_token(inner)
+
+        if not inner_norm:
+            # Empty group — harmless noise, skip.
+            pass
+        elif _SUFFIX_KEEP_RE.search(inner_norm):
+            # Remix-bearing group. Strip the keyword to get the remixer name.
+            name = _SUFFIX_KEEP_RE.sub("", inner_norm).strip()
+            if name:
+                remixers.append(name)
+            # else: bare keyword like "(Remix)" — no name, not a remixer signal.
+        elif inner_norm in _SUFFIX_DROP_EXACT:
+            # Generic mix type — only the LAST one matters (the innermost
+            # bracket closest to the track name).
+            if mix_type is None:
+                mix_type = inner_norm
+        elif inner_norm.startswith(_SUFFIX_DROP_PREFIXES):
+            # Live-at location — ignored.
+            pass
+        elif _FEAT_MARKER_RE.match(inner_norm):
+            # Feat-canonicalization group — not mix information.
+            pass
+        # else: unrecognized group (e.g. show ID like "(Tritonia 404)",
+        # "(Bonus Track)") — not mix information.
+
+        remaining = remaining[: match.start()].strip()
+
+    return {"remixers": remixers, "mix_type": mix_type}
+
+
 def _enrichment_title_match(track_title: str, candidate_title: str) -> bool:
     """Enrichment's looser title comparison: strict-equal OR same stem.
 
