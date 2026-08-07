@@ -597,7 +597,7 @@ async def test_get_does_not_rewrite_entry_on_read_hit(
 
 
 @pytest.mark.asyncio
-async def test_stats_entries_not_phantom_over_count():
+async def test_stats_entries_not_phantom_over_count(tmp_path: Path):
     """The ``entries`` stat must not track total writes (over-counting
     overwrites) — it was removed from _stats as a phantom counter.
 
@@ -607,7 +607,7 @@ async def test_stats_entries_not_phantom_over_count():
     (the authoritative live count is the storage index's length); this
     asserts the key is gone so nobody reintroduces the drifting counter.
     """
-    storage = JSONStorage(Path("/tmp/_unused_entries_test"))  # dir not created
+    storage = JSONStorage(tmp_path / "entries_test")
     # We only inspect _stats init, so never call set/get here.
     from tracklistify.cache.invalidation import TTLStrategy
 

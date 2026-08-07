@@ -111,7 +111,7 @@ segmentation, rate limits, cache, enrichment).
 uv sync --dev                          # install runtime + dev deps
 uv run python -m pytest -q             # run the test suite (~666 tests)
 uv run ruff check src/ tests/ scripts/ # lint
-uv run ruff format src/ tests/ scripts/# format
+uv run ruff format src/ tests/ scripts/  # format
 uv run python scripts/check_mypy_baseline.py  # type-check ratchet
 ```
 
