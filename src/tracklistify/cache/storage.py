@@ -115,9 +115,21 @@ class JSONStorage(CacheStorage[T]):
                 async with aiofiles.open(file_path, "rb") as f:
                     data = await f.read()
 
-                # Handle compression
+                # Handle compression. The authoritative signal is the
+                # ``compression`` flag the index records per key (written on
+                # set()/rebuild). The magic-byte sniff (``ZLIB_HEADER``) is kept
+                # only as a backward-compat fallback for entries written before
+                # the index tracked the flag — a value's JSON can legitimately
+                # begin with the same two bytes (0x78 0x9c as UTF-8), so sniffing
+                # alone is unsafe once the flag exists. ``False`` is an explicit
+                # "not compressed"; only a MISSING field (legacy entry) sniffs.
                 try:
-                    if data.startswith(ZLIB_HEADER):
+                    index_meta = await self._index.get_metadata(key) or {}
+                    if "compression" in index_meta:
+                        compressed = bool(index_meta["compression"])
+                    else:
+                        compressed = data.startswith(ZLIB_HEADER)
+                    if compressed:
                         data = zlib.decompress(data)
                     entry = json.loads(data.decode("utf-8"))
 

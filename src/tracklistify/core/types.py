@@ -59,8 +59,6 @@ class TrackIdentificationConfigDict(TypedDict):
     cache_storage_format: str
     cache_compression_enabled: bool
     cache_compression_level: int
-    cache_cleanup_enabled: bool
-    cache_cleanup_interval: int
     cache_max_age: int
     cache_min_free_space: int
 
