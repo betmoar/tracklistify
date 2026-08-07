@@ -8,10 +8,10 @@ errors fail CI; fixed errors are fine. When the baseline shrinks, regenerate
 it (``uv run mypy --baseline`` style — see below) so the gate stays tight.
 
 Baseline format: one normalized error line per line, sorted. A normalized
-line drops the leading ``path:`` (only the filename + line + code + message
-survive) so a file rename or a re-baseline after a bulk move doesn't read as
-100% new errors. The column number is dropped too (whitespace edits would
-otherwise churn every line).
+line keeps the parent directory + filename + message, dropping the line and
+column numbers. The parent dir disambiguates same-named files across packages
+(``cache/base.py`` vs ``core/base.py``); dropping the line number means a
+benign edit shifting lines above an error doesn't read as a "new" error.
 
 Usage:
     python scripts/check_mypy_baseline.py
@@ -60,22 +60,22 @@ def _run_mypy() -> str:
 def _normalize(stdout: str) -> set[str]:
     """Normalize mypy error lines into a stable set.
 
-    Drop the directory path (keep basename only), the line AND column numbers,
-    and sort. Line numbers are intentionally dropped: any edit that shifts
-    lines above an error would otherwise read as a "new" error at the new
-    line number, making the gate noisy and brittle against benign diffs.
-    The message + error code is specific enough to catch real regressions
-    (a genuinely new error has a new message), while a fix removes the line.
-    The trade-off: two distinct errors with identical file+message in one run
-    would collapse — acceptable for a loose-to-start ratchet.
+    Keep the parent directory + filename (``cache/base.py``, not ``base.py``)
+    so same-named files across packages stay distinct, and drop the line and
+    column numbers so an edit shifting lines above an error doesn't read as a
+    "new" error. The message (+ its trailing ``[code]``) is specific enough to
+    catch real regressions; a fix removes the line.
     """
     lines: set[str] = set()
     for raw in stdout.splitlines():
         m = _ERROR_RE.match(raw)
         if not m:
             continue
-        path = Path(m["loc"]).name
-        lines.add(f"{path}: {m['msg'].strip()}")
+        p = Path(m["loc"])
+        # parent/name: disambiguates cache/base.py from core/base.py. When the
+        # file is at the src root (no parent), the name alone is fine.
+        label = f"{p.parent.name}/{p.name}" if p.parent.name else p.name
+        lines.add(f"{label}: {m['msg'].strip()}")
     return lines
 
 

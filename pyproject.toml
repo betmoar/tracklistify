@@ -114,6 +114,7 @@ testpaths = [
 markers = [
     "integration: marks tests that hit live external services (skipped unless run explicitly)",
     "live: marks tests that hit live external services with real credentials (opt-in via --live; never in CI)",
+    "vcr: marks tests that replay recorded HTTP cassettes (pytest-recording; offline)",
 ]
 
 [tool.coverage.run]

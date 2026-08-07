@@ -27,7 +27,6 @@ import sys
 # Curated so a healthy run resolves a majority; a pacing regression drops it.
 SAMPLE_ISRCS = [
     "USUM71703861",  # Despacito
-    "USUM71703861",
     "GBAYE0601498",  # Crazy (Gnarls Barkley)
     "USUM71406867",  # Uptown Funk (approx)
     "GBAYE0601302",
