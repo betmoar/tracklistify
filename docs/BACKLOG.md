@@ -211,29 +211,23 @@ for U11, and for identification quality in general.
 The `integration` marker is registered in `pyproject.toml` and unused.
 
 **Decision (U14): probe scripts + recorded cassettes + opt-in live suite** —
-all three layers shipped, each catching what the layer below cannot:
+all three layers shipped:
 
 - **Cassette-locked tests** (`tests/test_cassette_locked.py` + vcrpy
-  cassettes under `tests/cassettes/`): replay recorded HTTP interactions so
-  the pacing/retry/rate-limit shapes are locked offline. The canonical case
-  is a MusicBrainz 503-then-200 cassette that asserts the provider retries
-  instead of returning `{}` — the exact regression an 8× yield loss once
-  shipped through. Verified to fail when the retry logic is removed.
-- **Probe scripts** (`scripts/probe_*.py`, extending
-  `scripts/measure_beatport_remix_matches.py`): on-demand live checks whose
-  output lands here. `probe_musicbrainz_link_rate.py` measures the real
-  resolution rate against known ISRCs — the signal that caught the pacing
-  bug the first time.
+  cassettes): replay recorded HTTP so the pacing/retry shapes are locked
+  offline. The MusicBrainz 503→retry→200 cassette asserts the provider
+  retries instead of returning `{}` (verified to fail when the retry is
+  removed).
+- **Probe scripts** (`scripts/probe_*.py`): on-demand live checks.
+  `probe_musicbrainz_link_rate.py` measures the real resolution rate against
+  known ISRCs — the signal that caught the pacing bug the first time.
 - **Opt-in live suite** (`tests/test_live_probes.py`, `@pytest.mark.live`):
-  gated behind `--live` (skipped by default, never in CI via conftest). The
-  `integration` marker stays for the broader live-hit category; `live` is the
-  creds-required subset.
+  gated behind `--live` (skipped by default, never in CI).
 
-The pacing *intervals* themselves (`_MUSICBRAINZ_REQUEST_INTERVAL`,
-`_BEATPORT_REQUEST_INTERVAL`) remain asserted by sleep-counting unit tests and
-verified against reality by the probe — a cassette can lock the retry *shape*
-but not the wall-clock pacing value, which is a property of the live API's
-rate-limit behavior. That gap is now documented, not hidden.
+The pacing *intervals* themselves remain asserted by sleep-counting unit
+tests and verified against reality by the probe — a cassette can lock the
+retry *shape* but not the wall-clock pacing value. That gap is documented,
+not hidden.
 
 ### Q9 (P4) — test file names no longer describe their contents
 

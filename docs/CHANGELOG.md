@@ -11,7 +11,36 @@ Release dates are in YYYY-MM-DD format.
 
 ### Added
 
-- _(nothing yet)_
+- **Mypy type-checking in CI (ratchet).** `mypy` runs as a CI gate with a
+  baseline of pre-existing errors (`.mypy-baseline`); CI fails only on *new*
+  type errors, so the existing debt is chipped away without blocking merges.
+  `scripts/check_mypy_baseline.py` (`--update` to re-baseline after fixes).
+- **Cassette-locked + live verification.** vcrpy cassettes replay recorded
+  HTTP so pacing/retry shapes (the MusicBrainz 503→retry regression class)
+  are locked offline. An opt-in `@pytest.mark.live` suite (run via `--live`)
+  and `scripts/probe_*.py` cover the live signals cassettes can't.
+
+### Changed
+
+- **`Track.metadata` is now a typed schema.** A `TrackMetadata` TypedDict
+  names every metadata key + type (plus a nested `TrackLinks`); a typo'd key
+  is a mypy error instead of a silent JSON field.
+- **One enrichment runner.** The three near-identical enrichment passes
+  (Spotify/MusicBrainz/Beatport) share one parameterized runner; behavior
+  unchanged.
+- **Config reads are direct, not defensive.** The 14 `getattr(config, ...)`
+  reads that could hide a typo are now direct attribute access — a
+  misspelled field is a mypy error (the shape of the `min_confidence` bug).
+
+### Fixed
+
+- **Cache defects.** A read hit no longer rewrites the entry file (was a
+  write+fsync per read under `TTLStrategy`); the phantom `_stats['entries']`
+  counter (tracked total writes, not live entries) is removed; reads trust
+  the stored compression flag, not zlib magic-byte sniffing.
+- **Dead cache knobs removed.** `cache_cleanup_enabled` / `_interval` were
+  settable and documented but read by nothing — deleted from config, types,
+  and `.env.example`.
 
 ## [0.11.0] - 2026-08-07
 

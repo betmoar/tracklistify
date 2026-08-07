@@ -13,144 +13,114 @@
 
 # Tracklistify
 
-A powerful and flexible automatic tracklist generator for DJ mixes and audio streams. Identifies tracks in your mixes using multiple providers (Shazam, ACRCloud) and generates formatted playlists with high accuracy.
+Automatic tracklist generator for DJ mixes and audio streams. Identifies tracks
+in your mixes using multiple providers (Shazam, ACRCloud) and generates
+formatted playlists.
 
 ## Key Features
 
-### 🎵 **Multi-Provider Track Identification**
+### Multi-Provider Track Identification
 
-  - Shazam and ACRCloud for fingerprint-based identification
-  - Spotify integration for metadata enrichment and playlist export
-  - MusicBrainz and Beatport enrichment for canonical links + DJ metadata
-    (BPM, key, label) — Beatport is opt-in with your own account
-  - Smart provider fallback system with circuit breaker
-  - High accuracy with confidence scoring
-  - Support for multiple platforms (YouTube, Mixcloud, SoundCloud, Spotify)
+- Shazam and ACRCloud for fingerprint-based identification
+- Smart provider fallback with per-provider circuit breaker
+- Confidence scoring
+- Download from YouTube, Mixcloud, and SoundCloud
 
-### 📊 **Versatile Output Formats**
+### Metadata Enrichment
 
-  - JSON with detailed metadata
-  - Markdown formatted tracklists
-  - M3U playlists
-  - CSV and XML exports
-  - Rekordbox compatible format
-
-### 🚀 **Advanced Processing**
-
-  - Automatic format conversion via FFmpeg
-  - Batch processing for multiple files
-  - Intelligent caching with TTL/LRU/size invalidation strategies
-  - Progress tracking with detailed status
-  - Configurable audio quality settings
-
-### ⚙️ **Robust Architecture**
-
-  - Asynchronous processing throughout
-  - Token-bucket rate limiting with circuit breaker per provider
-  - Thread-safe singletons for config, cache, and rate limiter
-  - Async context managers for deterministic resource cleanup
-  - Centralised, structured exception hierarchy
-  - Coloured console + rotating-file logging
-
-## Requirements
-
-- Python 3.11 or higher
-- ffmpeg
-- git
-- uv (package and project manager)
-
-### Important Note:
-
-- Tracklistify is managed by uv, so you will need to install it.
-- Follow the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for your platform.
-
-## Quick Start
-
-### **1. Installation**
-
-   ```bash
-   # Clone the repository
-   git clone https://github.com/betmoar/tracklistify.git
-   cd tracklistify
-
-   # Install dependencies using uv
-   uv sync
-   ```
-
-### **2. Configuration**
-
-   ```bash
-   # Copy example environment file
-   cp .env.example .env
-   ```
-
-### **3. Basic Usage**
-
-   ```bash
-   # Identify tracks in a file or URL
-   uv run tracklistify <input>
-
-   # Examples:
-   tracklistify path/to/mix.mp3
-   tracklistify https://youtube.com/watch?v=example
-   ```
-
-## Advanced Usage
+- Spotify, MusicBrainz, and Beatport resolve canonical streaming links
+  post-dedup (first-writer-wins per platform)
+- MusicBrainz is keyless (ISRC lookup); Beatport adds DJ metadata
+  (BPM, key, label, genre, remixers, catalog number) and is opt-in with your
+  own account
+- Enrichment is best-effort: never fails a run
 
 ### Output Formats
 
+- JSON with full metadata
+- Markdown tracklists
+- M3U playlists (VLC `#EXTVLCOPT:start-time` per-track seeking)
+
+### Architecture
+
+- Async throughout; token-bucket rate limiting with circuit breaker
+- Thread-safe singletons for config, cache, and rate limiter
+- Async context managers for deterministic resource cleanup
+- Intelligent caching (TTL/LRU/size invalidation; download cache)
+
+## Requirements
+
+- Python 3.11+
+- ffmpeg
+- git
+- [uv](https://docs.astral.sh/uv/) (package manager)
+- [Deno](https://deno.com/) — required for YouTube downloads (the `yt-dlp-ejs`
+  solver scripts run inside Deno to handle YouTube's signature/n-param
+  challenges)
+
+## Quick Start
+
 ```bash
-# Specify output format
-tracklistify -f json input.mp3    # JSON output
-tracklistify -f markdown input.mp3 # Markdown output
-tracklistify -f m3u input.mp3     # M3U playlist
-tracklistify -f csv input.mp3     # CSV export
-tracklistify -f all input.mp3     # Generate all formats
+# Clone and install
+git clone https://github.com/betmoar/tracklistify.git
+cd tracklistify
+uv sync
+
+# Configure (copy the example env, then edit as needed)
+cp .env.example .env
+
+# Identify tracks in a file or URL
+uv run tracklistify <input>
+# e.g.
+uv run tracklistify path/to/mix.mp3
+uv run tracklistify https://youtube.com/watch?v=example
 ```
 
-### Batch Processing
+## Usage
 
 ```bash
-# Process multiple files
-tracklistify -b path/to/folder/*.mp3
+# Output format (json | markdown | m3u | all)
+tracklistify -f json input.mp3
 
-# With specific output format
-tracklistify -b -f json path/to/folder/*.mp3
-```
+# Ignore stored identifications and re-identify (--no-cache is a refresh,
+# not a disable: reads are skipped, writes stay live)
+tracklistify --no-cache input.mp3
 
-### Additional Options
+# Keep the source codec end-to-end (skip yt-dlp's MP3 transcode)
+tracklistify --stream-copy <youtube-url>
 
-```bash
-# Show progress with detailed status
-tracklistify --progress input.mp3
-
-# Specify provider
+# Specify the primary provider; disable fallback
 tracklistify --provider shazam input.mp3
-
-# Set output directory
-tracklistify -o path/to/output input.mp3
+tracklistify --no-fallback input.mp3
 ```
+
+See `.env.example` for every configuration option (provider credentials,
+segmentation, rate limits, cache, enrichment).
 
 ## Development
 
-Working on the codebase? Start here:
-
-- [`CLAUDE.md`](CLAUDE.md) — full development guide covering project layout, coding conventions, factory/strategy patterns, testing, and common tasks (also used as context for AI assistants).
-- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — contribution workflow and code of conduct.
+- [`CLAUDE.md`](CLAUDE.md) — full development guide: project layout, coding
+  conventions, patterns, testing, and common tasks.
+- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — contribution workflow and
+  code of conduct.
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — version history.
-- [`docs/archive/`](docs/archive/) — historical audit and implementation-plan artefacts (informational only).
+- [`docs/PLAYBOOKS.md`](docs/PLAYBOOKS.md) — step-by-step procedures for
+  common development tasks.
 
 ```bash
-uv sync --dev                       # install runtime + dev deps
-uv run python -m pytest -q          # run the full test suite (~335 tests)
-uv run ruff check src/ tests/       # lint
-uv run ruff format src/ tests/      # format
+uv sync --dev                          # install runtime + dev deps
+uv run python -m pytest -q             # run the test suite (~666 tests)
+uv run ruff check src/ tests/ scripts/ # lint
+uv run ruff format src/ tests/ scripts/# format
+uv run python scripts/check_mypy_baseline.py  # type-check ratchet
 ```
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](docs/CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+Contributions are welcome! Please read the [Contributing Guide](docs/CONTRIBUTING.md)
+for details on our code of conduct and the process for submitting pull requests.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file
+for details.
