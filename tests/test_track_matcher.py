@@ -1041,3 +1041,71 @@ class TestExtractMixInfo:
         result = _extract_mix_info("Track Name (Remix)")
         assert result["remixers"] == []
         assert result["mix_type"] is None
+
+
+class TestRemixerMatching:
+    """Unit tests for _any_remixer_in and _mix_type_matches (U15 gate helpers)."""
+
+    def test_any_remixer_in_exact_match(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        assert _any_remixer_in(["Artist X"], ["Artist X"], None) is True
+
+    def test_any_remixer_in_case_insensitive(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        assert _any_remixer_in(["artist x"], ["Artist X"], None) is True
+
+    def test_any_remixer_in_mismatch(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        assert _any_remixer_in(["Artist X"], ["Artist Y"], None) is False
+
+    def test_any_remixer_in_substring_match(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        # "John" is a substring of "Johnson" — the word-boundary check
+        # must reject this.
+        assert _any_remixer_in(["John"], ["Johnson"], None) is False
+
+    def test_any_remixer_in_word_boundary_match(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        # "John" should match "John Doe" (word boundary after John).
+        assert _any_remixer_in(["John"], ["John Doe"], None) is True
+
+    def test_any_remixer_in_mix_name_fallback(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        # Remixer embedded in mix_name string rather than remixers list.
+        assert _any_remixer_in(["Artist X"], None, "Artist X Remix") is True
+
+    def test_any_remixer_in_no_remixers_no_mix_name(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        assert _any_remixer_in(["Artist X"], None, None) is False
+
+    def test_any_remixer_in_empty_lists(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        assert _any_remixer_in([], [], None) is False
+
+    def test_mix_type_matches_exact(self):
+        from tracklistify.core.track import _mix_type_matches
+
+        assert _mix_type_matches("Club Mix", "Club Mix") is True
+
+    def test_mix_type_matches_case_insensitive(self):
+        from tracklistify.core.track import _mix_type_matches
+
+        assert _mix_type_matches("club mix", "Club Mix") is True
+
+    def test_mix_type_matches_mismatch(self):
+        from tracklistify.core.track import _mix_type_matches
+
+        assert _mix_type_matches("Club Mix", "Extended Mix") is False
+
+    def test_mix_type_matches_bp_none(self):
+        from tracklistify.core.track import _mix_type_matches
+
+        assert _mix_type_matches("Club Mix", None) is False

@@ -337,6 +337,63 @@ def _extract_mix_info(title: str) -> dict[str, list[str] | str | None]:
     return {"remixers": remixers, "mix_type": mix_type}
 
 
+def _any_remixer_in(
+    shazam_remixers: list[str],
+    bp_remixers: list[str] | None,
+    bp_mix_name: str | None,
+) -> bool:
+    """True if any Shazam-extracted remixer name appears in Beatport's remixers
+    list or mix_name.
+
+    Case-insensitive, word-boundary match — "John" must not match "Johnson".
+    """
+    if not shazam_remixers:
+        return False
+
+    def _match_name(shazam_name: str, bp_name: str) -> bool:
+        """Word-boundary match: shazam_name must appear as a whole word in bp_name."""
+        shazam_norm = _normalize_token(shazam_name)
+        bp_norm = _normalize_token(bp_name)
+        if shazam_norm in bp_norm:
+            # Check word boundary: the match must start at a word boundary
+            # and end at a word boundary (or string edge).
+            idx = bp_norm.find(shazam_norm)
+            if idx == -1:
+                return False
+            before_ok = idx == 0 or not bp_norm[idx - 1].isalnum()
+            after_ok = (
+                idx + len(shazam_norm) == len(bp_norm)
+                or not bp_norm[idx + len(shazam_norm)].isalnum()
+            )
+            return before_ok and after_ok
+        return False
+
+    # Check structured remixers list.
+    if bp_remixers:
+        for shazam_name in shazam_remixers:
+            for bp_name in bp_remixers:
+                if _match_name(shazam_name, bp_name):
+                    return True
+
+    # Check mix_name fallback (remixer embedded in the mix name string).
+    if bp_mix_name:
+        for shazam_name in shazam_remixers:
+            if _match_name(shazam_name, bp_mix_name):
+                return True
+
+    return False
+
+
+def _mix_type_matches(shazam_mix_type: str, bp_mix_name: str | None) -> bool:
+    """Compare the Shazam title's generic mix type against the Beatport mix_name.
+
+    Normalized, case-insensitive. Returns False when bp_mix_name is None.
+    """
+    if bp_mix_name is None:
+        return False
+    return _normalize_token(shazam_mix_type) == _normalize_token(bp_mix_name)
+
+
 def _enrichment_title_match(track_title: str, candidate_title: str) -> bool:
     """Enrichment's looser title comparison: strict-equal OR same stem.
 
