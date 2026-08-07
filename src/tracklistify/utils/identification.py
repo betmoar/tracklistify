@@ -8,7 +8,7 @@ import contextlib
 import hashlib
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from tracklistify.cache.factory import get_cache
 from tracklistify.config.factory import get_config
@@ -708,7 +708,10 @@ class IdentificationManager:
 
             # First-writer-wins per key: the Spotify source's canonical link
             # (set earlier in the same run) survives. ``setdefault`` applies.
-            track_links = track.metadata.setdefault("links", {})
+            # ``links`` is a provider-returned dict with dynamic keys, so cast
+            # to a plain dict here — the TrackLinks TypedDict guards literal
+            # write sites, not the iteration of external data.
+            track_links = cast(Dict[str, str], track.metadata.setdefault("links", {}))
             added = False
             for service, url in links.items():
                 if not track_links.get(service):
@@ -881,9 +884,13 @@ class IdentificationManager:
         """
         if result.get("url"):
             track.metadata.setdefault("links", {}).setdefault("beatport", result["url"])
+        # These keys come from the Beatport result dict (external data), so
+        # write through a plain-dict view — the TrackMetadata TypedDict guards
+        # literal write sites, not iteration over provider-returned keys.
+        md = cast(Dict[str, Any], track.metadata)
         for key in ("label", "release_date"):
-            if result.get(key) and not track.metadata.get(key):
-                track.metadata[key] = result[key]
+            if result.get(key) and not md.get(key):
+                md[key] = result[key]
         for key in (
             "beatport_id",
             "bpm",
@@ -894,7 +901,7 @@ class IdentificationManager:
             "catalog_number",
         ):
             if result.get(key):
-                track.metadata[key] = result[key]
+                md[key] = result[key]
         track.metadata["beatport_match"] = match_kind
 
     async def identify_tracks(self, audio_segments):

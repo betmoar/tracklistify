@@ -35,8 +35,6 @@ factory.py: Need type annotation for "providers" (hint: "providers: dict[<type>,
 factory.py: Need type annotation for "storage"  [var-annotated]
 factory.py: Need type annotation for "strategy"  [var-annotated]
 identification.py: Argument "metadata" to "Track" has incompatible type "dict[str, Any]"; expected "TrackMetadata"  [arg-type]
-identification.py: TypedDict key must be a string literal; expected one of ("album", "apple_music_id", "artwork_url", "beatport_id", "beatport_match", ...)  [literal-required]
-identification.py: TypedDict key must be a string literal; expected one of ("apple", "beatport", "deezer", "deezer_search", "shazam", ...)  [literal-required]
 invalidation.py: Cannot determine type of "default_ttl"  [has-type]
 invalidation.py: Incompatible return value type (got "dict[Any, Any]", expected "CacheEntry[T]")  [return-value]
 musicbrainz.py: "None" has no attribute "get"  [attr-defined]
