@@ -104,7 +104,7 @@ class BeatportProvider:
         self._access_token: Optional[str] = None
         self._refresh_token: Optional[str] = None
         self._expires_at: float = 0.0
-        self._session = None
+        self._session: Optional[aiohttp.ClientSession] = None
 
     async def _ensure_session(self):
         """Ensure aiohttp session exists.
@@ -267,6 +267,7 @@ class BeatportProvider:
         if self.client_id:
             return self.client_id
         await self._ensure_session()
+        assert self._session is not None  # set by _ensure_session
         async with self._session.get(f"{API_BASE}{_DOCS_PATH}") as response:
             if response.status != 200:
                 raise ProviderError(
@@ -301,6 +302,8 @@ class BeatportProvider:
         revoked), letting the caller fall back to the password flow.
         """
         await self._ensure_session()
+        assert self._session is not None  # set by _ensure_session
+        assert self._refresh_token is not None  # caller precondition
         client_id = await self._resolve_client_id()
         async with self._session.post(
             f"{API_BASE}/auth/o/token/",
@@ -341,6 +344,7 @@ class BeatportProvider:
         for later renewal.
         """
         await self._ensure_session()
+        assert self._session is not None  # set by _ensure_session
         client_id = await self._resolve_client_id()
         logger.debug("Beatport: authorizing with username and password")
 
@@ -515,6 +519,7 @@ class BeatportProvider:
             ProviderError: any other non-2xx.
         """
         await self._ensure_session()
+        assert self._session is not None  # set by _ensure_session
         token = await self._authenticate()
 
         url = f"{API_BASE}/{endpoint.lstrip('/')}"

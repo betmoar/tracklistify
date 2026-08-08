@@ -63,6 +63,13 @@ class AsyncApp:
             config=self.config, provider_factory=self.provider_factory
         )
 
+        # Output metadata populated by process_input(). Declared here so mypy
+        # sees the types before the branch-conditional assignments below.
+        self.original_title: str = ""
+        self.uploader: str = ""
+        self.duration: float = 0
+        self.audio_source_path: Optional[str] = None
+
     def _sweep_stale_run_dirs(self) -> None:
         """Remove temp subdirs owned by PIDs that no longer exist.
 
@@ -148,11 +155,11 @@ class AsyncApp:
     async def process_input(
         self,
         input_path: str,
-        formats: str = None,
-        provider: str = None,
-        fallback_enabled: bool = None,
+        formats: Optional[str] = None,
+        provider: Optional[str] = None,
+        fallback_enabled: Optional[bool] = None,
         stream_copy: bool = False,
-        cache_enabled: bool = None,
+        cache_enabled: Optional[bool] = None,
     ):
         """Process input URL or file path.
 
@@ -330,6 +337,10 @@ class AsyncApp:
             # cache hit, fresh download) are covered.
             self.audio_source_path = local_path
 
+            # local_path is guaranteed str here: the cache-hit branch assigns a
+            # str, the None branch raises or downloads, and the local-file
+            # branch starts from validated_path. Assert for mypy's benefit.
+            assert local_path is not None
             # Process the downloaded file. Pass through the duration we got
             # from yt-dlp (or local-file fallback below) so split_audio
             # doesn't have to re-probe — mutagen doesn't read every

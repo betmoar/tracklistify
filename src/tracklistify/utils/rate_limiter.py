@@ -8,7 +8,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 # Local/package imports
 from ..config import get_config
@@ -100,8 +100,8 @@ class RateLimiter:
     def register_provider(
         self,
         provider: Any,
-        max_requests_per_minute: int = None,
-        max_concurrent_requests: int = None,
+        max_requests_per_minute: Optional[int] = None,
+        max_concurrent_requests: Optional[int] = None,
     ):
         """Register a provider with specific rate limits."""
         # Use provided values, or fall back to config values based on provider
@@ -153,12 +153,12 @@ class RateLimiter:
                     self._config, "max_concurrent_requests", 2
                 )
         else:
-            rpm = max_requests_per_minute
-            concurrent = max_concurrent_requests
+            rpm = max_requests_per_minute or 25
+            concurrent = max_concurrent_requests or 2
 
         self._provider_limits[provider] = ProviderLimits(
-            max_requests_per_minute=rpm,
-            max_concurrent_requests=concurrent,
+            max_requests_per_minute=cast(int, rpm),
+            max_concurrent_requests=cast(int, concurrent),
         )
 
     def register_alert_callback(self, callback: Callable[[str], None]):
@@ -191,11 +191,11 @@ class RateLimiter:
         limits.ensure_async_primitives()
 
         # Check circuit breaker first (don't count rejected requests)
-        circuit_breaker_enabled = getattr(self._config, "circuit_breaker_enabled", True)
-        if circuit_breaker_enabled and limits.circuit_state == CircuitState.OPEN:
-            circuit_reset_timeout = getattr(
-                self._config, "circuit_breaker_reset_timeout", 60.0
-            )
+        if (
+            self._config.circuit_breaker_enabled
+            and limits.circuit_state == CircuitState.OPEN
+        ):
+            circuit_reset_timeout = self._config.circuit_breaker_reset_timeout
             if (
                 limits.circuit_open_time
                 and time.monotonic() - limits.circuit_open_time > circuit_reset_timeout
@@ -206,6 +206,8 @@ class RateLimiter:
 
         # Try to acquire semaphore for concurrent requests
         try:
+            assert limits.semaphore is not None  # set by register_provider
+            assert limits.lock is not None  # set by register_provider
             # Always attempt to acquire the semaphore with a timeout
             start_time = time.monotonic()
             await asyncio.wait_for(limits.semaphore.acquire(), timeout=timeout)
@@ -224,8 +226,7 @@ class RateLimiter:
             limits.metrics.total_requests += 1
 
             # Check if rate limiting is enabled
-            rate_limit_enabled = getattr(self._config, "rate_limit_enabled", True)
-            if not rate_limit_enabled:
+            if not self._config.rate_limit_enabled:
                 return True
 
             # Check rate limiting tokens
@@ -299,9 +300,8 @@ class RateLimiter:
             return
 
         limits = self._provider_limits[provider]
-        circuit_breaker_enabled = getattr(self._config, "circuit_breaker_enabled", True)
 
-        if not circuit_breaker_enabled:
+        if not self._config.circuit_breaker_enabled:
             return
 
         if success:
@@ -310,7 +310,7 @@ class RateLimiter:
                 limits.circuit_state = CircuitState.CLOSED
         else:
             limits.consecutive_failures += 1
-            circuit_threshold = getattr(self._config, "circuit_breaker_threshold", 5)
+            circuit_threshold = self._config.circuit_breaker_threshold
             if (
                 limits.consecutive_failures >= circuit_threshold
                 and limits.circuit_state == CircuitState.CLOSED

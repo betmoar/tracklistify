@@ -1,0 +1,35 @@
+interactions:
+- request:
+    method: GET
+    uri: https://musicbrainz.org/ws/2/isrc/USUM71703861?inc=url-rels&fmt=json
+    body: null
+    headers:
+      User-Agent:
+      - Tracklistify/0.1 ( test@example.com )
+  response:
+    status:
+      code: 503
+      message: Service Unavailable
+    headers:
+      Server: [nginx]
+      Content-Type: [text/html]
+      Retry-After: ['1']
+    body:
+      string: "<html>Service Unavailable</html>"
+- request:
+    method: GET
+    uri: https://musicbrainz.org/ws/2/isrc/USUM71703861?inc=url-rels&fmt=json
+    body: null
+    headers:
+      User-Agent:
+      - Tracklistify/0.1 ( test@example.com )
+  response:
+    status:
+      code: 200
+      message: OK
+    headers:
+      Server: [nginx]
+      Content-Type: [application/json]
+    body:
+      string: '{"isrc":"USUM71703861","recordings":[{"title":"Despacito","video":null,"length":210000,"relations":[{"url":{"resource":"https://open.spotify.com/track/0K1VpSPsXlU5oRNCzm6Gwr"},"target-type":"url","type":"streaming","type-id":"7e41ef12-a124-4324-af33-fd874608e6fc"}]}]}'
+version: 1

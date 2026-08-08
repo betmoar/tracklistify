@@ -66,39 +66,19 @@ class ToolsConfiguration:
             )
 
         except FileNotFoundError:
-            self.load_default_config()
+            self.logger.debug(
+                "No configuration file found at %s; using empty config",
+                self.config_path,
+            )
         except json.JSONDecodeError as e:
-            raise ConfigurationError(
-                f"Invalid JSON in configuration file: {str(e)}"
-            ) from e
+            self.logger.warning(
+                "Malformed JSON in configuration file %s; falling back to "
+                "empty config: %s",
+                self.config_path,
+                str(e),
+            )
         except Exception as e:
             raise ConfigurationError(f"Failed to load configuration: {str(e)}") from e
-
-    def load_default_config(self):
-        """Load the default tool configuration."""
-        default_config = {
-            "pylint": {
-                "command": "pylint",
-                "description": "Python code linter",
-                "args": "--rcfile=.pylintrc",
-            },
-            "black": {
-                "command": "black",
-                "description": "Python code formatter",
-                "args": "--line-length=88",
-            },
-            "mypy": {
-                "command": "mypy",
-                "description": "Static type checker",
-                "args": "--strict",
-            },
-            "pytest": {
-                "command": "pytest",
-                "description": "Python test runner",
-                "args": "-v",
-            },
-        }
-        self._config.update(default_config)
 
     def list_tools(self) -> Dict[str, Any]:
         """List all available tools.
@@ -167,7 +147,6 @@ class ToolsConfiguration:
 
 
 # Global configuration instance. __init__ calls _load_config, which loads
-# tools.json when present and falls back to load_default_config() otherwise —
-# so no redundant explicit load_default_config() here (it previously ran after
-# construction and clobbered a successfully-loaded tools.json with defaults).
+# tools.json when present and falls back to an empty config (not defaults)
+# when the file is missing or malformed — see _load_config docstring.
 tools_config = ToolsConfiguration()

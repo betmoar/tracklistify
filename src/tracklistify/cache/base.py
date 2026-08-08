@@ -5,7 +5,7 @@ Base cache implementation with enhanced features.
 # Standard library imports
 import json
 import time
-from typing import Any, Dict, Generic, Optional, TypeVar
+from typing import Any, Dict, Generic, Optional, TypeVar, cast
 
 # Local/package imports
 from tracklistify.core.types import (
@@ -49,13 +49,19 @@ class BaseCache(Generic[T]):
         self._ttl = ttl
         self._max_size = max_size
 
-        # Initialize statistics tracking
+        # Initialize statistics tracking. NOTE: a live ``entries`` count is
+        # NOT tracked here — it lived in _stats before but was a phantom:
+        # incremented on every set() (including overwrites) and decremented
+        # on delete, so it tracked total writes, not live entries, and
+        # over-counted on every re-put. The authoritative live count is the
+        # storage index's length (see JSONStorage.get_storage_stats); this
+        # dict intentionally omits ``entries`` to avoid re-introducing a
+        # counter that drifts from the truth.
         self._stats = {
             "hits": 0,
             "misses": 0,
             "invalidations": 0,
             "total_size_bytes": 0,
-            "entries": 0,
         }
 
         # Use real configuration (lazy import to avoid circular dependency)
@@ -87,20 +93,22 @@ class BaseCache(Generic[T]):
                 self._stats["misses"] += 1
                 return None
 
-            # Update metadata and stats for valid entries only
+            # Update metadata and stats for valid entries only.
+            #
+            # ``update_metadata`` (e.g. TTLStrategy's) returns a deep-copied
+            # entry with a bumped ``last_accessed``. The previous code rewrote
+            # the whole cache FILE on every read hit when that returned dict
+            # differed — and under TTLStrategy it always differs — making every
+            # read a synchronous write+fsync (a read path doing a write, per
+            # hit). Access time is already tracked where it matters: the storage
+            # index's ``update_access_time`` runs on every ``storage.get``. So
+            # the in-entry ``last_accessed`` is best-effort and does not warrant
+            # a per-hit file rewrite; we record the updated metadata only in the
+            # in-memory ``entry`` we return, not on disk.
             try:
                 updated_entry = await self._invalidation_strategy.update_metadata(entry)
-                if updated_entry != entry:
-                    await self._storage.set(
-                        key,
-                        updated_entry,
-                        compression=updated_entry["metadata"].get("compression", False),
-                    )
-                    entry = (
-                        updated_entry  # Use the updated entry for returning the value
-                    )
                 self._stats["hits"] += 1
-                return entry["value"]
+                return updated_entry["value"]
             except Exception as e:
                 logger.error(f"Error updating metadata: {str(e)}")
                 self._stats["hits"] += 1
@@ -133,21 +141,23 @@ class BaseCache(Generic[T]):
             # TTLStrategy does metadata.get("ttl", default_ttl), and a
             # present-but-None key shadows the default, so is_valid always
             # returned True. Locked by tests/test_handoff_invariants.py.
-            entry: CacheEntry[T] = {
-                "key": key,
-                "value": value,
-                "metadata": {
-                    "created": time.time(),
-                    "last_accessed": time.time(),
-                    "ttl": ttl if ttl is not None else self._ttl,
-                    "compression": compression,
-                    "size": len(json.dumps(value)),
+            entry = cast(
+                CacheEntry[T],
+                {
+                    "key": key,
+                    "value": value,
+                    "metadata": {
+                        "created": time.time(),
+                        "last_accessed": time.time(),
+                        "ttl": ttl if ttl is not None else self._ttl,
+                        "compression": compression,
+                        "size": len(json.dumps(value)),
+                    },
                 },
-            }
+            )
 
             # Write to storage
             await self._storage.set(key, entry, compression=compression)
-            self._stats["entries"] += 1
 
         except TypeError as e:
             logger.error(f"Type error setting cache entry: {str(e)}")
@@ -162,7 +172,6 @@ class BaseCache(Generic[T]):
                 raise TypeError("Cache key must be a string")
 
             await self._storage.delete(key)
-            self._stats["entries"] = max(0, self._stats["entries"] - 1)
             self._stats["invalidations"] += 1
 
         except TypeError as e:
@@ -219,5 +228,4 @@ class BaseCache(Generic[T]):
             "misses": 0,
             "invalidations": 0,
             "total_size_bytes": 0,
-            "entries": 0,
         }

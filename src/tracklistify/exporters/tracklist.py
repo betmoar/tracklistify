@@ -7,7 +7,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 # Local/package imports
 from tracklistify.config import get_config
@@ -132,9 +132,9 @@ class TracklistOutput:
 
         # Calculate statistics safely with null checks
         track_count = len(self.tracks)
-        avg_confidence = 0
-        min_confidence = 0
-        max_confidence = 0
+        avg_confidence: float = 0
+        min_confidence: float = 0
+        max_confidence: float = 0
 
         if track_count > 0:
             confidences = [
@@ -145,7 +145,7 @@ class TracklistOutput:
                 min_confidence = min(confidences)
                 max_confidence = max(confidences)
 
-        data = {
+        data: Dict[str, Any] = {
             "mix_info": self.mix_info or {},
             "track_count": track_count,
             "analysis_info": {
@@ -270,15 +270,15 @@ class TracklistOutput:
         """
         parts = str(time_in_mix).split(":")
         try:
-            parts = [float(p) for p in parts]
+            nums = [float(p) for p in parts]
         except ValueError:
             return 0.0
-        if len(parts) == 3:
-            return parts[0] * 3600 + parts[1] * 60 + parts[2]
-        if len(parts) == 2:
-            return parts[0] * 60 + parts[1]
-        if len(parts) == 1:
-            return parts[0]
+        if len(nums) == 3:
+            return nums[0] * 3600 + nums[1] * 60 + nums[2]
+        if len(nums) == 2:
+            return nums[0] * 60 + nums[1]
+        if len(nums) == 1:
+            return nums[0]
         return 0.0
 
     def save_all(self) -> List[Path]:

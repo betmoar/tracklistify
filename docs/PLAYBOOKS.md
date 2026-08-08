@@ -80,9 +80,15 @@ shadows an identification provider).
   P3 entry in `docs/BACKLOG.md`.
 - **The enrichment title gate** (`_enrichment_title_match` in `core/track.py`)
   is intentionally looser than the dedup gate (recall for matching, precision
-  for dedup) but has a known remix-mismatch limitation on the search-fallback
-  path — see U15 in `docs/BACKLOG.md` and
-  `scripts/measure_beatport_remix_matches.py`.
+  for dedup). It gates on **remixer identity**: `_extract_mix_info` pulls
+  remixer names and generic mix types out of the title's bracketed suffixes,
+  and `_any_remixer_in` / `_mix_type_matches` compare them against Beatport's
+  `remixers` / `mix_name`. **It rejects only on data it can verify** — when
+  Beatport supplies neither field there is nothing to contradict, so the
+  match falls through to the `_title_stem` comparison instead of failing.
+  Rejecting on absent data is a recall regression that has been introduced
+  (and caught in review) once per branch. See U15 in `docs/BACKLOG.md` and
+  `scripts/measure_beatport_remix_matches.py` for the live probe.
 
 ---
 

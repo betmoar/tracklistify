@@ -4,7 +4,7 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
 # Local imports
 from .paths import get_root
@@ -62,7 +62,8 @@ class BaseConfig:
                 env_value = env_value.split("#")[0].strip()
 
                 # Convert string value to appropriate type
-                field_type = field_value.type
+                field_type: Any = field_value.type
+                value: Any
                 try:
                     if field_type is bool:
                         # Handle boolean values
@@ -184,19 +185,16 @@ class TrackIdentificationConfig(BaseConfig):
     cache_storage_format: str = field(default="json")
     cache_compression_enabled: bool = field(default=True)
     cache_compression_level: int = field(default=6)
-    cache_cleanup_enabled: bool = field(default=True)
-    cache_cleanup_interval: int = field(default=3600)
     # Must not be shorter than cache_ttl: these are two independent expiry
     # gates reading different fields — ``JSONStorage.cleanup()``
     # (cache/storage.py, via ``BaseCache.cleanup()``) reads max_age, while
     # ``TTLStrategy`` reads ttl on lookup — and the shorter one wins.
     #
     # The hazard is currently LATENT, not live: nothing in production
-    # calls ``BaseCache.cleanup()``. It has no scheduler, and
-    # ``cache_cleanup_enabled``/``cache_cleanup_interval`` below are read
-    # by no code at all (``AsyncApp.cleanup()`` only clears temp dirs).
-    # Kept in step anyway, so that wiring the janitor up later cannot
-    # silently start deleting entries the TTL still considers valid.
+    # calls ``BaseCache.cleanup()`` — it has no scheduler
+    # (``AsyncApp.cleanup()`` only clears temp dirs). Kept in step anyway,
+    # so that wiring the janitor up later cannot silently start deleting
+    # entries the TTL still considers valid.
     cache_max_age: int = field(default=2_592_000)
     cache_min_free_space: int = field(default=104857600)
     # Per-run switch set by ``--no-cache``: skip cache READS while leaving

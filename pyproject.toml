@@ -55,6 +55,9 @@ dev = [
     "pylint>=4.0.6",
     "vulture>=2.16",
     "freezegun>=1.5",
+    "mypy>=2.3.0",
+    "vcrpy>=8.3.0",
+    "pytest-recording>=0.13.4",
 ]
 
 [project.scripts]
@@ -110,6 +113,8 @@ testpaths = [
 ]
 markers = [
     "integration: marks tests that hit live external services (skipped unless run explicitly)",
+    "live: marks tests that hit live external services with real credentials (opt-in via --live; never in CI)",
+    "vcr: marks tests that replay recorded HTTP cassettes (pytest-recording; offline)",
 ]
 
 [tool.coverage.run]
@@ -119,7 +124,6 @@ source = ["src"]
 omit = [
     "tests/*",
     "**/tests/*",
-    "**/dev_cli/*",
 ]
 
 [tool.coverage.report]
@@ -127,7 +131,6 @@ omit = [
 omit = [
     "tests/*",
     "**/tests/*",
-    "**/dev*",
 ]
 
 [tool.ruff]
@@ -208,3 +211,25 @@ docstring-code-line-length = "dynamic"
 
 [tool.uv]
 link-mode = "copy"
+
+[tool.mypy]
+# Q5 (2026-08 code-quality review): type checking in CI, loose-to-start with a
+# ratchet. The codebase predates any type checking, so ~100 real errors exist;
+# they are recorded in .mypy-baseline and CI fails only when the count GROWS
+# (scripts/check_mypy_baseline.py). Chip away by fixing errors and lowering
+# the baseline count — never by raising it without a documented reason. The
+# goal is a monotone-decreasing baseline to zero, at which point this becomes a
+# hard gate. mypy is strict-by-default here (no permissive overrides): the
+# ratchet, not leniency, is what keeps existing debt mergeable.
+mypy_path = "src"
+packages = "tracklistify"
+exclude = ["dev_cli/"]  # dev-only CLI; also excluded from bandit (but not coverage)
+# Third-party stubs: aiohttp/aiofiles/pydub/shazamio ship their own or are
+# untyped; silence missing-imports rather than chase phantom stub packages.
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# shazamio is fully untyped and injects attributes dynamically; mypy noise
+# here is not actionable. Narrow the override to just this package.
+module = ["shazamio.*"]
+ignore_errors = true

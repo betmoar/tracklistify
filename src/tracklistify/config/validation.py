@@ -10,7 +10,7 @@ import re
 from dataclasses import fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Type, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Type, TypeVar, Union, cast
 
 # Local/package imports
 
@@ -88,6 +88,13 @@ class TypeRule(ValidationRule):
         self.expected_type = expected_type
         self.allow_none = allow_none
 
+    def _type_name(self) -> str:
+        """Render the expected type(s) for an error message."""
+        et = self.expected_type
+        if isinstance(et, tuple):
+            return " | ".join(getattr(t, "__name__", str(t)) for t in et)
+        return getattr(et, "__name__", str(et))
+
     def validate(self, value: Any) -> None:
         """Validate value type."""
         if value is None:
@@ -101,10 +108,7 @@ class TypeRule(ValidationRule):
             raise ConfigValidationError(
                 self.field,
                 self.message
-                or (
-                    f"Expected type {self.expected_type.__name__}, "
-                    f"got {type(value).__name__}"
-                ),
+                or (f"Expected type {self._type_name()}, got {type(value).__name__}"),
             )
 
 
@@ -604,7 +608,10 @@ def validate_config_dict(
 ) -> Dict[str, Any]:
     """Validate a configuration dictionary against a configuration class."""
     validated = {}
-    config_fields = {field.name: field for field in fields(config_class)}
+    config_fields = {
+        field.name: field
+        for field in fields(config_class)  # type: ignore[arg-type]
+    }
 
     # Check for unknown fields
     unknown_fields = set(config.keys()) - set(config_fields.keys())
@@ -617,7 +624,7 @@ def validate_config_dict(
         if value is None and not field.default:
             raise ValueError(f"Missing required field: {name}")
         if value is not None:
-            validated[name] = validate_field_type(value, field.type)
+            validated[name] = validate_field_type(value, cast(Any, field.type))
 
     return validated
 

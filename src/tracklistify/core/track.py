@@ -6,9 +6,10 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import List, Optional, Set, Tuple, TypedDict, Union
 
 from tracklistify.config import TrackIdentificationConfig
+from tracklistify.core.types import TrackMetadata
 from tracklistify.utils.logger import get_logger
 
 
@@ -202,16 +203,18 @@ def _strip_title_variant(title: str) -> str:
             break
         group = match.group(1)  # the whole `(...)` / `[...]`, delimiters included
         action = _decide_title_group(group[1:-1])
+        act, *rest = action
         before, after = result[: match.start()], result[match.end() :]
-        if action[0] == "keep":
+        if act == "keep":
             break  # this trailing group stays; nothing before it is a suffix
-        if action[0] == "drop":
+        if act == "drop":
             result = f"{before} {after}".strip()
             continue  # the next group along may now be trailing — keep peeling
         # Rewrite: put the canonicalized group back in place, preserving its
         # delimiter type. Like keep, the group is retained, so nothing before
         # it is a trailing suffix and peeling stops here.
-        result = f"{before.rstrip()} {group[0]}{action[1]}{group[-1]}{after}".strip()
+        rewritten = rest[0] if rest else ""
+        result = f"{before.rstrip()} {group[0]}{rewritten}{group[-1]}{after}".strip()
         break
     return result if result.strip() else title
 
@@ -272,16 +275,188 @@ def _title_stem(title: str) -> str:
     return _normalize_token(stripped)
 
 
-def _enrichment_title_match(track_title: str, candidate_title: str) -> bool:
-    """Enrichment's looser title comparison: strict-equal OR same stem.
+class _MixInfo(TypedDict):
+    """Return type of ``_extract_mix_info`` — precise per-key types for mypy."""
+
+    remixers: list[str]
+    mix_type: str | None
+
+
+def _extract_mix_info(title: str) -> _MixInfo:
+    """Extract remixer names and mix type from a title's bracketed suffix groups.
+
+    Scans trailing bracketed groups via ``_TRAILING_GROUP_RE``. For each group:
+
+    - If ``_SUFFIX_KEEP_RE`` matches AND stripping the keyword leaves a name
+      → remixer name (accumulates).
+    - If the normalized inner is in ``_SUFFIX_DROP_EXACT`` → generic mix type
+      (the FIRST one encountered wins — groups are peeled right-to-left, so
+      that is the outermost/rightmost bracket, furthest from the track name).
+    - If ``_SUFFIX_DROP_PREFIXES`` matches → ignored (live-at location).
+    - Empty groups, feat-canonicalization groups, and unrecognized groups →
+      ignored.
+
+    Note: does NOT use ``_decide_title_group`` — that function returns
+    ``("drop",)`` for ``_SUFFIX_DROP_EXACT`` members (they are non-distinguishing
+    for dedup), but we need to capture them as mix types here.
+
+    Returns:
+        dict with ``remixers`` (list of str, possibly empty) and ``mix_type``
+        (str or None).
+    """
+    remixers: list[str] = []
+    mix_type: str | None = None
+
+    # Peel trailing groups from right to left, same as _strip_title_variant.
+    remaining = title
+    for _ in range(_MAX_GROUP_PEELS):
+        match = _TRAILING_GROUP_RE.search(remaining)
+        if not match:
+            break
+        inner = match.group(1)[1:-1]  # strip delimiters
+        inner_norm = _normalize_token(inner)
+
+        if not inner_norm:
+            # Empty group — harmless noise, skip.
+            pass
+        elif _SUFFIX_KEEP_RE.search(inner_norm):
+            # Remix-bearing group. Strip the keyword to get the remixer name.
+            name = _SUFFIX_KEEP_RE.sub("", inner_norm).strip()
+            if name:
+                remixers.append(name)
+            # else: bare keyword like "(Remix)" — no name, not a remixer signal.
+        elif inner_norm in _SUFFIX_DROP_EXACT:
+            # Generic mix type — the first one encountered wins. Peeling is
+            # right-to-left, so "(Club Mix) (Extended Mix)" keeps "extended
+            # mix" (the outermost group), not "club mix".
+            if mix_type is None:
+                mix_type = inner_norm
+        elif inner_norm.startswith(_SUFFIX_DROP_PREFIXES):
+            # Live-at location — ignored.
+            pass
+        elif _FEAT_MARKER_RE.match(inner_norm):
+            # Feat-canonicalization group — not mix information.
+            pass
+        # else: unrecognized group (e.g. show ID like "(Tritonia 404)",
+        # "(Bonus Track)") — not mix information.
+
+        remaining = remaining[: match.start()].strip()
+
+    return {"remixers": remixers, "mix_type": mix_type}
+
+
+def _any_remixer_in(
+    shazam_remixers: list[str],
+    bp_remixers: list[str] | None,
+    bp_mix_name: str | None,
+) -> bool:
+    """True if any Shazam-extracted remixer name appears in Beatport's remixers
+    list or mix_name.
+
+    Case-insensitive, word-boundary match — "John" must not match "Johnson".
+    """
+    if not shazam_remixers:
+        return False
+
+    def _match_name(shazam_name: str, bp_name: str) -> bool:
+        """Word-boundary match: shazam_name must appear as a whole word in bp_name."""
+        shazam_norm = _normalize_token(shazam_name)
+        bp_norm = _normalize_token(bp_name)
+        if shazam_norm in bp_norm:
+            # Check word boundary: the match must start at a word boundary
+            # and end at a word boundary (or string edge).
+            idx = bp_norm.find(shazam_norm)
+            if idx == -1:
+                return False
+            before_ok = idx == 0 or not bp_norm[idx - 1].isalnum()
+            after_ok = (
+                idx + len(shazam_norm) == len(bp_norm)
+                or not bp_norm[idx + len(shazam_norm)].isalnum()
+            )
+            return before_ok and after_ok
+        return False
+
+    # Check structured remixers list.
+    if bp_remixers:
+        for shazam_name in shazam_remixers:
+            for bp_name in bp_remixers:
+                if _match_name(shazam_name, bp_name):
+                    return True
+
+    # Check mix_name fallback (remixer embedded in the mix name string).
+    if bp_mix_name:
+        for shazam_name in shazam_remixers:
+            if _match_name(shazam_name, bp_mix_name):
+                return True
+
+    return False
+
+
+def _mix_type_matches(shazam_mix_type: str, bp_mix_name: str | None) -> bool:
+    """Compare the Shazam title's generic mix type against the Beatport mix_name.
+
+    Normalized, case-insensitive. Returns False when bp_mix_name is None.
+    """
+    if bp_mix_name is None:
+        return False
+    return _normalize_token(shazam_mix_type) == _normalize_token(bp_mix_name)
+
+
+def _enrichment_title_match(
+    track_title: str,
+    candidate_title: str,
+    *,
+    remixers: list[str] | None = None,
+    mix_name: str | None = None,
+) -> bool:
+    """Enrichment's title gate: strict-equal, remixer identity, or stem fallback.
 
     Strict ``_comparison_title`` equality stays the fast primary path. The
-    stem fallback is the recall net for the cases above. The artist gate
-    (checked separately by the caller) is what makes the stem fallback safe.
+    stem fallback is replaced by a hybrid gate that examines the Shazam title's
+    bracketed mix information when the caller provides Beatport remixer data:
+
+    1. Named remixer in Shazam title AND Beatport ``remixers``/``mix_name``
+       data to check it against → gate on remixer identity.
+    2. Generic mix type in Shazam title AND a Beatport ``mix_name`` to check
+       it against → compare the two; a mismatch rejects the candidate.
+    3. Mix info present but nothing to verify it against (no ``remixers``
+       and no ``mix_name``), or no mix info at all → stem fallback.
+       Rejecting on absent data would cost recall for no gain, since there
+       is nothing to contradict.
+
+    The new keyword args are optional with ``None`` defaults — the sole
+    caller (``utils/identification.py``'s Beatport enrichment path) doesn't
+    always have remixer data for a given candidate, so a caller without it
+    still gets sensible (recall-preserving) behavior.
     """
     if _comparison_title(track_title) == _comparison_title(candidate_title):
+        # Fast path — but when the Shazam title carries mix info that
+        # ``_comparison_title`` dropped (e.g. "(Club Mix)" vs "(Extended Mix)"
+        # both drop to "track name"), we must gate before returning True.
+        shazam_mix = _extract_mix_info(track_title)
+        if shazam_mix["remixers"] and (remixers or mix_name):
+            return _any_remixer_in(shazam_mix["remixers"], remixers, mix_name)
+        if shazam_mix["mix_type"] is not None and mix_name is not None:
+            return _mix_type_matches(shazam_mix["mix_type"], mix_name)
         return True
-    return _title_stem(track_title) == _title_stem(candidate_title)
+
+    # Comparison titles differ — extract mix info and gate.
+    shazam_mix = _extract_mix_info(track_title)
+
+    if shazam_mix["remixers"] and (remixers or mix_name):
+        # Named remixer(s) in the Shazam title, and we have Beatport data
+        # to verify against: gate on remixer identity.
+        return _any_remixer_in(shazam_mix["remixers"], remixers, mix_name)
+    elif shazam_mix["mix_type"] is not None and mix_name is not None:
+        # Generic mix type, and we have Beatport data to verify against:
+        # compare mix types. When mix_name is None there's nothing to
+        # verify, so fall through to the stem fallback below instead of
+        # rejecting on missing data (recall regression fix).
+        return _mix_type_matches(shazam_mix["mix_type"], mix_name)
+    else:
+        # No mix info, or mix info present but nothing to verify against:
+        # fall back to the old stem comparison.
+        return _title_stem(track_title) == _title_stem(candidate_title)
 
 
 def _tracks_match(t1: "Track", t2: "Track") -> bool:
@@ -353,7 +528,7 @@ class Track:
     time_in_mix: str
     confidence: float
     config: Optional["TrackIdentificationConfig"] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: TrackMetadata = field(default_factory=TrackMetadata)
 
     def __str__(self) -> str:
         return (
@@ -491,7 +666,7 @@ class TrackMatcher:
             )
             return _FALLBACK_DEDUP_WINDOW
         derived = 2.0 * step
-        override = getattr(self._config, "time_threshold", 0) or 0
+        override = self._config.time_threshold or 0
         if override > 0:
             if override < derived:
                 logger.warning(

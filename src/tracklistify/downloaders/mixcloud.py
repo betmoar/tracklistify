@@ -39,14 +39,12 @@ class MixcloudDownloader(Downloader):
             temp_dir: Per-invocation temp directory. When ``None`` we fall
                 back to the system temp dir (legacy behaviour).
         """
-        self.ffmpeg_path = self.get_ffmpeg_path()
+        self.ffmpeg_path: Optional[str] = None
         self.verbose = verbose
         self.quality = quality
         self.format = format
         self.temp_dir = temp_dir
-        logger.debug(
-            f"Initialized MixcloudDownloader with ffmpeg at: {self.ffmpeg_path}"
-        )
+        logger.debug("Initialized MixcloudDownloader")
         logger.debug(f"Settings - Quality: {quality}kbps, Format: {format}")
 
     def get_ydl_opts(self) -> dict:
@@ -79,6 +77,9 @@ class MixcloudDownloader(Downloader):
         Raises:
             DownloadError: If download fails for any reason
         """
+        if self.ffmpeg_path is None:
+            self.ffmpeg_path = self.get_ffmpeg_path()
+            logger.debug(f"Resolved ffmpeg at: {self.ffmpeg_path}")
         try:
             # Clean URL before downloading
             logger.info(f"Starting Mixcloud download: {url}")

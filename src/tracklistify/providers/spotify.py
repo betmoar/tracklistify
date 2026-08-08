@@ -37,9 +37,9 @@ class SpotifyProvider(MetadataProvider):
         """
         self.client_id = client_id
         self.client_secret = client_secret
-        self._access_token = None
+        self._access_token: Optional[str] = None
         self._token_expiry = 0
-        self._session = None
+        self._session: Optional[aiohttp.ClientSession] = None
 
     async def _ensure_session(self):
         """Ensure aiohttp session exists."""
@@ -55,6 +55,7 @@ class SpotifyProvider(MetadataProvider):
         auth_b64 = base64.b64encode(auth_string.encode()).decode()
 
         await self._ensure_session()
+        assert self._session is not None  # set by _ensure_session
         async with self._session.post(
             self.AUTH_URL,
             headers={"Authorization": f"Basic {auth_b64}"},
@@ -68,9 +69,10 @@ class SpotifyProvider(MetadataProvider):
                 raise ProviderError(f"Spotify authentication failed: {response.status}")
 
             data = await response.json()
-            self._access_token = data["access_token"]
+            token: str = data["access_token"]
+            self._access_token = token
             self._token_expiry = asyncio.get_event_loop().time() + data["expires_in"]
-            return self._access_token
+            return token
 
     async def enrich_metadata(self, track_info: Dict) -> Dict:
         """Enrich track metadata with additional information."""
@@ -114,6 +116,7 @@ class SpotifyProvider(MetadataProvider):
         JSON body when present, otherwise an empty dict.
         """
         await self._ensure_session()
+        assert self._session is not None  # set by _ensure_session
         token = await self._get_access_token()
 
         headers = {"Authorization": f"Bearer {token}", **kwargs.pop("headers", {})}

@@ -44,7 +44,7 @@ def _quote_term(term: str) -> str:
     return quote(term, safe="")
 
 
-def _web_search_url(platform: str, uri: str) -> Optional[str]:
+def _web_search_url(platform: str, uri: Optional[str]) -> Optional[str]:
     """Convert a Shazam app-scheme deeplink into a clickable https URL.
 
     Shazam ships platform links as proprietary schemes —
@@ -98,11 +98,7 @@ class ShazamProvider(TrackIdentificationProvider):
         """Identify track from an audio segment."""
         try:
             # Brief cooldown to avoid hammering upstream between calls
-            try:
-                cooldown = float(getattr(self._config, "shazam_cooldown_seconds", 2.25))
-            except (ValueError, AttributeError, TypeError) as e:
-                logger.debug(f"Failed to get cooldown config, using default: {e}")
-                cooldown = 2.25
+            cooldown = float(self._config.shazam_cooldown_seconds)
             if cooldown and cooldown > 0:
                 await asyncio.sleep(cooldown)
             # Debug: one line per segment with no outcome attached is pure
@@ -117,7 +113,7 @@ class ShazamProvider(TrackIdentificationProvider):
                 return None
 
             # Perform track recognition using the updated method
-            proxy = getattr(self._config, "shazam_proxy", "") or None
+            proxy = self._config.shazam_proxy or None
             result = await self.shazam.recognize(audio_segment.file_path, proxy=proxy)
             logger.debug(f"Shazam response: {result}")
 
@@ -198,7 +194,7 @@ class ShazamProvider(TrackIdentificationProvider):
             # link; resolving to a real track id needs the Spotify API (see
             # BACKLOG P2). Converted from Shazam's app-scheme deeplinks to
             # https by _web_search_url so they are clickable from the JSON.
-            provider_uris = {}
+            provider_uris: Dict[str, str] = {}
             for prov in hub.get("providers") or []:
                 if not isinstance(prov, dict):
                     continue

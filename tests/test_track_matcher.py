@@ -922,3 +922,366 @@ def test_low_confidence_skip_stays_below_info(track_matcher, caplog):
 
     assert not [r for r in caplog.records if r.levelno >= logging.INFO]
     assert any(r.levelno == logging.DEBUG for r in caplog.records)
+
+
+class TestExtractMixInfo:
+    """Unit tests for _extract_mix_info — the U15 remixer-name gate helper."""
+
+    def test_extract_mix_info_named_remixer(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Artist X Remix)")
+        # _normalize_token lowercases and accent-folds; the extracted name
+        # is the normalized form after the remix keyword is stripped.
+        assert result["remixers"] == ["artist x"]
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_generic_mix(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Club Mix)")
+        assert result["remixers"] == []
+        assert result["mix_type"] == "club mix"
+
+    def test_extract_mix_info_no_brackets(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name")
+        assert result["remixers"] == []
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_multiple_remixers(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        # "Artist X & Y" → _normalize_token → "artist x y" (punctuation→space)
+        result = _extract_mix_info("Track Name (Artist X & Y Remix)")
+        assert result["remixers"] == ["artist x y"]
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_remix_and_mix_type(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Artist X Remix) (Club Mix)")
+        assert result["remixers"] == ["artist x"]
+        assert result["mix_type"] == "club mix"
+
+    def test_extract_mix_info_bootleg(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (DJ Someone Bootleg)")
+        assert result["remixers"] == ["dj someone"]
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_edit_by(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Edit By Producer)")
+        assert result["remixers"] == ["producer"]
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_vip(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (VIP)")
+        # "VIP" is a keep-marker with no name attached. Stripping the
+        # keyword leaves nothing, so there is no remixer to record; and
+        # "vip" is not in _SUFFIX_DROP_EXACT, so it is not a mix type
+        # either. Both fields stay empty.
+        assert result["remixers"] == []
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_original_mix_ignored(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Original Mix)")
+        assert result["remixers"] == []
+        assert result["mix_type"] == "original mix"
+
+    def test_extract_mix_info_extended_mix(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Extended Mix)")
+        assert result["remixers"] == []
+        assert result["mix_type"] == "extended mix"
+
+    def test_extract_mix_info_radio_edit(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Radio Edit)")
+        assert result["remixers"] == []
+        assert result["mix_type"] == "radio edit"
+
+    def test_extract_mix_info_live_at_ignored(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name (Live at Tomorrowland)")
+        assert result["remixers"] == []
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_feat_ignored(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        # feat groups are canonicalized by _decide_title_group, not mix info.
+        result = _extract_mix_info("Track Name (feat. Vocalist)")
+        assert result["remixers"] == []
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_square_brackets(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        result = _extract_mix_info("Track Name [DJ X Remix]")
+        # _normalize_token("DJ X Remix") → "dj x remix", strip "remix" → "dj x"
+        assert result["remixers"] == ["dj x"]
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_remix_keyword_only(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        # "(Remix)" — a remix keyword with no name after it.
+        result = _extract_mix_info("Track Name (Remix)")
+        assert result["remixers"] == []
+        assert result["mix_type"] is None
+
+    def test_extract_mix_info_multi_mix_type_keeps_outermost(self):
+        from tracklistify.core.track import _extract_mix_info
+
+        # Groups peel right-to-left and the first hit wins, so the OUTERMOST
+        # (rightmost) group is kept — not the one closest to the track name.
+        assert _extract_mix_info("Track (Club Mix) (Extended Mix)")["mix_type"] == (
+            "extended mix"
+        )
+        assert _extract_mix_info("Track (Extended Mix) (Club Mix)")["mix_type"] == (
+            "club mix"
+        )
+
+
+class TestRemixerMatching:
+    """Unit tests for _any_remixer_in and _mix_type_matches (U15 gate helpers)."""
+
+    def test_any_remixer_in_exact_match(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        assert _any_remixer_in(["Artist X"], ["Artist X"], None) is True
+
+    def test_any_remixer_in_case_insensitive(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        assert _any_remixer_in(["artist x"], ["Artist X"], None) is True
+
+    def test_any_remixer_in_mismatch(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        assert _any_remixer_in(["Artist X"], ["Artist Y"], None) is False
+
+    def test_any_remixer_in_substring_match(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        # "John" is a substring of "Johnson" — the word-boundary check
+        # must reject this.
+        assert _any_remixer_in(["John"], ["Johnson"], None) is False
+
+    def test_any_remixer_in_word_boundary_match(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        # "John" should match "John Doe" (word boundary after John).
+        assert _any_remixer_in(["John"], ["John Doe"], None) is True
+
+    def test_any_remixer_in_mix_name_fallback(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        # Remixer embedded in mix_name string rather than remixers list.
+        assert _any_remixer_in(["Artist X"], None, "Artist X Remix") is True
+
+    def test_any_remixer_in_no_remixers_no_mix_name(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        assert _any_remixer_in(["Artist X"], None, None) is False
+
+    def test_any_remixer_in_empty_lists(self):
+        from tracklistify.core.track import _any_remixer_in
+
+        assert _any_remixer_in([], [], None) is False
+
+    def test_mix_type_matches_exact(self):
+        from tracklistify.core.track import _mix_type_matches
+
+        assert _mix_type_matches("Club Mix", "Club Mix") is True
+
+    def test_mix_type_matches_case_insensitive(self):
+        from tracklistify.core.track import _mix_type_matches
+
+        assert _mix_type_matches("club mix", "Club Mix") is True
+
+    def test_mix_type_matches_mismatch(self):
+        from tracklistify.core.track import _mix_type_matches
+
+        assert _mix_type_matches("Club Mix", "Extended Mix") is False
+
+    def test_mix_type_matches_bp_none(self):
+        from tracklistify.core.track import _mix_type_matches
+
+        assert _mix_type_matches("Club Mix", None) is False
+
+
+class TestEnrichmentTitleMatchHybrid:
+    """Integration tests for the hybrid U15 gate in _enrichment_title_match."""
+
+    def test_strict_equality_still_fast_path(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Titles that match via _comparison_title → True, no remixer needed.
+        assert _enrichment_title_match("Track Name", "Track Name") is True
+
+    def test_remixer_name_match_passes(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Shazam "Track (Artist X Remix)" + Beatport remixers=["Artist X"]
+        assert (
+            _enrichment_title_match(
+                "Track Name (Artist X Remix)",
+                "Track Name",
+                remixers=["Artist X"],
+            )
+            is True
+        )
+
+    def test_remixer_name_mismatch_fails(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Shazam "Track (Artist X Remix)" + Beatport remixers=["Artist Y"]
+        assert (
+            _enrichment_title_match(
+                "Track Name (Artist X Remix)",
+                "Track Name",
+                remixers=["Artist Y"],
+            )
+            is False
+        )
+
+    def test_remixer_in_mix_name_passes(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Remixer embedded in mix_name rather than remixers list.
+        assert (
+            _enrichment_title_match(
+                "Track Name (Artist X Remix)",
+                "Track Name",
+                mix_name="Artist X Remix",
+            )
+            is True
+        )
+
+    def test_generic_mix_type_match_passes(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        assert (
+            _enrichment_title_match(
+                "Track Name (Club Mix)",
+                "Track Name (Club Mix)",
+                mix_name="Club Mix",
+            )
+            is True
+        )
+
+    def test_generic_mix_type_mismatch_fails(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        assert (
+            _enrichment_title_match(
+                "Track Name (Club Mix)",
+                "Track Name (Extended Mix)",
+                mix_name="Extended Mix",
+            )
+            is False
+        )
+
+    def test_generic_mix_type_no_bp_data_falls_back_to_stem(self):
+        """Recall regression fix: identical mix_type titles with no Beatport
+        mix_name to verify against must fall through to the stem fallback
+        (True) instead of rejecting via _mix_type_matches(..., None) (False).
+        """
+        from tracklistify.core.track import _enrichment_title_match
+
+        assert (
+            _enrichment_title_match(
+                "Track Name (Club Mix)",
+                "Track Name (Club Mix)",
+            )
+            is True
+        )
+
+    def test_no_mix_info_falls_back_to_stem(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Shazam "Track" (no brackets) + Beatport "Track (Original Mix)"
+        # → stem match: both strip to "track".
+        assert (
+            _enrichment_title_match(
+                "Track Name",
+                "Track Name (Original Mix)",
+            )
+            is True
+        )
+
+    def test_stem_fallback_still_works_for_non_beatport_callers(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # No remixers/mix_name kwargs → stem fallback (Spotify path).
+        assert (
+            _enrichment_title_match(
+                "Track Name (Tritonia 404)",
+                "Track Name (Original Mix)",
+            )
+            is True
+        )
+
+    def test_remixer_gate_blocks_wrong_remix_with_same_stem(self):
+        from tracklistify.core.track import _enrichment_title_match
+
+        # Both stem to "track name" — the remixer gate must catch this.
+        assert (
+            _enrichment_title_match(
+                "Track Name (Artist X Remix)",
+                "Track Name (Artist Y Remix)",
+                remixers=["Artist Y"],
+            )
+            is False
+        )
+
+    def test_identical_remixer_titles_no_kwargs_passes(self):
+        """Regression: byte-identical titles carrying a named remixer must
+        not be rejected just because the caller has no Beatport remixer
+        data to check them against. Rejecting on absent data was the bug
+        — with neither ``remixers`` nor ``mix_name`` supplied, there is
+        nothing to verify, so the fast-path equality check must win.
+        """
+        from tracklistify.core.track import _enrichment_title_match
+
+        title = "Track Name (Artist X Remix)"
+        assert _enrichment_title_match(title, title) is True
+
+    def test_identical_bootleg_titles_no_kwargs_passes(self):
+        """Same regression, non-remix mix-type wording (bootleg): identical
+        titles with no Beatport data to verify against must fall through
+        to True rather than being rejected for lack of data.
+        """
+        from tracklistify.core.track import _enrichment_title_match
+
+        title = "Track Name (DJ Y Bootleg)"
+        assert _enrichment_title_match(title, title) is True
+
+    def test_wrong_remixer_with_data_still_fails(self):
+        """Guards the original U15 fix: when Beatport data IS present and
+        names a different remixer, the mismatch must still reject the
+        candidate — the absent-data fallthrough must not swallow this case.
+        """
+        from tracklistify.core.track import _enrichment_title_match
+
+        assert (
+            _enrichment_title_match(
+                "Track (Artist X Remix)",
+                "Track",
+                remixers=["Artist Y"],
+            )
+            is False
+        )

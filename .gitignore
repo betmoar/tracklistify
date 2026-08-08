@@ -181,3 +181,6 @@ coverage.json
 # ledger). Deliberately untracked: the durable record is the committed
 # spec/plan under docs/dev/ plus git log.
 .dev-flow/
+# cc-operator session charter + ledgers — per-session harness, not shipped.
+OPERATOR.md
+.operator/

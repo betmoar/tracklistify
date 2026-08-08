@@ -554,3 +554,111 @@ async def test_storage_rejects_traversal_filename(temp_cache_dir: Path):
     # get() must return None (not read the traversed path) and drop the entry.
     result = await storage.get("evil_key")
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Q1 — cache subsystem defect locks (2026-08 code-quality review)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_does_not_rewrite_entry_on_read_hit(
+    cache: BaseCache[Dict[str, Any]],
+):
+    """A cache read hit must not rewrite the entry file.
+
+    Before the fix, ``BaseCache.get`` called ``storage.set`` whenever
+    ``update_metadata`` returned a changed dict — and under TTLStrategy
+    that is every hit (it deep-copies and bumps ``last_accessed``),
+    turning every read into a synchronous write+fsync. A read path doing
+    a write, per hit. This locks the fix: a read must not call set().
+    """
+    key = "no-rewrite"
+    value = {"data": "fetched-once"}
+    await cache.set(key, value)
+
+    set_calls_before = cache._storage.set  # type: ignore[method-assign]
+    call_count = {"n": 0}
+
+    async def counting_set(*args, **kwargs):
+        call_count["n"] += 1
+        return await set_calls_before(*args, **kwargs)
+
+    cache._storage.set = counting_set  # type: ignore[method-assign]
+
+    # Two read hits on the same key.
+    assert await cache.get(key) == value
+    assert await cache.get(key) == value
+
+    assert call_count["n"] == 0, (
+        f"read path rewrote the entry {call_count['n']} times; a cache hit "
+        "must not call storage.set"
+    )
+
+
+@pytest.mark.asyncio
+async def test_stats_entries_not_phantom_over_count(tmp_path: Path):
+    """The ``entries`` stat must not track total writes (over-counting
+    overwrites) — it was removed from _stats as a phantom counter.
+
+    Before the fix, _stats['entries'] incremented on every set() including
+    re-puts of the same key, so two writes of one key reported 2 entries.
+    Now ``entries`` is intentionally absent from the BaseCache stats dict
+    (the authoritative live count is the storage index's length); this
+    asserts the key is gone so nobody reintroduces the drifting counter.
+    """
+    storage = JSONStorage(tmp_path / "entries_test")
+    # We only inspect _stats init, so never call set/get here.
+    from tracklistify.cache.invalidation import TTLStrategy
+
+    bc = BaseCache[Dict[str, Any]](storage=storage, invalidation_strategy=TTLStrategy())
+    assert "entries" not in bc._stats, (
+        "_stats['entries'] was a phantom counter (tracked total writes, not "
+        "live entries); it must stay removed"
+    )
+
+
+@pytest.mark.asyncio
+async def test_compression_read_uses_index_flag_not_sniff(tmp_path: Path):
+    """Reads must trust the index ``compression`` flag, not byte sniffing.
+
+    The index records an explicit ``compression`` per key on set()/rebuild.
+    Before the fix, reads sniffed the zlib magic bytes (0x78 0x9c) to decide
+    decompression — wrong because the writer's flag is the authoritative
+    signal. This locks both sides: a flagged-True entry is decompressed, and
+    a flagged-False entry is never passed to zlib.decompress at all.
+    """
+    import zlib as _zlib
+    from unittest.mock import patch
+
+    storage = JSONStorage(tmp_path)
+
+    # (a) compressed entry — flag True, value reads back after decompression.
+    value_c = {"note": "compressed", "n": list(range(40))}
+    entry_c = CacheEntry(
+        key="flag-compressed",
+        value=value_c,
+        metadata={"created": time.time(), "compression": True, "size": 0, "ttl": 3600},
+    )
+    await storage.set("flag-compressed", entry_c, compression=True)
+    assert (await storage.get("flag-compressed"))["value"] == value_c
+
+    # (b) uncompressed entry — flag False. zlib.decompress must not be called.
+    value_u = {"note": "uncompressed"}
+    entry_u = CacheEntry(
+        key="flag-uncompressed",
+        value=value_u,
+        metadata={"created": time.time(), "compression": False, "size": 0, "ttl": 3600},
+    )
+    await storage.set("flag-uncompressed", entry_u, compression=False)
+
+    with patch.object(
+        _zlib,
+        "decompress",
+        side_effect=AssertionError(
+            "zlib.decompress called on a compression=False entry; the index flag "
+            "must suppress decompression"
+        ),
+    ):
+        result_u = await storage.get("flag-uncompressed")
+    assert result_u is not None and result_u["value"] == value_u

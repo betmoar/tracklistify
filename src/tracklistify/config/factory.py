@@ -2,7 +2,7 @@
 
 # Standard library imports
 import threading
-from typing import Dict, Type, TypeVar
+from typing import Dict, Type, TypeVar, cast
 
 # Local imports
 from .base import BaseConfig, TrackIdentificationConfig
@@ -30,7 +30,7 @@ class ConfigFactory:
     @classmethod
     def get_config(
         cls,
-        config_type: Type[T] = TrackIdentificationConfig,
+        config_type: Type[T] = TrackIdentificationConfig,  # type: ignore[assignment]
         force_refresh: bool = False,
     ) -> T:
         """
@@ -47,14 +47,14 @@ class ConfigFactory:
         """
         # Fast path: instance exists and no refresh needed
         if not force_refresh and config_type in cls._instances:
-            return cls._instances[config_type]
+            return cast(T, cls._instances[config_type])
 
         # Slow path: need to create instance (thread-safe)
         with _config_lock:
             # Double-check inside lock
             if force_refresh or config_type not in cls._instances:
                 cls._instances[config_type] = config_type()
-            return cls._instances[config_type]
+            return cast(T, cls._instances[config_type])
 
     @classmethod
     def clear_cache(cls) -> None:
