@@ -37,10 +37,11 @@ jobs:
     steps:
       - uses: https://github.com/actions/checkout@v4
 
+      # `uname -m` is the honest signal. /sys/module/rosetta exists on the
+      # native arm64 job too (the Docker Desktop VM loads it host-wide), so
+      # it does not distinguish the two — measured on task 422.
       - name: Report the arch this job actually got
-        run: |
-          echo "uname-m=$(uname -m)"
-          test -d /sys/module/rosetta && echo "emulator=rosetta" || echo "emulator=native"
+        run: 'echo "uname-m=$(uname -m)"'
 
       - name: Install ffmpeg (required by the audio pipeline + some tests)
         run: |

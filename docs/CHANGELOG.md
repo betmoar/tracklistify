@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Release dates are in YYYY-MM-DD format.
 
+## [0.11.2] - 2026-08-31
+
+### Fixed
+
+- **Windows startup crash: `add_signal_handler` (#81, follow-up to #23).**
+  `asyncio.get_event_loop().add_signal_handler()` is not implemented on
+  Windows' `ProactorEventLoop` and raised `NotImplementedError` before the
+  app did any work. Now caught in `cli.py`; startup continues and the
+  fallback is logged at debug level. Ctrl+C still works through Python's
+  default `KeyboardInterrupt` path — what is lost on Windows is the
+  two-stage cancel-then-force-exit behaviour, not interruptibility.
+- **Windows startup crash: stale temp-dir sweep could kill a live process
+  (#81).** `_sweep_stale_run_dirs` used `os.kill(pid, 0)` as an existence
+  check. On Windows that is not one: CPython maps any signal other than
+  `CTRL_C_EVENT`/`CTRL_BREAK_EVENT` to `TerminateProcess`, so signal 0
+  against a *live* PID terminated that process; for a dead PID it raised a
+  bare `OSError` (WinError 87/11) rather than `ProcessLookupError`, which
+  escaped the POSIX-shaped `except` clause and crashed startup. Replaced
+  with `_pid_alive()` — POSIX keeps `os.kill`, Windows goes through
+  `OpenProcess`/`GetExitCodeProcess` via `ctypes`, which only reads process
+  state. Every ambiguous branch returns "alive": sweeping is destructive, so
+  an unknown answer must never delete a running instance's temp directory.
+  Reported by @deroverda with a tested-on-Windows-10 diff.
+
+### Added
+
+- **Multi-arch CI on the local Forgejo runner** (`.forgejo/workflows/ci.yml`).
+  Runs the suite on arm64 (native) and x86_64 (Rosetta userspace emulation)
+  across Python 3.11 and 3.13. GitHub Actions gates x86 only, so
+  arch-sensitive breakage — wheel availability, native extensions, ffmpeg
+  builds — had no gate before this.
+
+### Changed
+
+- **Dependency bumps** (#80, #83): `uv_build` `>=0.12.0` → `>=0.12.4`,
+  `python-dotenv` 1.2.2 → 1.2.3, `click` 8.4.2 → 8.5.0, `pre-commit` 4.6.1 →
+  4.6.2, `ruff` 0.16.1 → 0.16.5, `commitizen` 4.17.0 → 4.18.0, `pylint`
+  4.0.6 → 4.0.7, `mypy` 2.3.0 → 2.3.1.
+
 ## [0.11.1] - 2026-08-08
 
 ### Added
