@@ -55,7 +55,18 @@ async def main(args: argparse.Namespace) -> int:
             main_task.cancel()
 
     for sig in (signal.SIGTERM, signal.SIGINT):
-        asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
+        try:
+            asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
+        except NotImplementedError:
+            # Windows' ProactorEventLoop has no add_signal_handler. Ctrl+C
+            # still works through Python's default KeyboardInterrupt path;
+            # what is lost is the two-stage cancel-then-force-exit behaviour.
+            logger.debug(
+                "add_signal_handler unavailable on this platform (%s) — "
+                "falling back to default KeyboardInterrupt handling",
+                sig.name,
+            )
+            break
 
     try:
         # Load configuration
