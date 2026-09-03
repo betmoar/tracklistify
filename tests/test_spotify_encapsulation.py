@@ -20,7 +20,7 @@ class TestSpotifyEncapsulation:
         """Ensure SpotifyPlaylistExporter doesn't access _session."""
         exporter_file = Path("src/tracklistify/exporters/spotify.py")
 
-        with open(exporter_file) as f:
+        with open(exporter_file, encoding="utf-8") as f:
             content = f.read()
 
         # Check for direct _session access
@@ -34,7 +34,7 @@ class TestSpotifyEncapsulation:
         """Ensure SpotifyPlaylistExporter doesn't access _get_auth_headers."""
         exporter_file = Path("src/tracklistify/exporters/spotify.py")
 
-        with open(exporter_file) as f:
+        with open(exporter_file, encoding="utf-8") as f:
             content = f.read()
 
         # Check for _get_auth_headers access
@@ -48,7 +48,7 @@ class TestSpotifyEncapsulation:
         """Ensure SpotifyPlaylistExporter doesn't access _api_request directly."""
         exporter_file = Path("src/tracklistify/exporters/spotify.py")
 
-        with open(exporter_file) as f:
+        with open(exporter_file, encoding="utf-8") as f:
             content = f.read()
 
         # Check for _api_request access
@@ -62,7 +62,7 @@ class TestSpotifyEncapsulation:
         """Ensure SpotifyProvider has public create_playlist method."""
         provider_file = Path("src/tracklistify/providers/spotify.py")
 
-        with open(provider_file) as f:
+        with open(provider_file, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -86,7 +86,7 @@ class TestSpotifyEncapsulation:
         """Ensure SpotifyProvider has public add_tracks_to_playlist method."""
         provider_file = Path("src/tracklistify/providers/spotify.py")
 
-        with open(provider_file) as f:
+        with open(provider_file, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -110,7 +110,7 @@ class TestSpotifyEncapsulation:
         """Ensure SpotifyPlaylistExporter calls create_playlist."""
         exporter_file = Path("src/tracklistify/exporters/spotify.py")
 
-        with open(exporter_file) as f:
+        with open(exporter_file, encoding="utf-8") as f:
             content = f.read()
 
         # Should call the public method
@@ -122,7 +122,7 @@ class TestSpotifyEncapsulation:
         """Ensure SpotifyPlaylistExporter calls add_tracks_to_playlist."""
         exporter_file = Path("src/tracklistify/exporters/spotify.py")
 
-        with open(exporter_file) as f:
+        with open(exporter_file, encoding="utf-8") as f:
             content = f.read()
 
         # Should call the public method
@@ -138,7 +138,7 @@ class TestSpotifyProviderPublicAPI:
         """Test create_playlist has correct parameters."""
         provider_file = Path("src/tracklistify/providers/spotify.py")
 
-        with open(provider_file) as f:
+        with open(provider_file, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -165,7 +165,7 @@ class TestSpotifyProviderPublicAPI:
         """Test add_tracks_to_playlist has correct parameters."""
         provider_file = Path("src/tracklistify/providers/spotify.py")
 
-        with open(provider_file) as f:
+        with open(provider_file, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -195,7 +195,7 @@ class TestSpotifyProviderPublicAPI:
         """Test create_playlist is an async method."""
         provider_file = Path("src/tracklistify/providers/spotify.py")
 
-        with open(provider_file) as f:
+        with open(provider_file, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -215,7 +215,7 @@ class TestSpotifyProviderPublicAPI:
         """Test add_tracks_to_playlist is an async method."""
         provider_file = Path("src/tracklistify/providers/spotify.py")
 
-        with open(provider_file) as f:
+        with open(provider_file, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)

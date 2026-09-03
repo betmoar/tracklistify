@@ -19,7 +19,7 @@ class TestDownloaderConsistency:
         """Test MixcloudDownloader imports DownloadError."""
         mixcloud_file = Path("src/tracklistify/downloaders/mixcloud.py")
 
-        with open(mixcloud_file) as f:
+        with open(mixcloud_file, encoding="utf-8") as f:
             content = f.read()
 
         assert "from tracklistify.core.exceptions import DownloadError" in content, (
@@ -30,7 +30,7 @@ class TestDownloaderConsistency:
         """Test MixcloudDownloader.download has correct return type."""
         mixcloud_file = Path("src/tracklistify/downloaders/mixcloud.py")
 
-        with open(mixcloud_file) as f:
+        with open(mixcloud_file, encoding="utf-8") as f:
             content = f.read()
 
         # Should have return type annotation of str, not Optional[str]
@@ -42,7 +42,7 @@ class TestDownloaderConsistency:
         """Verify download methods don't explicitly return None on error."""
         mixcloud_file = Path("src/tracklistify/downloaders/mixcloud.py")
 
-        with open(mixcloud_file) as f:
+        with open(mixcloud_file, encoding="utf-8") as f:
             content = f.read()
 
         # Check for problematic pattern: catching exception and returning None
@@ -70,7 +70,7 @@ class TestDownloaderConsistency:
         """Test that MixcloudDownloader raises DownloadError in error handlers."""
         mixcloud_file = Path("src/tracklistify/downloaders/mixcloud.py")
 
-        with open(mixcloud_file) as f:
+        with open(mixcloud_file, encoding="utf-8") as f:
             content = f.read()
 
         # Check that DownloadError is raised in the exception handler
@@ -82,7 +82,7 @@ class TestDownloaderConsistency:
         """Test that YtDlpDownloader raises exceptions on failure."""
         ytdlp_file = Path("src/tracklistify/downloaders/ytdlp.py")
 
-        with open(ytdlp_file) as f:
+        with open(ytdlp_file, encoding="utf-8") as f:
             content = f.read()
 
         # Check that it raises rather than returns None

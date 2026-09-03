@@ -199,7 +199,7 @@ class TestNoOrphanExceptionDefinitions:
                 continue
 
             try:
-                with open(py_file) as f:
+                with open(py_file, encoding="utf-8") as f:
                     content = f.read()
 
                 for pattern in disallowed_definitions:

@@ -3,9 +3,11 @@ Input validation utilities for Tracklistify.
 """
 
 # Standard library imports
+import sys
 from pathlib import Path
 from typing import Iterable, Optional, Tuple
 from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 # Local/package imports
 from .logger import get_logger
@@ -42,7 +44,18 @@ def validate_input(input_path: str) -> Optional[Tuple[str, bool]]:
 
     # file:// URL -> treat as local file
     if parsed.scheme == "file":
-        local = Path(parsed.path).expanduser()
+        # urlparse gives a URL path, not a filesystem path: percent-escapes
+        # are still encoded (a space stays %20) and Windows drive letters
+        # arrive with a leading slash ("/C:/x"). url2pathname decodes and
+        # denormalizes per platform.
+        raw = url2pathname(parsed.path)
+        host = parsed.netloc
+        if host and host.lower() != "localhost":
+            # A remote host is only meaningful as a Windows UNC path.
+            if sys.platform != "win32":
+                return None
+            raw = f"\\\\{host}{raw}"
+        local = Path(raw).expanduser()
         if local.exists() and local.is_file():
             try:
                 return str(local.resolve(strict=True)), True

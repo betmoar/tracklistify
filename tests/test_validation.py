@@ -68,6 +68,59 @@ def test_file_uri_nonexistent(tmp_path: Path):
     assert validate_input(uri) is None
 
 
+def test_file_uri_with_space_in_name(tmp_path: Path):
+    """A percent-escaped space must be decoded before the path is used.
+
+    Regression (#85): the old code fed ``urlparse().path`` straight into
+    ``Path``, so ``clip%20a.wav`` was looked up literally, never existed,
+    and a valid URI returned None. Not Windows-specific -- it fails on
+    POSIX too, and only escaped notice because tmp_path names have no
+    spaces.
+    """
+    f = tmp_path / "a mix (live).wav"
+    f.write_text("x")
+    uri = f.as_uri()
+    assert "%20" in uri  # guard: the fixture must actually exercise escaping
+
+    validated_path, is_local = validate_input(uri)
+    assert is_local is True
+    assert Path(validated_path).resolve() == f.resolve()
+
+
+def test_file_uri_with_non_ascii_name(tmp_path: Path):
+    """Non-ASCII is percent-escaped as UTF-8 bytes and must round-trip."""
+    f = tmp_path / "Björk - Jóga.wav"
+    f.write_text("x")
+    uri = f.as_uri()
+
+    validated_path, is_local = validate_input(uri)
+    assert is_local is True
+    assert Path(validated_path).resolve() == f.resolve()
+
+
+def test_file_uri_localhost_host_accepted(tmp_path: Path):
+    """``file://localhost/path`` is the same file as ``file:///path``."""
+    f = tmp_path / "clip.wav"
+    f.write_text("x")
+    uri = f.as_uri().replace("file://", "file://localhost", 1)
+
+    validated_path, is_local = validate_input(uri)
+    assert is_local is True
+    assert Path(validated_path).resolve() == f.resolve()
+
+
+def test_file_uri_remote_host_rejected_off_windows(monkeypatch):
+    """A host other than localhost is a UNC path -- meaningless on POSIX.
+
+    Silently dropping the host would resolve ``file://evil/etc/passwd`` to
+    the local ``/etc/passwd``, so it is rejected rather than reinterpreted.
+    """
+    import tracklistify.utils.validation as validation
+
+    monkeypatch.setattr(validation.sys, "platform", "linux")
+    assert validate_input("file://someserver/share/clip.wav") is None
+
+
 class TestCleanUrl:
     def test_strips_query_and_fragment(self):
         assert (

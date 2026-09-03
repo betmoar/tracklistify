@@ -4,6 +4,7 @@ Mocks the aiohttp session; never hits the network.
 """
 
 import json
+import os
 import time
 
 import pytest
@@ -120,7 +121,13 @@ async def test_password_flow_writes_token_cache_0600(tmp_path):
     assert stored["access_token"] == "AT"
     assert stored["refresh_token"] == "RT"
     assert stored["expires_at"] > time.time()
-    assert path.stat().st_mode & 0o777 == 0o600
+
+    # NTFS has ACLs, not POSIX mode bits: CPython's Path.chmod only toggles
+    # the read-only flag there, so st_mode comes back 0o666 no matter what
+    # the source asked for. The 0600 on the token cache is still the point
+    # of the test on the platforms where the bits mean something (#85).
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
 
 
 @pytest.mark.asyncio

@@ -18,7 +18,7 @@ class TestSafeArrayAccess:
         """identification.py should safely access arrays with length checks."""
         file_path = Path("src/tracklistify/utils/identification.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Should not have unsafe [0] access on potentially empty lists
@@ -36,7 +36,7 @@ class TestSafeArrayAccess:
         """identification.py should check artists list before accessing."""
         file_path = Path("src/tracklistify/utils/identification.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Should have artists_list variable with safe access
@@ -55,7 +55,7 @@ class TestProgressValidation:
         """create_progress_bar should clamp progress to valid range."""
         file_path = Path("src/tracklistify/utils/identification.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Should clamp progress value
@@ -93,7 +93,7 @@ class TestMetadataAccess:
         """identification.py should validate music list before access."""
         file_path = Path("src/tracklistify/utils/identification.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Should check if music_list is empty

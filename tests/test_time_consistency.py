@@ -21,7 +21,7 @@ class TestTimeHandlingConsistency:
         """Identification manager should use monotonic time for elapsed tracking."""
         file_path = Path("src/tracklistify/utils/identification.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Check for elapsed time patterns using time.time()
@@ -42,7 +42,7 @@ class TestTimeHandlingConsistency:
         """
         file_path = Path("src/tracklistify/cache/invalidation.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Verify time.time() is used (correct for persisted timestamps)
@@ -54,7 +54,7 @@ class TestTimeHandlingConsistency:
         """Rate limiter should consistently use monotonic time."""
         file_path = Path("src/tracklistify/utils/rate_limiter.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Rate limiter should NOT use time.time() for elapsed calculations
@@ -76,7 +76,7 @@ class TestTimeHandlingConsistency:
         """Cache base should use time.time() for absolute timestamps."""
         file_path = Path("src/tracklistify/cache/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # "created" and "last_accessed" timestamps should use time.time() (absolute)
@@ -89,7 +89,7 @@ class TestTimeHandlingConsistency:
         """Cache index should use time.time() for absolute timestamps."""
         file_path = Path("src/tracklistify/cache/index.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Timestamps should use time.time() (absolute)
@@ -104,7 +104,7 @@ class TestMonotonicTimeImports:
         """Identification should import time module."""
         file_path = Path("src/tracklistify/utils/identification.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         assert "import time" in content, "identification.py should import time module"

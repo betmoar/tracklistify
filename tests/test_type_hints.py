@@ -21,7 +21,7 @@ class TestAnyTypeUsage:
         """Cache index should use typing.Any, not lowercase any."""
         file_path = Path("src/tracklistify/cache/index.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Check imports include Any
@@ -39,7 +39,7 @@ class TestAnyTypeUsage:
         """Cache storage should use typing.Any, not lowercase any."""
         file_path = Path("src/tracklistify/cache/storage.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Check imports include Any
@@ -70,7 +70,7 @@ class TestReturnTypeAnnotations:
             if not path.exists():
                 continue
 
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
 
             # Find close methods without return type
@@ -86,7 +86,7 @@ class TestReturnTypeAnnotations:
         """All cleanup() methods should have -> None return type."""
         file_path = Path("src/tracklistify/core/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Check cleanup has return type
@@ -99,7 +99,7 @@ class TestReturnTypeAnnotations:
         """Factory clear methods should have -> None return type."""
         file_path = Path("src/tracklistify/providers/factory.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Check clear_provider_cache has return type
@@ -120,7 +120,7 @@ class TestTypingImports:
         """cache/index.py should import Any from typing."""
         file_path = Path("src/tracklistify/cache/index.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -139,7 +139,7 @@ class TestTypingImports:
         """cache/storage.py should import Any from typing."""
         file_path = Path("src/tracklistify/cache/storage.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)

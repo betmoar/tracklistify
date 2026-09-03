@@ -89,7 +89,7 @@ class TestProviderCleanup:
         """Provider base should define abstract close method."""
         file_path = Path("src/tracklistify/providers/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -121,7 +121,7 @@ class TestProviderCleanup:
         """__aexit__ should call close() for cleanup."""
         file_path = Path("src/tracklistify/providers/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # __aexit__ should contain "await self.close()"

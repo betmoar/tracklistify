@@ -268,7 +268,7 @@ class PathRule(ValidationRule):
         if PathRequirement.READABLE in self.requirements:
             try:
                 if path.is_file():
-                    with open(path, "r"):
+                    with open(path, "rb"):
                         pass
             except Exception as e:
                 raise PathValidationError(
@@ -278,7 +278,7 @@ class PathRule(ValidationRule):
         if PathRequirement.WRITABLE in self.requirements:
             try:
                 if path.is_file():
-                    with open(path, "a"):
+                    with open(path, "ab"):
                         pass
                 else:
                     # Create directory if it doesn't exist
