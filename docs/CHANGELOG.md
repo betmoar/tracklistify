@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Release dates are in YYYY-MM-DD format.
 
-## [0.11.2] - 2026-08-31
+## [0.11.2] - Unreleased
 
 ### Fixed
 
@@ -30,6 +30,26 @@ Release dates are in YYYY-MM-DD format.
   state. Every ambiguous branch returns "alive": sweeping is destructive, so
   an unknown answer must never delete a running instance's temp directory.
   Reported by @deroverda with a tested-on-Windows-10 diff.
+
+  Both fixes verified on real Windows by @deroverda (Windows 10, x86-64,
+  Python 3.12.8): startup and `--help` work, `_pid_alive` returns True for a
+  live PID and False for a dead one, and the sweep keeps the live PID's run
+  directory while removing the dead one — the process owning the live
+  directory kept running, so `os.kill` is no longer terminating live
+  processes. The Win32 decision table was separately probed on Windows 11
+  ARM64: `ERROR_INVALID_PARAMETER` (87) is the dead-PID sentinel, and
+  `PROCESS_QUERY_LIMITED_INFORMATION` opens even the protected SYSTEM
+  process (pid 4) without elevation, so the access mask is not so wide that
+  a denial silently falls through to the assume-alive branch.
+- **`test_windows_branch_never_calls_os_kill` could only pass off Windows.**
+  It asserted `pytest.raises(AttributeError)` on the assumption that
+  `ctypes.windll` does not exist — true on Linux/macOS, false on the one
+  platform the test is about, where the branch ran to completion and the
+  test failed with DID NOT RAISE. It now installs a fake `windll` with
+  `raising=False` (created on POSIX, shadowing the real one on Windows) so
+  the win32 branch executes identically on every host, and asserts the
+  actual decision table: `GetLastError` 87 → dead, 5 (ACCESS_DENIED)
+  → alive. Caught by @deroverda.
 
 ### Added
 
