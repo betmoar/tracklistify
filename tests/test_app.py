@@ -965,7 +965,14 @@ class TestPidAlive:
 
         CPython maps any signal other than CTRL_C_EVENT/CTRL_BREAK_EVENT to
         TerminateProcess, so the POSIX existence check is a kill on Windows.
+
+        ``ctypes.windll`` exists only on a Windows host, so the fake is
+        installed with ``raising=False``: on Linux/macOS it creates the
+        attribute, on Windows it shadows the real one. Either way the win32
+        branch runs end to end and ``os.kill`` must stay untouched.
         """
+        import ctypes
+
         from tracklistify.core import base
 
         monkeypatch.setattr(base.sys, "platform", "win32")
@@ -975,10 +982,29 @@ class TestPidAlive:
 
         monkeypatch.setattr(base.os, "kill", _boom)
 
-        # ctypes.windll only exists on Windows, so the call raises there on
-        # this host — what matters is that it never reached os.kill.
-        with pytest.raises(AttributeError):
-            base._pid_alive(1234)
+        class _Kernel32:
+            """OpenProcess returns NULL, so GetLastError decides the verdict."""
+
+            def __init__(self, last_error: int) -> None:
+                self._last_error = last_error
+
+            def OpenProcess(self, _access, _inherit, _pid):  # noqa: N802
+                return 0  # NULL handle
+
+            def GetLastError(self):  # noqa: N802
+                return self._last_error
+
+        class _WinDLL:
+            def __init__(self, kernel32) -> None:
+                self.kernel32 = kernel32
+
+        # 87 = ERROR_INVALID_PARAMETER: the pid does not exist.
+        monkeypatch.setattr(ctypes, "windll", _WinDLL(_Kernel32(87)), raising=False)
+        assert base._pid_alive(1234) is False
+
+        # 5 = ERROR_ACCESS_DENIED: it exists, we may just not query it.
+        monkeypatch.setattr(ctypes, "windll", _WinDLL(_Kernel32(5)), raising=False)
+        assert base._pid_alive(1234) is True
 
     def test_sweep_keeps_dir_when_liveness_unknown(self, temp_dir, monkeypatch):
         """An ambiguous liveness answer must leave the directory alone."""
