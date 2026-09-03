@@ -32,7 +32,7 @@ class TestNoSilentExceptions:
         ]
 
         for py_file in src_path.rglob("*.py"):
-            with open(py_file) as f:
+            with open(py_file, encoding="utf-8") as f:
                 content = f.read()
 
             tree = ast.parse(content)
@@ -59,7 +59,7 @@ class TestNoSilentExceptions:
         """Shazam cooldown exception should use specific exception types."""
         file_path = Path("src/tracklistify/providers/shazam.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Should use specific exception types, not bare Exception
@@ -90,7 +90,7 @@ class TestNoSilentExceptions:
         """Cleanup exceptions in core/base.py should be logged."""
         file_path = Path("src/tracklistify/core/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -116,7 +116,7 @@ class TestExceptionLogging:
         """Shazam should log cooldown config failures."""
         file_path = Path("src/tracklistify/providers/shazam.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Should have logging for cooldown failures

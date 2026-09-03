@@ -18,7 +18,7 @@ class TestNoDebugCode:
         """Ensure no print() statements in core/track.py."""
         track_file = Path("src/tracklistify/core/track.py")
 
-        with open(track_file) as f:
+        with open(track_file, encoding="utf-8") as f:
             content = f.read()
             lines = content.split("\n")
 
@@ -33,7 +33,7 @@ class TestNoDebugCode:
         """Ensure no debug 'some_method' function exists."""
         track_file = Path("src/tracklistify/core/track.py")
 
-        with open(track_file) as f:
+        with open(track_file, encoding="utf-8") as f:
             content = f.read()
 
             if "def some_method(self):" in content:
@@ -46,7 +46,7 @@ class TestNoDebugCode:
         """Ensure no Mock classes in cache/base.py."""
         cache_file = Path("src/tracklistify/cache/base.py")
 
-        with open(cache_file) as f:
+        with open(cache_file, encoding="utf-8") as f:
             content = f.read()
 
             if "class MockConfig" in content:
@@ -58,7 +58,7 @@ class TestNoDebugCode:
         """Ensure no test-specific if conditions in core/track.py."""
         track_file = Path("src/tracklistify/core/track.py")
 
-        with open(track_file) as f:
+        with open(track_file, encoding="utf-8") as f:
             content = f.read()
 
             test_patterns = [
@@ -77,7 +77,7 @@ class TestNoDebugCode:
         """Ensure no hardcoded test data in production."""
         track_file = Path("src/tracklistify/core/track.py")
 
-        with open(track_file) as f:
+        with open(track_file, encoding="utf-8") as f:
             content = f.read()
 
             # Check for obvious test data
@@ -100,7 +100,7 @@ class TestProductionCodeQuality:
         """Ensure cache uses real configuration, not mocks."""
         cache_file = Path("src/tracklistify/cache/base.py")
 
-        with open(cache_file) as f:
+        with open(cache_file, encoding="utf-8") as f:
             content = f.read()
 
             # Should import get_config
@@ -112,7 +112,7 @@ class TestProductionCodeQuality:
         """Ensure identify_tracks doesn't have NotImplementedError."""
         track_file = Path("src/tracklistify/core/track.py")
 
-        with open(track_file) as f:
+        with open(track_file, encoding="utf-8") as f:
             content = f.read()
 
             # Check for NotImplementedError in identify_tracks method

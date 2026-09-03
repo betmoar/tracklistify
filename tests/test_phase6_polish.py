@@ -66,7 +66,7 @@ class TestConstantsUsage:
         """time_formatter.py should use time constants."""
         file_path = Path("src/tracklistify/utils/time_formatter.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         assert "SECONDS_PER_HOUR" in content, (
@@ -84,7 +84,7 @@ class TestNoCommentedCode:
         """cache/__init__.py should not have commented-out Cache class."""
         file_path = Path("src/tracklistify/cache/__init__.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Should not have large block of commented code
@@ -103,7 +103,7 @@ class TestNoRedundantComments:
         """Files should not have redundant path comments at top."""
         file_path = Path("src/tracklistify/utils/time_formatter.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             first_line = f.readline()
 
         # Should not start with path comment
@@ -139,7 +139,7 @@ class TestDRYRefactoring:
         """DRY helper function _is_platform_url should exist."""
         file_path = Path("src/tracklistify/utils/validation.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         assert "def _is_platform_url" in content, "DRY helper function should exist"
@@ -148,7 +148,7 @@ class TestDRYRefactoring:
         """URL validation functions should use the DRY helper."""
         file_path = Path("src/tracklistify/utils/validation.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Check that validators delegate to helper

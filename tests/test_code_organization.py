@@ -19,7 +19,7 @@ class TestModuleLevelImports:
         """core/base.py should import os at module level."""
         file_path = Path("src/tracklistify/core/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -39,7 +39,7 @@ class TestModuleLevelImports:
         """core/base.py should import shutil at module level."""
         file_path = Path("src/tracklistify/core/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -59,7 +59,7 @@ class TestModuleLevelImports:
         """core/base.py should import subprocess at module level."""
         file_path = Path("src/tracklistify/core/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -81,7 +81,7 @@ class TestModuleLevelImports:
         """core/base.py should import mutagen.File at module level."""
         file_path = Path("src/tracklistify/core/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -102,7 +102,7 @@ class TestModuleLevelImports:
         """cache/index.py should import zlib at module level."""
         file_path = Path("src/tracklistify/cache/index.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -126,7 +126,7 @@ class TestNoRedundantInlineImports:
         """core/base.py should not have inline os import in split_audio."""
         file_path = Path("src/tracklistify/core/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -147,7 +147,7 @@ class TestNoRedundantInlineImports:
         """core/base.py should not have inline shutil import in cleanup."""
         file_path = Path("src/tracklistify/core/base.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)
@@ -168,7 +168,7 @@ class TestNoRedundantInlineImports:
         """cache/index.py should not have inline zlib import."""
         file_path = Path("src/tracklistify/cache/index.py")
 
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content)

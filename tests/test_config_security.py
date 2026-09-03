@@ -17,7 +17,7 @@ class TestConfigSecurity:
     def test_no_eval_in_codebase(self):
         """Ensure eval() is not used in config module."""
         config_file = Path("src/tracklistify/config/base.py")
-        with open(config_file) as f:
+        with open(config_file, encoding="utf-8") as f:
             lines = f.readlines()
 
         # Check each line for eval() calls (excluding comments)

@@ -151,7 +151,7 @@ class BeatportProvider:
         if self._token_path is None:
             return None
         try:
-            data = json.loads(Path(self._token_path).read_text())
+            data = json.loads(Path(self._token_path).read_text(encoding="utf-8"))
         except (OSError, ValueError) as e:
             logger.debug(f"Beatport token cache unreadable ({type(e).__name__}); miss")
             return None
@@ -183,7 +183,7 @@ class BeatportProvider:
         }
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(payload))
+            path.write_text(json.dumps(payload), encoding="utf-8")
             path.chmod(0o600)
         except OSError as e:
             logger.debug(f"Could not cache Beatport token: {e}")
