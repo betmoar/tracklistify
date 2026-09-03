@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Release dates are in YYYY-MM-DD format.
 
-## [Unreleased]
+## [0.11.3] - 2026-09-03
+
+Ships one fix every user of 0.11.2 needs: that release's lock pinned a
+yt-dlp a month behind YouTube's current player clients, so every YouTube
+download returned HTTP 403. The rest is the CI that would have caught it.
 
 ### Fixed
 

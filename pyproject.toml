@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "tracklistify"
-version = "0.11.2"
+version = "0.11.3"
 description = "Automatic tracklist generator for DJ mixes and audio streams"
 readme = "README.md"
 authors = [
