@@ -526,7 +526,9 @@ def test_env_override_defaults(monkeypatch, tmp_path):
     default_config = TrackIdentificationConfig()
     # Default paths are relative to project_root, so they're absolute
     assert default_config.output_dir.is_absolute()
-    assert str(default_config.output_dir).endswith(".tracklistify/output")
+    # Compare path components, not a string with a baked-in separator --
+    # Windows renders this ".tracklistify\\output" (#85).
+    assert default_config.output_dir.parts[-2:] == (".tracklistify", "output")
 
     # Set environment variables to override defaults
     custom_output = tmp_path / "custom_output"
