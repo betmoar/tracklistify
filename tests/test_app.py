@@ -915,3 +915,109 @@ class TestPerInstanceTempDir:
 
         assert foreign.exists()
         assert (foreign / "important.bin").exists()
+
+
+class TestPidAlive:
+    """_pid_alive must never guess a live process dead.
+
+    Sweeping is destructive: a false "dead" deletes a running instance's
+    working directory. Every ambiguous branch therefore returns True.
+    """
+
+    def test_own_pid_is_alive(self):
+        import os as _os
+
+        from tracklistify.core.base import _pid_alive
+
+        assert _pid_alive(_os.getpid()) is True
+
+    def test_absurd_pid_is_dead(self):
+        from tracklistify.core.base import _pid_alive
+
+        assert _pid_alive(99999999) is False
+
+    def test_permission_error_counts_as_alive(self, monkeypatch):
+        """A pid owned by another user exists — it must not be swept."""
+        from tracklistify.core import base
+
+        monkeypatch.setattr(base.sys, "platform", "linux")
+        monkeypatch.setattr(
+            base.os, "kill", lambda *_: (_ for _ in ()).throw(PermissionError())
+        )
+        assert base._pid_alive(1234) is True
+
+    def test_bare_oserror_counts_as_alive(self, monkeypatch):
+        """Windows surfaces WinError 87/11 as a plain OSError (issue #81).
+
+        The POSIX branch must not read that as 'dead' — an unknown answer
+        is treated as alive so nothing is deleted on a guess.
+        """
+        from tracklistify.core import base
+
+        monkeypatch.setattr(base.sys, "platform", "linux")
+        monkeypatch.setattr(
+            base.os, "kill", lambda *_: (_ for _ in ()).throw(OSError(87, "bad param"))
+        )
+        assert base._pid_alive(1234) is True
+
+    def test_windows_branch_never_calls_os_kill(self, monkeypatch):
+        """On Windows os.kill(pid, 0) TERMINATES the process — never call it.
+
+        CPython maps any signal other than CTRL_C_EVENT/CTRL_BREAK_EVENT to
+        TerminateProcess, so the POSIX existence check is a kill on Windows.
+
+        ``ctypes.windll`` exists only on a Windows host, so the fake is
+        installed with ``raising=False``: on Linux/macOS it creates the
+        attribute, on Windows it shadows the real one. Either way the win32
+        branch runs end to end and ``os.kill`` must stay untouched.
+        """
+        import ctypes
+
+        from tracklistify.core import base
+
+        monkeypatch.setattr(base.sys, "platform", "win32")
+
+        def _boom(*_args, **_kwargs):
+            raise AssertionError("os.kill must not be called on win32")
+
+        monkeypatch.setattr(base.os, "kill", _boom)
+
+        class _Kernel32:
+            """OpenProcess returns NULL, so GetLastError decides the verdict."""
+
+            def __init__(self, last_error: int) -> None:
+                self._last_error = last_error
+
+            def OpenProcess(self, _access, _inherit, _pid):  # noqa: N802
+                return 0  # NULL handle
+
+            def GetLastError(self):  # noqa: N802
+                return self._last_error
+
+        class _WinDLL:
+            def __init__(self, kernel32) -> None:
+                self.kernel32 = kernel32
+
+        # 87 = ERROR_INVALID_PARAMETER: the pid does not exist.
+        monkeypatch.setattr(ctypes, "windll", _WinDLL(_Kernel32(87)), raising=False)
+        assert base._pid_alive(1234) is False
+
+        # 5 = ERROR_ACCESS_DENIED: it exists, we may just not query it.
+        monkeypatch.setattr(ctypes, "windll", _WinDLL(_Kernel32(5)), raising=False)
+        assert base._pid_alive(1234) is True
+
+    def test_sweep_keeps_dir_when_liveness_unknown(self, temp_dir, monkeypatch):
+        """An ambiguous liveness answer must leave the directory alone."""
+        from tracklistify.core import base
+
+        monkeypatch.setenv("TRACKLISTIFY_TEMP_DIR", str(temp_dir))
+        get_config(force_refresh=True)
+
+        stale = temp_dir / "99999999-deadbeef"
+        stale.mkdir(parents=True)
+        (stale / "old.txt").write_text("orphan")
+
+        monkeypatch.setattr(base, "_pid_alive", lambda _pid: True)
+        App()
+
+        assert stale.exists()

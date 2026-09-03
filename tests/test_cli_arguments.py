@@ -527,3 +527,52 @@ class TestNoCacheRefreshSemantics:
 
         assert cfg.cache_refresh is False
         assert cfg.cache_enabled is True
+
+
+class TestSignalHandlerFallback:
+    """Issue #81: Windows' asyncio loop has no add_signal_handler.
+
+    It raises NotImplementedError before the app does anything, so startup
+    crashed on Windows. main() must degrade to default KeyboardInterrupt
+    handling instead of propagating.
+    """
+
+    @pytest.mark.asyncio
+    async def test_not_implemented_error_does_not_crash_startup(self, tmp_path):
+        """A loop that refuses add_signal_handler must not abort main()."""
+        args = parse_args([str(tmp_path / "nope.mp3")])
+
+        class _NoSignalLoop:
+            def add_signal_handler(self, *_a, **_kw):
+                raise NotImplementedError("Windows")
+
+        with patch("asyncio.get_event_loop", return_value=_NoSignalLoop()):
+            with patch(
+                "tracklistify.core.base.AsyncApp.process_input",
+                new=AsyncMock(side_effect=ValueError("Invalid URL or file path")),
+            ):
+                rc = await main(args)
+
+        # Reached process_input and failed there, not at handler registration.
+        assert rc == 1
+
+    @pytest.mark.asyncio
+    async def test_handlers_are_registered_when_supported(self, tmp_path):
+        """On POSIX both SIGTERM and SIGINT still get a handler."""
+        import signal as _signal
+
+        args = parse_args([str(tmp_path / "nope.mp3")])
+        registered = []
+
+        class _Loop:
+            def add_signal_handler(self, sig, _cb):
+                registered.append(sig)
+
+        with patch("asyncio.get_event_loop", return_value=_Loop()):
+            with patch(
+                "tracklistify.core.base.AsyncApp.process_input",
+                new=AsyncMock(side_effect=ValueError("Invalid URL or file path")),
+            ):
+                await main(args)
+
+        assert registered == [_signal.SIGTERM, _signal.SIGINT]

@@ -1,0 +1,62 @@
+# Forgejo CI — the arch dimension GitHub Actions does not give us.
+#
+# .github/workflows/ci.yml is the merge gate and runs on GitHub's x86 runners
+# only. This workflow runs the same suite on BOTH architectures of the LAN
+# runner: `ubuntu-22.04` is native arm64 (Apple silicon), `ubuntu-22.04-amd64`
+# is the same runner under Rosetta userspace emulation. That catches
+# arch-sensitive breakage (wheel availability, native extensions, ffmpeg
+# builds) that a single-arch gate cannot see.
+#
+# Deliberate differences from the GitHub workflow:
+#   - `uses:` is fully qualified. Bare `actions/checkout@v4` silently resolves
+#     to data.forgejo.org here and pulls different code.
+#   - No setup-uv action: the job image is node:22-bookworm with no Python
+#     toolchain, so uv is installed from its own installer and manages the
+#     interpreter itself.
+#   - Python matrix is trimmed to the range ends (3.11 / 3.13). The runner has
+#     limited capacity; 2 arches x 2 versions is already 4 slots.
+
+name: CI (multi-arch)
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-22.04-amd64]
+        python-version: ["3.11", "3.13"]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+
+      # `uname -m` is the honest signal. /sys/module/rosetta exists on the
+      # native arm64 job too (the Docker Desktop VM loads it host-wide), so
+      # it does not distinguish the two — measured on task 422.
+      - name: Report the arch this job actually got
+        run: 'echo "uname-m=$(uname -m)"'
+
+      - name: Install ffmpeg (required by the audio pipeline + some tests)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ffmpeg curl ca-certificates
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Sync deps on Python ${{ matrix.python-version }}
+        run: uv sync --dev --python ${{ matrix.python-version }}
+
+      # `uv run python -m pytest`, NOT `uv run pytest`: an ambient pytest can
+      # shadow the venv's and silently change asyncio strict-mode behavior.
+      - name: Run tests
+        run: uv run python -m pytest -q

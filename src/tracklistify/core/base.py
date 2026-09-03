@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 import shutil
 import subprocess
+import sys
 import traceback
 import uuid
 from datetime import datetime
@@ -31,6 +32,51 @@ from tracklistify.utils.strings import sanitizer
 from tracklistify.utils.validation import validate_input
 
 logger = get_logger(__name__)
+
+
+def _pid_alive(pid: int) -> bool:
+    """Return True if a process with this PID is currently running.
+
+    ``os.kill(pid, 0)`` is the POSIX existence check, but on Windows it is
+    NOT one: CPython maps any signal other than CTRL_C_EVENT/CTRL_BREAK_EVENT
+    to ``TerminateProcess``, so signal 0 against a LIVE pid kills it. It also
+    raises a bare ``OSError`` (WinError 87/11) for a dead pid rather than
+    ``ProcessLookupError``, so the POSIX except clause does not catch it.
+
+    Windows therefore goes through ``OpenProcess`` via ctypes, which only
+    reads process state. Unknown/erroring cases return True (assume alive),
+    so an ambiguous answer never deletes another run's working directory.
+    """
+    if sys.platform != "win32":
+        try:
+            os.kill(pid, 0)  # signal 0 = existence check, no actual signal
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            # Exists, owned by another user — alive as far as we care.
+            return True
+        except OSError:
+            return True  # unknown: assume alive, never sweep on a guess
+        return True
+
+    import ctypes  # local: Windows-only, keeps the import off other platforms
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        # ERROR_INVALID_PARAMETER (87) is what a nonexistent pid yields;
+        # ERROR_ACCESS_DENIED (5) means it exists but is not ours to query.
+        return kernel32.GetLastError() != 87
+    try:
+        code = ctypes.c_ulong()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True  # cannot tell: assume alive
+        return code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 class AsyncApp:
@@ -88,14 +134,13 @@ class AsyncApp:
                 pid = int(pid_str)
             except ValueError:
                 continue  # not one of ours, leave it
+            if _pid_alive(pid):
+                continue
             try:
-                os.kill(pid, 0)  # signal 0 = existence check, no actual signal
-            except (ProcessLookupError, PermissionError):
-                try:
-                    shutil.rmtree(child)
-                    self.logger.debug(f"Swept stale temp dir: {child}")
-                except OSError as e:
-                    self.logger.debug(f"Could not sweep {child}: {e}")
+                shutil.rmtree(child)
+                self.logger.debug(f"Swept stale temp dir: {child}")
+            except OSError as e:
+                self.logger.debug(f"Could not sweep {child}: {e}")
 
     def shutdown(self) -> None:
         """Shutdown the application gracefully."""
