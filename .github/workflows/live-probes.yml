@@ -11,6 +11,15 @@
 # signal to investigate, never a merge gate.
 name: Live probes
 
+# Cost: this repo is public, so hosted-runner minutes are free and unmetered.
+# If it ever goes private, this job is ~90s/day against the 2000-minute Free
+# tier -- still negligible, but no longer zero.
+#
+# GitHub disables scheduled workflows after 60 days with no repository
+# activity, and only emails the last committer. A quiet stretch therefore
+# turns this probe off silently, which is exactly when a lock is most likely
+# to have gone stale. If the repo has been idle for two months, re-enable it
+# (Actions tab -> this workflow -> Enable) before trusting a green history.
 on:
   schedule:
     # 06:23 UTC daily. Off the hour on purpose -- :00 is when every cron on
