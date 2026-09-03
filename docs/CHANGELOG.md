@@ -32,6 +32,15 @@ Release dates are in YYYY-MM-DD format.
   `windows-latest` job on Python 3.12. Every Windows bug so far — the two
   startup crashes in #81, the thirteen failures in #85 — was found by a
   contributor running the branch by hand; nothing gated it.
+- **First Windows CI run found four more failures, now fixed (#90).** A
+  hardcoded `/` in `test_error_handling.py`'s allow-list (so a permitted
+  cleanup handler read as a violation), an assertion comparing a path
+  against `repr(call_args)` (Windows doubles the backslashes), a cleanup
+  fixture creating `!@#$%^&*()` as a filename (NTFS forbids several of
+  those characters), and `run_shell_command("")`, which raised
+  `IndexError` on POSIX and `OSError` WinError 87 on Windows. That last
+  one is a real portability fix, not a test change: the method now
+  rejects an empty command with a `ValueError` naming the problem.
 - **Scheduled live probes** (`.github/workflows/live-probes.yml`). Runs
   the opt-in `--live` suite daily, outside `ci.yml` because it hits real
   services and fails on an upstream outage as readily as on a regression.
