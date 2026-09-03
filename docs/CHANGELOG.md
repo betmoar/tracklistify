@@ -94,7 +94,7 @@ Release dates are in YYYY-MM-DD format.
 - **Dependency bumps** (#80, #83): `uv_build` `>=0.12.0` → `>=0.12.4`,
   `python-dotenv` 1.2.2 → 1.2.3, `click` 8.4.2 → 8.5.0, `pre-commit` 4.6.1 →
   4.6.2, `ruff` 0.16.1 → 0.16.5, `commitizen` 4.17.0 → 4.18.0, `pylint`
-  4.0.6 → 4.0.7, `mypy` 2.3.0 → 2.3.1.
+  4.0.6 → 4.0.8, `mypy` 2.3.0 → 2.3.1.
 
 ## [0.11.1] - 2026-08-08
 
