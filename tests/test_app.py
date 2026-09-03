@@ -1,4 +1,5 @@
 import asyncio
+import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -445,8 +446,14 @@ class TestAppCleanup:
         """Cleanup handles unicode/special-char filenames in the per-instance
         subdir."""
         run_dir = app.temp_dir
-        for name in ["!@#$%^&*()", "spaces in name", "中文文件"]:
-            (run_dir / name).write_text("test")
+        # NTFS forbids < > : " / \\ | ? * in a filename, so the punctuation
+        # soup is POSIX-only. The point of the test is non-ASCII and spaces,
+        # which both platforms allow.
+        names = ["spaces in name", "中文文件", "emoji 🎵 name"]
+        if os.name == "posix":
+            names.append("!@#$%^&*()")
+        for name in names:
+            (run_dir / name).write_text("test", encoding="utf-8")
 
         await app.cleanup()
         assert not run_dir.exists()
@@ -497,9 +504,11 @@ class TestAppProcessInput:
         # Test processing
         await app.process_input(str(test_file))
 
-        # Verify calls - use any() to handle path variations
+        # Verify calls. Compare the argument itself, not repr(call_args):
+        # a Windows path repr doubles its backslashes, so the substring
+        # check fails against the very path that was passed.
         assert app.split_audio.called
-        assert str(test_file) in str(app.split_audio.call_args)
+        assert Path(app.split_audio.call_args.args[0]) == Path(test_file)
         app.identification_manager.identify_tracks.assert_called_once()
         app.save_output.assert_called_once()
         assert app.original_title == "test"

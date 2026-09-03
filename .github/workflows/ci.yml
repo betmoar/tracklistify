@@ -2,13 +2,14 @@
 #
 # This is the enforcement layer for the invariants documented in
 # docs/ARCHITECTURE.md. Pre-commit hooks only run on machines where they're
-# installed; this workflow is what actually gates merges. Keep the five jobs
+# installed; this workflow is what actually gates merges. Keep the six jobs
 # in sync with the local commands in CLAUDE.md:
-#   lint    -> uv run ruff check src/ tests/ scripts/
-#   format  -> uv run ruff format --check src/ tests/ scripts/
-#   drift   -> uv run python scripts/generate_env_example.py --check
-#   type    -> uv run python scripts/check_mypy_baseline.py
-#   test    -> uv run python -m pytest -q   (3.11 / 3.12 / 3.13)
+#   lint          -> uv run ruff check src/ tests/ scripts/
+#   format        -> uv run ruff format --check src/ tests/ scripts/
+#   drift         -> uv run python scripts/generate_env_example.py --check
+#   type          -> uv run python scripts/check_mypy_baseline.py
+#   test          -> uv run python -m pytest -q   (3.11 / 3.12 / 3.13, ubuntu-latest)
+#   test-windows  -> uv run python -m pytest -q   (3.12 only, windows-latest)
 
 name: CI
 
@@ -79,6 +80,47 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - run: uv sync --dev
+      # `uv run python -m pytest`, NOT `uv run pytest`: an ambient pytest can
+      # shadow the venv's and silently change asyncio strict-mode behavior.
+      - name: Run tests
+        run: uv run python -m pytest -q
+
+  test-windows:
+    # Windows gate, one Python version (3.12), not the full matrix — the
+    # matrix stays Linux; this job exists to catch the class of bug the
+    # Linux matrix structurally cannot see (#90).
+    #
+    # Not hypothetical. Every item below already shipped broken and was
+    # found by hand on a contributor's machine, not by CI — two startup
+    # crashes in #81 and thirteen test failures in #85, all in v0.11.x:
+    #   - `loop.add_signal_handler()` is unimplemented on Windows'
+    #     ProactorEventLoop (raises NotImplementedError), and
+    #     `os.kill(pid, 0)` TERMINATES the process rather than probing it
+    #     the way the POSIX signal-0 idiom does.
+    #   - `\` vs `/` in path assertions that assumed POSIX.
+    #   - Text I/O defaulting to cp1252 rather than UTF-8, which cannot
+    #     decode the non-ASCII already in this source tree.
+    #   - NTFS has ACLs, not POSIX mode bits, so `Path.chmod` /
+    #     `st_mode` assertions do not hold.
+    #   - `file:///C:/…` needs url2pathname; `urlparse().path` leaves a
+    #     leading slash on the drive letter.
+    #
+    # A failure here is a real bug or a test that encoded the host OS.
+    # Skip with an explicit `skipif` naming why — never weaken the
+    # assertion for the platform where it means something.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg (required by the audio pipeline + some tests)
+        run: choco install ffmpeg -y
+      - name: Install Deno (required by yt-dlp-ejs for YouTube downloads)
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
       - run: uv sync --dev
       # `uv run python -m pytest`, NOT `uv run pytest`: an ambient pytest can
       # shadow the venv's and silently change asyncio strict-mode behavior.

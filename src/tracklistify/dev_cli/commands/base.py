@@ -88,9 +88,16 @@ class DevCommand(ABC):
             CompletedProcess: Result of the command.
 
         Raises:
+            ValueError: If ``cmd`` is empty or splits to nothing.
             ToolExecutionError: If command execution fails.
         """
         cmd_list = cmd if isinstance(cmd, list) else shlex.split(cmd)
+        # subprocess.run([]) fails differently per platform -- IndexError from
+        # `executable = args[0]` on POSIX, OSError WinError 87 on Windows --
+        # so neither is something a caller can catch portably. Reject it here
+        # with one error and a message that names the actual problem.
+        if not cmd_list:
+            raise ValueError(f"Empty command: {cmd!r} has nothing to execute")
         try:
             result = subprocess.run(
                 cmd_list,

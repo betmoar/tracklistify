@@ -42,7 +42,11 @@ class TestNoSilentExceptions:
                     # Check if body is just 'pass'
                     if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
                         # Check if it's an allowed pattern
-                        relative_path = str(py_file.relative_to(src_path))
+                        # as_posix(), not str(): the allowed_patterns above
+                        # are written with "/" and Windows renders the
+                        # relative path with "\\", so every entry misses and
+                        # a permitted cleanup handler reads as a violation.
+                        relative_path = py_file.relative_to(src_path).as_posix()
                         is_allowed = False
                         for allowed_file, _ in allowed_patterns:
                             if allowed_file in relative_path:

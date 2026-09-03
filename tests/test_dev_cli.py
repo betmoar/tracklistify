@@ -132,18 +132,27 @@ class TestRunCommand:
         assert "arg with spaces" in result.stdout
 
     def test_run_shell_command_empty_input(self):
-        """run_shell_command with empty input raises IndexError (no argv[0]).
+        """An empty command raises ValueError on every platform.
 
-        shlex.split("") returns [], and subprocess.run([], ...) internally
-        does `executable = args[0]`, which raises IndexError on an empty
-        list (verified against the actual CPython 3.11 subprocess module —
-        not ValueError as might be assumed).
+        Left to subprocess, an empty argv fails differently per platform:
+        IndexError from `executable = args[0]` on POSIX, OSError
+        (WinError 87, "The parameter is incorrect") on Windows. Neither is
+        catchable portably, and neither says what went wrong. The method
+        rejects it up front instead.
         """
         from tracklistify.dev_cli.commands.run import RunCommand
 
         cmd = RunCommand()
-        with pytest.raises(IndexError):
+        with pytest.raises(ValueError, match="Empty command"):
             cmd.run_shell_command("", check=True)
+
+        # A list is validated the same way as a string.
+        with pytest.raises(ValueError, match="Empty command"):
+            cmd.run_shell_command([], check=True)
+
+        # Whitespace-only shlex-splits to nothing too.
+        with pytest.raises(ValueError, match="Empty command"):
+            cmd.run_shell_command("   ", check=True)
 
     def test_run_shell_command_nonzero_exit(self):
         """run_shell_command with a failing command raises ToolExecutionError."""

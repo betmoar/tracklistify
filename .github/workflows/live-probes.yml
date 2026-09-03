@@ -1,0 +1,58 @@
+# Scheduled live-network probes.
+#
+# The offline suite cannot see this failure class: a dependency resolves,
+# imports, and passes every test while being broken against the real world.
+# yt-dlp is the standing example (#91) -- YouTube retires the player client a
+# pinned version reaches for, and every download 403s with nothing in CI
+# turning red.
+#
+# Deliberately NOT part of ci.yml: these hit real services, so they fail on
+# an upstream outage as readily as on a real regression. A red run here is a
+# signal to investigate, never a merge gate.
+name: Live probes
+
+# Cost: this repo is public, so hosted-runner minutes are free and unmetered.
+# If it ever goes private, this job is ~90s/day against the 2000-minute Free
+# tier -- still negligible, but no longer zero.
+#
+# GitHub disables scheduled workflows after 60 days with no repository
+# activity, and only emails the last committer. A quiet stretch therefore
+# turns this probe off silently, which is exactly when a lock is most likely
+# to have gone stale. If the repo has been idle for two months, re-enable it
+# (Actions tab -> this workflow -> Enable) before trusting a green history.
+on:
+  schedule:
+    # 06:23 UTC daily. Off the hour on purpose -- :00 is when every cron on
+    # the planet fires and GitHub queues the backlog.
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      # yt-dlp runs the yt-dlp-ejs signature solver inside Deno to answer
+      # YouTube's JS challenges. Without it the newer player clients fall
+      # back to paths that 403 -- the same symptom as a stale lock.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - run: uv sync --dev
+
+      - name: Run live probes
+        run: uv run python -m pytest tests/test_live_probes.py --live -v
+        env:
+          TRACKLISTIFY_MUSICBRAINZ_CONTACT: ${{ secrets.TRACKLISTIFY_MUSICBRAINZ_CONTACT }}
