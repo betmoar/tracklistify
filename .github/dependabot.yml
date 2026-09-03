@@ -13,8 +13,10 @@ updates:
       day: "monday"
     groups:
       python-dependencies:
-        # Everything minor/patch rolls up into one PR.
+        # Everything minor/patch rolls up into one PR, except yt-dlp, which
+        # gets its own entry below.
         patterns: ["*"]
+        exclude-patterns: ["yt-dlp"]
         update-types:
           - "minor"
           - "patch"
@@ -24,6 +26,31 @@ updates:
         update-types:
           - "major"
     open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+
+  # yt-dlp is checked daily and on its own, not in the weekly group.
+  #
+  # It is the one dependency where falling behind IS being broken: YouTube
+  # retires the player clients a pinned version reaches for, and every
+  # download starts returning 403 (#91). A lock a month stale took the app's
+  # primary input path out entirely, and the weekly grouped PRs -- which
+  # bumped ruff, mypy and pylint through that window -- never carried it.
+  #
+  # Why they didn't is not established. The bump is 2026.7.4 -> 2026.8.19,
+  # which reads as minor and should have qualified for the group. Pulling it
+  # out into its own daily entry sidesteps the question rather than answering
+  # it; the scheduled live probe (.github/workflows/live-probes.yml) is what
+  # actually catches a miss.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-name: "yt-dlp"
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "chore(deps)"
     labels:
