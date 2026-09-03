@@ -50,6 +50,36 @@ Release dates are in YYYY-MM-DD format.
   the win32 branch executes identically on every host, and asserts the
   actual decision table: `GetLastError` 87 → dead, 5 (ACCESS_DENIED)
   → alive. Caught by @deroverda.
+- **`file://` URIs were never percent-decoded (#85).** `validate_input`
+  built the local path with `Path(urlparse(s).path)`, but `urlparse`
+  returns a URL path, not a filesystem path: a space stays `%20`, so any
+  `file://` URI containing a space or a non-ASCII character resolved to a
+  path that does not exist and validation returned `None`. Not
+  Windows-specific — it failed identically on macOS and Linux, and only
+  escaped notice because the existing tests build URIs from `tmp_path`
+  names, which have no spaces. On Windows it additionally mangled drive
+  letters (`file:///C:/x` → `/C:/x`). Now goes through `url2pathname`.
+  The authority component, previously dropped in silence, is handled too:
+  `file://localhost/p` is accepted as the same file as `file:///p`, and
+  any other host is a Windows UNC path — rebuilt as `\\host\share`
+  there, rejected elsewhere rather than reinterpreted, since dropping it
+  resolved `file://evil/etc/passwd` to the local `/etc/passwd`.
+- **Text files were read and written with the locale encoding (#85).**
+  Bare `open()` uses `locale.getpreferredencoding()` — cp1252 on a default
+  Windows install. `core/track.py` has 51 non-ASCII lines (em-dashes,
+  `ROSALÍA`, `Björk` in the artist-matching docstrings) and cp1252 cannot
+  decode the first one, which is what broke the source-scanning tests on
+  Windows. 61 test call sites and four production sites are now explicit:
+  `core/run.py` (the `.env.example` → `.env` copy) and
+  `providers/beatport.py` (the token cache) state `encoding="utf-8"`;
+  `config/validation.py` opens paths only to probe readability, decodes
+  nothing, and now uses binary mode. No behavior change on POSIX.
+- **Two tests asserted POSIX-only facts on every platform (#85).** The
+  Beatport token cache's `st_mode & 0o777 == 0o600` check is now guarded by
+  `os.name == "posix"` — NTFS has ACLs, not mode bits, and `Path.chmod`
+  only toggles the read-only flag there. The default-output-path assertion
+  compared a string ending in `.tracklistify/output`, which Windows renders
+  with a backslash; it now compares `Path.parts`.
 
 ### Added
 
