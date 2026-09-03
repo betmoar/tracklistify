@@ -7,6 +7,7 @@
 #   lint          -> uv run ruff check src/ tests/ scripts/
 #   format        -> uv run ruff format --check src/ tests/ scripts/
 #   drift         -> uv run python scripts/generate_env_example.py --check
+#                    + uv run python scripts/check_dependabot_config.py
 #   type          -> uv run python scripts/check_mypy_baseline.py
 #   test          -> uv run python -m pytest -q   (3.11 / 3.12 / 3.13, ubuntu-latest)
 #   test-windows  -> uv run python -m pytest -q   (3.12 only, windows-latest)
@@ -51,6 +52,12 @@ jobs:
       - run: uv sync
       - name: .env.example is in sync with TrackIdentificationConfig
         run: uv run python scripts/generate_env_example.py --check
+      # A dependabot config can be valid YAML and still be rejected by
+      # GitHub, and a rejected config disables Dependabot ENTIRELY --
+      # reported through a check run rather than the Actions log, so it is
+      # easy to miss until updates have quietly stopped for weeks.
+      - name: dependabot.yml obeys the rules GitHub enforces server-side
+        run: uv run python scripts/check_dependabot_config.py
 
   type:
     # Q5: mypy type-check with a ratchet. The codebase predates type checking,

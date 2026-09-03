@@ -32,6 +32,15 @@ Release dates are in YYYY-MM-DD format.
   `windows-latest` job on Python 3.12. Every Windows bug so far — the two
   startup crashes in #81, the thirteen failures in #85 — was found by a
   contributor running the branch by hand; nothing gated it.
+- **The dependabot config was invalid and had disabled Dependabot
+  entirely.** Giving yt-dlp its own daily schedule meant a second `uv` + `/`
+  entry, which GitHub rejects: *"Update configs must have a unique
+  combination of 'package-ecosystem', 'directory', and 'target-branch'."* A
+  rejected config stops **all** updates, not just the duplicate, and the
+  rejection surfaces as a check run rather than in the Actions log. yt-dlp
+  is now a `group` inside the single entry (groups have no such limit) and
+  the whole entry runs daily. `scripts/check_dependabot_config.py` enforces
+  the rule in CI, since valid YAML proves nothing here.
 - **First Windows CI run found four more failures, now fixed (#90).** A
   hardcoded `/` in `test_error_handling.py`'s allow-list (so a permitted
   cleanup handler read as a violation), an assertion comparing a path
