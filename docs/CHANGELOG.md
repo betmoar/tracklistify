@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Release dates are in YYYY-MM-DD format.
 
+## [Unreleased]
+
+### Fixed
+
+- **`from tracklistify import *` raised `AttributeError` (#89).**
+  `__init__.py` declared `__all__ = ["__version__", "__title__",
+  "__author__", "__license__"]` and bound none of them: the list was
+  assigned inside `get_metadata()`, where it was a local variable, and the
+  distribution metadata that function fetched was discarded. All four
+  attributes now resolve, lazily via a module `__getattr__` (PEP 562) so
+  `import tracklistify` does not pay for a filesystem walk it may never
+  use. `__license__` reads PEP 639's `License-Expression` before the
+  legacy `License` field — this project populates only the former.
+- **A stale `yt-dlp` pin broke every YouTube download (#91).** `uv.lock`
+  carried `2026.7.4` against a current `2026.8.19`; YouTube had retired
+  the player client that version reaches for, and downloads returned
+  `HTTP 403` while metadata extraction still succeeded. Refreshed, and
+  yt-dlp now has its own daily dependabot entry outside the weekly group.
+
+### Added
+
+- **Windows CI (#90).** `.github/workflows/ci.yml` gains a
+  `windows-latest` job on Python 3.12. Every Windows bug so far — the two
+  startup crashes in #81, the thirteen failures in #85 — was found by a
+  contributor running the branch by hand; nothing gated it.
+- **Scheduled live probes** (`.github/workflows/live-probes.yml`). Runs
+  the opt-in `--live` suite daily, outside `ci.yml` because it hits real
+  services and fails on an upstream outage as readily as on a regression.
+  Covers the failure class where a dependency resolves, imports and passes
+  every offline test while being broken against reality.
+
 ## [0.11.2] - 2026-09-03
 
 ### Fixed
